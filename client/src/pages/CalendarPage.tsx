@@ -1,0 +1,247 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { SmsModal } from "@/components/SmsModal";
+import { ImportModal } from "@/components/ImportModal";
+import { useLectures } from "@/hooks/useLectures";
+import { downloadICS } from "@/utils/exportUtils";
+import { recordSmsHistory } from "@/utils/storage";
+import { formatDate } from "@/utils/format";
+import {
+  Building2,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  MapPin,
+  MessageCircle,
+  Phone,
+  Plus,
+  Upload,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { useLocation } from "wouter";
+import type { Lecture, WorkflowStage } from "../types/lecture";
+
+const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+const stageLabels: Record<WorkflowStage, string> = {
+  before: "강의 전",
+  after: "강의 후",
+  promoted: "홍보 완료",
+};
+
+export default function CalendarPage() {
+  const [, navigate] = useLocation();
+  const { lectures, bulkAddLectures } = useLectures();
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const lectureMap = useMemo(() => {
+    const map: Record<string, Lecture[]> = {};
+    lectures.forEach((lecture) => {
+      map[lecture.date] = [...(map[lecture.date] ?? []), lecture];
+    });
+    return map;
+  }, [lectures]);
+
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const toDateStr = (day: number) =>
+    `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const selectedLectures = selectedDate ? lectureMap[selectedDate] ?? [] : [];
+  const monthLectures = lectures
+    .filter((lecture) => {
+      const date = new Date(lecture.date);
+      return date.getFullYear() === viewYear && date.getMonth() === viewMonth;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const moveMonth = (diff: number) => {
+    const next = new Date(viewYear, viewMonth + diff, 1);
+    setViewYear(next.getFullYear());
+    setViewMonth(next.getMonth());
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+            <CalendarDays className="h-6 w-6 text-primary" />
+            강의 캘린더
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">캘린더에서 일정과 담당자 연락 버튼을 바로 확인합니다.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
+            가져오기
+          </Button>
+          {lectures.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                downloadICS(lectures, "강의일정.ics");
+                toast.success("ICS 캘린더 파일을 다운로드했습니다.");
+              }}
+            >
+              <Download className="mr-1.5 h-4 w-4 text-blue-600" />
+              ICS
+            </Button>
+          )}
+          <Button size="sm" onClick={() => navigate("/lectures/new")}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            강의 등록
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <section className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <button onClick={() => moveMonth(-1)} className="rounded-md p-1.5 hover:bg-muted">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <h2 className="text-base font-semibold text-foreground">
+              {viewYear}년 {viewMonth + 1}월
+            </h2>
+            <button onClick={() => moveMonth(1)} className="rounded-md p-1.5 hover:bg-muted">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mb-1 grid grid-cols-7">
+            {weekdays.map((day, index) => (
+              <div key={day} className={`py-1 text-center text-xs font-medium ${index === 0 ? "text-red-500" : index === 6 ? "text-blue-500" : "text-muted-foreground"}`}>
+                {day}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map((day, index) => {
+              if (!day) return <div key={`empty-${index}`} className="aspect-square" />;
+              const dateStr = toDateStr(day);
+              const hasLecture = Boolean(lectureMap[dateStr]);
+              const selected = selectedDate === dateStr;
+              const isToday = todayStr === dateStr;
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => setSelectedDate(selected ? null : dateStr)}
+                  className={`flex aspect-square flex-col items-center justify-start rounded-lg pt-1 text-xs font-medium transition-colors ${
+                    selected ? "bg-primary text-primary-foreground" : isToday ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                  }`}
+                >
+                  <span>{day}</span>
+                  {hasLecture && <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${selected ? "bg-primary-foreground" : "bg-primary"}`} />}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <aside className="space-y-3">
+          {selectedDate && (
+            <section className="rounded-xl border border-border bg-card p-4">
+              <h3 className="mb-3 text-sm font-semibold text-foreground">{formatDate(selectedDate)} 강의</h3>
+              {selectedLectures.length === 0 ? (
+                <p className="text-xs text-muted-foreground">선택한 날짜에 강의가 없습니다.</p>
+              ) : (
+                <div className="space-y-3">
+                  {selectedLectures.map((lecture) => (
+                    <QuickCard key={lecture.id} lecture={lecture} onNavigate={navigate} onSms={(lec) => setSmsTarget(lec)} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="rounded-xl border border-border bg-card p-4">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">
+              {viewMonth + 1}월 강의 일정 <span className="ml-1 text-xs font-normal text-muted-foreground">{monthLectures.length}건</span>
+            </h3>
+            <div className="space-y-2">
+              {monthLectures.length === 0 ? (
+                <p className="py-6 text-center text-xs text-muted-foreground">이번 달 강의가 없습니다.</p>
+              ) : (
+                monthLectures.map((lecture) => (
+                  <button
+                    key={lecture.id}
+                    onClick={() => navigate(`/lectures/${lecture.id}`)}
+                    className="w-full rounded-lg border border-border/60 p-2.5 text-left hover:border-primary/40"
+                  >
+                    <p className="truncate text-xs font-medium text-foreground">{lecture.title}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(lecture.date)}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      {smsTarget && (
+        <SmsModal
+          open={!!smsTarget}
+          onClose={() => setSmsTarget(null)}
+          lecture={smsTarget}
+          defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
+          onRecord={(type, recipient, content) => {
+            recordSmsHistory(smsTarget.id, type, recipient, content);
+            toast.success("문자 발송 내역을 기록했습니다.");
+          }}
+        />
+      )}
+
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        defaultType="ics"
+        existingLectures={lectures}
+        onImport={(items, policy) => {
+          const count = bulkAddLectures(items, policy);
+          toast.success(`${count}개의 강의를 가져왔습니다.`);
+        }}
+      />
+    </div>
+  );
+}
+
+function QuickCard({ lecture, onNavigate, onSms }: { lecture: Lecture; onNavigate: (path: string) => void; onSms?: (lecture: Lecture) => void }) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <button onClick={() => onNavigate(`/lectures/${lecture.id}`)} className="min-w-0 text-left">
+          <p className="text-sm font-medium leading-tight text-foreground">{lecture.title}</p>
+        </button>
+        <Badge variant="outline" className="shrink-0 text-[10px]">{stageLabels[lecture.workflowStage]}</Badge>
+      </div>
+      <div className="space-y-1 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1.5"><Building2 className="h-3 w-3" />{lecture.organization}</p>
+        <p className="flex items-center gap-1.5"><MapPin className="h-3 w-3" />{lecture.location}</p>
+      </div>
+      {lecture.managerPhone && (
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={() => onSms?.(lecture)}
+            className="inline-flex h-7 flex-1 items-center justify-center rounded-md border border-green-200 text-xs text-green-700 hover:bg-green-50 cursor-pointer"
+          >
+            <MessageCircle className="mr-1 h-3.5 w-3.5" />문자
+          </button>
+          <a href={`tel:${lecture.managerPhone}`} className="inline-flex h-7 items-center justify-center rounded-md border border-blue-200 px-2 text-xs text-blue-700 hover:bg-blue-50">
+            <Phone className="h-3.5 w-3.5" />
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+

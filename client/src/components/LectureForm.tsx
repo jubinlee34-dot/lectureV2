@@ -1,0 +1,240 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Save } from "lucide-react";
+import { useState } from "react";
+import type { Lecture, LectureFormData, PaymentStatus, WorkflowStage } from "../types/lecture";
+
+interface LectureFormProps {
+  initialData?: Lecture;
+  onSubmit: (data: LectureFormData) => void;
+  onCancel: () => void;
+  isSubmitting?: boolean;
+}
+
+const emptyForm: LectureFormData = {
+  organization: "",
+  title: "",
+  topic: "",
+  target: "",
+  date: "",
+  duration: "",
+  participants: 0,
+  location: "",
+  content: "",
+  reflection: "",
+  managerName: "",
+  managerPhone: "",
+  fee: 0,
+  paymentStatus: "unpaid",
+  paidAmount: 0,
+  workflowStage: "before",
+  participantReaction: "",
+  instructorMemo: "",
+  memorableQuestion: "",
+};
+
+export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = false }: LectureFormProps) {
+  const [formData, setFormData] = useState<LectureFormData>(
+    initialData
+      ? {
+          organization: initialData.organization,
+          title: initialData.title,
+          topic: initialData.topic,
+          target: initialData.target,
+          date: initialData.date,
+          duration: initialData.duration,
+          participants: initialData.participants,
+          location: initialData.location,
+          content: initialData.content,
+          reflection: initialData.reflection,
+          managerName: initialData.managerName,
+          managerPhone: initialData.managerPhone,
+          fee: initialData.fee,
+          paymentStatus: initialData.paymentStatus,
+          paidAmount: initialData.paidAmount,
+          workflowStage: initialData.workflowStage,
+          participantReaction: initialData.participantReaction,
+          instructorMemo: initialData.instructorMemo,
+          memorableQuestion: initialData.memorableQuestion,
+        }
+      : emptyForm
+  );
+  const [errors, setErrors] = useState<Partial<Record<keyof LectureFormData, string>>>({});
+
+  const setField = (field: keyof LectureFormData, value: string | number) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    setErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const validate = () => {
+    const next: Partial<Record<keyof LectureFormData, string>> = {};
+    if (!formData.organization.trim()) next.organization = "기관명을 입력해주세요.";
+    if (!formData.title.trim()) next.title = "교육명을 입력해주세요.";
+    if (!formData.topic.trim()) next.topic = "교육주제를 입력해주세요.";
+    if (!formData.target.trim()) next.target = "교육대상을 입력해주세요.";
+    if (!formData.date) next.date = "교육일자를 선택해주세요.";
+    if (!formData.duration.trim()) next.duration = "교육시간을 입력해주세요.";
+    if (formData.participants <= 0) next.participants = "참여인원을 입력해주세요.";
+    if (!formData.location.trim()) next.location = "교육장소를 입력해주세요.";
+    if (!formData.content.trim()) next.content = "교육내용을 입력해주세요.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (validate()) onSubmit(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-8">
+      <Section title="기본 정보">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="기관명" required error={errors.organization}>
+            <Input value={formData.organization} onChange={(e) => setField("organization", e.target.value)} placeholder="예: 서울시 강남구 평생학습관" />
+          </Field>
+          <Field label="교육명" required error={errors.title}>
+            <Input value={formData.title} onChange={(e) => setField("title", e.target.value)} placeholder="예: 디지털 리터러시 기초 과정" />
+          </Field>
+          <Field label="교육주제" required error={errors.topic}>
+            <Input value={formData.topic} onChange={(e) => setField("topic", e.target.value)} placeholder="예: 스마트폰 활용법" />
+          </Field>
+          <Field label="교육대상" required error={errors.target}>
+            <Input value={formData.target} onChange={(e) => setField("target", e.target.value)} placeholder="예: 60대 이상 어르신" />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="담당자 정보" subtitle="문자 발송 기능에 사용됩니다.">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="담당자 이름">
+            <Input value={formData.managerName} onChange={(e) => setField("managerName", e.target.value)} placeholder="예: 김지영" />
+          </Field>
+          <Field label="담당자 연락처" description="문자 발송 시 자동으로 입력됩니다.">
+            <Input type="tel" value={formData.managerPhone} onChange={(e) => setField("managerPhone", e.target.value)} placeholder="예: 010-1234-5678" />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="일정 및 장소">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="교육일자" required error={errors.date}>
+            <Input type="date" value={formData.date} onChange={(e) => setField("date", e.target.value)} />
+          </Field>
+          <Field label="교육시간" required error={errors.duration}>
+            <Input value={formData.duration} onChange={(e) => setField("duration", e.target.value)} placeholder="예: 2시간" />
+          </Field>
+          <Field label="참여인원" required error={errors.participants}>
+            <Input type="number" min={0} value={formData.participants || ""} onChange={(e) => setField("participants", Number(e.target.value) || 0)} placeholder="예: 25" />
+          </Field>
+          <Field label="교육장소" required error={errors.location}>
+            <Input value={formData.location} onChange={(e) => setField("location", e.target.value)} placeholder="예: 강남구 평생학습관 2층" />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="강사료 및 입금">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Field label="강사료 (원)">
+            <Input type="number" min={0} step={10000} value={formData.fee || ""} onChange={(e) => setField("fee", Number(e.target.value) || 0)} placeholder="예: 300000" />
+          </Field>
+          <Field label="입금 상태">
+            <select value={formData.paymentStatus} onChange={(e) => setField("paymentStatus", e.target.value as PaymentStatus)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="unpaid">미입금</option>
+              <option value="partial">일부 입금</option>
+              <option value="paid">입금 완료</option>
+            </select>
+          </Field>
+          <Field label="입금 완료 금액 (원)">
+            <Input type="number" min={0} step={10000} value={formData.paidAmount || ""} onChange={(e) => setField("paidAmount", Number(e.target.value) || 0)} placeholder="예: 300000" />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="진행 단계">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="현재 단계" description="현재 진행 상태를 선택하십시오.">
+            <select value={formData.workflowStage} onChange={(e) => setField("workflowStage", e.target.value as WorkflowStage)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="before">강의 전</option>
+              <option value="after">강의 후</option>
+              <option value="promoted">홍보 완료</option>
+            </select>
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="교육 내용">
+        <div className="space-y-4">
+          <Field label="교육내용" required error={errors.content} description="인터뷰에서 다른 주요 내용을 상세히 작성해주세요.">
+            <Textarea value={formData.content} onChange={(e) => setField("content", e.target.value)} rows={5} placeholder="1부: ...&#10;2부: ..." />
+          </Field>
+          <Field label="강의소감">
+            <Textarea value={formData.reflection} onChange={(e) => setField("reflection", e.target.value)} rows={3} placeholder="강의 전반에 대한 소감..." />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="문서 생성용 추가 정보" subtitle="결과보고서 블로그 초안 품질을 높이는 정보입니다. 선택 사항입니다.">
+        <div className="space-y-4">
+          <Field label="참여자 반응" description="현장에서 관찰한 참여자들의 반응, 행동, 분위기를 구체적으로 적어주세요.">
+            <Textarea value={formData.participantReaction} onChange={(e) => setField("participantReaction", e.target.value)} rows={3} placeholder="예: 실습 주변에 스스로 화면을 넘기며 따라오셨습니다." />
+          </Field>
+          <Field label="강사 메모" description="강의 중 떠오른 아이디어, 개선점, 특이사항 등을 적어두세요.">
+            <Textarea value={formData.instructorMemo} onChange={(e) => setField("instructorMemo", e.target.value)} rows={3} placeholder="예: 글씨 크기 설정을 먼저 알려드리니 이후 실습이 수월했습니다." />
+          </Field>
+          <Field label="기억에 남는 질문" description="참여자가 했던 인상적인 질문을 기록해주세요.">
+            <Textarea value={formData.memorableQuestion} onChange={(e) => setField("memorableQuestion", e.target.value)} rows={2} placeholder="예: 이거 잘못 누르면 돈 나가는 거 아닌가요?" />
+          </Field>
+        </div>
+      </Section>
+
+      <div className="flex justify-end gap-3 border-t border-border pt-4">
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>취소</Button>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {initialData ? "수정 저장" : "강의 등록"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="border-b border-border pb-2 text-sm font-semibold text-foreground">{title}</h2>
+        {subtitle && <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  required,
+  error,
+  description,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  error?: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-sm font-medium text-foreground flex items-center">
+        {label}
+        {required && <span className="ml-0.5 text-destructive font-bold">*</span>}
+      </Label>
+      {children}
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
