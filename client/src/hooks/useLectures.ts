@@ -4,17 +4,32 @@ import { dummyLectures } from "../data/dummyData";
 import type { Lecture, LectureFormData, WorkflowStage } from "../types/lecture";
 import { loadLectures, saveLectures } from "../utils/storage";
 
+const INIT_KEY = "lecture-archive-initialized";
+const LECTURES_KEY = "lecture-archive-lectures";
+
 export function useLectures() {
-  const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [lectures, setLectures] = useState<Lecture[]>(() => {
+    const isInit = localStorage.getItem(INIT_KEY);
+    if (!isInit) {
+      saveLectures(dummyLectures);
+      localStorage.setItem(INIT_KEY, "true");
+      return dummyLectures;
+    }
+    return loadLectures();
+  });
 
   useEffect(() => {
-    const stored = loadLectures();
-    if (stored.length === 0) {
-      saveLectures(dummyLectures);
-      setLectures(dummyLectures);
-      return;
-    }
-    setLectures(stored);
+    saveLectures(lectures);
+  }, [lectures]);
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === LECTURES_KEY) {
+        setLectures(loadLectures());
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
   const addLecture = useCallback((formData: LectureFormData): Lecture => {
@@ -23,11 +38,7 @@ export function useLectures() {
       id: nanoid(),
       createdAt: new Date().toISOString(),
     };
-    setLectures((prev) => {
-      const updated = [newLecture, ...prev];
-      saveLectures(updated);
-      return updated;
-    });
+    setLectures((prev) => [newLecture, ...prev]);
     return newLecture;
   }, []);
 
@@ -49,7 +60,6 @@ export function useLectures() {
           updated = [{ ...item, id: nanoid(), createdAt: new Date().toISOString() }, ...updated];
           count += 1;
         }
-        saveLectures(updated);
         return updated;
       });
       return count;
@@ -58,21 +68,13 @@ export function useLectures() {
   );
 
   const updateLecture = useCallback((id: string, data: Partial<Lecture>): void => {
-    setLectures((prev) => {
-      const updated = prev.map((lecture) =>
-        lecture.id === id ? { ...lecture, ...data } : lecture
-      );
-      saveLectures(updated);
-      return updated;
-    });
+    setLectures((prev) =>
+      prev.map((lecture) => (lecture.id === id ? { ...lecture, ...data } : lecture))
+    );
   }, []);
 
   const deleteLecture = useCallback((id: string): void => {
-    setLectures((prev) => {
-      const updated = prev.filter((lecture) => lecture.id !== id);
-      saveLectures(updated);
-      return updated;
-    });
+    setLectures((prev) => prev.filter((lecture) => lecture.id !== id));
   }, []);
 
   const getLectureById = useCallback(

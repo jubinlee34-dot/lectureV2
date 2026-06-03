@@ -9,6 +9,7 @@ import { dummyTodos } from "../data/dummyData";
 import type { Todo, TodoPriority } from "../types/lecture";
 
 const STORAGE_KEY = "lecture-archive-v2-todos";
+const TODO_INIT_KEY = "lecture-archive-v2-todos-initialized";
 
 function loadTodos(): Todo[] {
   try {
@@ -17,9 +18,7 @@ function loadTodos(): Todo[] {
   } catch {
     // ignore
   }
-  // 최초 실행 시 더미 데이터 저장
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(dummyTodos));
-  return dummyTodos;
+  return [];
 }
 
 function saveTodos(todos: Todo[]) {
@@ -31,11 +30,29 @@ function generateId(): string {
 }
 
 export function useTodos() {
-  const [todos, setTodos] = useState<Todo[]>(loadTodos);
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    const isInit = localStorage.getItem(TODO_INIT_KEY);
+    if (!isInit) {
+      saveTodos(dummyTodos);
+      localStorage.setItem(TODO_INIT_KEY, "true");
+      return dummyTodos;
+    }
+    return loadTodos();
+  });
 
   useEffect(() => {
     saveTodos(todos);
   }, [todos]);
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        setTodos(loadTodos());
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
 
   const addTodo = useCallback(
     (data: { text: string; priority: TodoPriority; dueDate?: string; lectureId?: string }) => {
