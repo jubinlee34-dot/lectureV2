@@ -12,9 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLectures } from "@/hooks/useLectures";
-import { downloadCSV } from "@/utils/exportUtils";
+import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { recordSmsHistory } from "@/utils/storage";
-import { PenLine, Sheet, Upload } from "lucide-react";
+import { Calendar, PenLine, Sheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -55,17 +55,30 @@ export default function LectureList() {
             가져오기
           </Button>
           {lectures.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                downloadCSV(sortedLectures, "강의목록.csv");
-                toast.success("CSV 파일을 다운로드했습니다.");
-              }}
-            >
-              <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
-              CSV
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  downloadCSV(sortedLectures, "강의목록.csv");
+                  toast.success("구글 스프레드시트용 CSV 파일을 다운로드했습니다.");
+                }}
+              >
+                <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
+                구글 시트(CSV)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  downloadICS(sortedLectures, "강의일정.ics");
+                  toast.success("구글 캘린더용 ICS 파일을 다운로드했습니다.");
+                }}
+              >
+                <Calendar className="mr-1.5 h-4 w-4 text-blue-600" />
+                구글 캘린더(ICS)
+              </Button>
+            </>
           )}
           <Button onClick={() => navigate("/lectures/new")} size="sm">
             <PenLine className="mr-2 h-4 w-4" />

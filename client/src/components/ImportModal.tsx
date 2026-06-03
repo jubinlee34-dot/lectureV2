@@ -72,6 +72,37 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
     onClose();
   };
 
+  const downloadCsvTemplate = () => {
+    const headers = [
+      "강의명",
+      "기관명",
+      "교육주제",
+      "교육대상",
+      "교육일자",
+      "교육시간",
+      "참여인원",
+      "교육장소",
+      "담당자",
+      "담당자연락처",
+      "강사료",
+      "입금상태",
+      "입금금액",
+      "워크플로우",
+      "교육내용",
+      "강의소감",
+    ];
+    const content = "\uFEFF" + headers.join(",") + "\n";
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "구글_스프레드시트_업로드_양식.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
   /** 파일 선택 시 파싱 */
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -167,6 +198,20 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
                   <p>2. 파일 → 다운로드 → <strong>쉼표로 구분된 값(.csv)</strong> 선택</p>
                   <p>3. 다운로드된 .csv 파일을 아래에 업로드</p>
                   <p className="mt-1 text-green-700">강의 아카이브에서 내보낸 CSV 파일도 지원합니다.</p>
+                  <div className="mt-2 pt-1.5 border-t border-green-200/50 flex justify-between items-center">
+                    <span className="text-[10px] text-green-700 font-semibold">업로드 양식이 필요하신가요?</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] bg-white border-green-300 text-green-700 hover:bg-green-100 hover:text-green-800 cursor-pointer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        downloadCsvTemplate();
+                      }}
+                    >
+                      템플릿 CSV 다운로드
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <>
