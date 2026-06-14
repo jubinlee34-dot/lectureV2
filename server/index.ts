@@ -100,8 +100,8 @@ async function startServer() {
     try {
       const start = req.query.start as string;
       const goal = req.query.goal as string;
-      const clientId = req.headers["x-naver-client-id"] as string;
-      const clientSecret = req.headers["x-naver-client-secret"] as string;
+      const clientId = (req.query.clientId || req.headers["x-naver-client-id"]) as string;
+      const clientSecret = (req.query.clientSecret || req.headers["x-naver-client-secret"]) as string;
 
       if (!start || !goal) {
         res.status(400).json({ error: "Missing start or goal parameter" });

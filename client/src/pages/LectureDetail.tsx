@@ -171,18 +171,28 @@ function TravelInfoCard({
               <Navigation className="mr-1.5 h-3.5 w-3.5 text-green-600 dark:text-green-400" />
               네이버 지도 길찾기 바로가기
             </a>
-            {!estimation.realData ? (
-              <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
-                <Info className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                API 키 미설정 (시뮬레이션 데이터)
-              </Badge>
-            ) : (
+            {estimation.realData ? (
               <Badge variant="outline" className="text-[10px] text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/20 border-green-200 dark:border-green-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
                 실시간 네이버 길찾기 연동됨
               </Badge>
+            ) : naverClientId && naverClientSecret ? (
+              <Badge variant="outline" className="text-[10px] text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/10 border-red-200 dark:border-red-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
+                <Info className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                실시간 경로 조회 실패 (도로명 주소 필요)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
+                <Info className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                네이버 API 키 미설정 (시뮬레이션 데이터)
+              </Badge>
             )}
           </div>
+          {!estimation.realData && naverClientId && naverClientSecret && (
+            <p className="text-[11px] text-red-600 dark:text-red-400 font-medium leading-normal mt-2">
+              * 출발지 또는 목적지 주소가 도로명 주소(예: 영광군 염산면 천년로 36)가 아닌 장소명(&quot;염산중학교&quot;)으로 등록되어 실시간 경로 조회가 실패했습니다. 강의 설정에서 정확한 주소로 수정해주세요.
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">경로 정보를 가져올 수 없습니다.</p>

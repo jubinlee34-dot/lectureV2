@@ -71,13 +71,7 @@ export async function estimateTravel(
   if (naverClientId && naverClientSecret) {
     try {
       const response = await fetch(
-        `/api/naver-directions?start=${encodeURIComponent(origin)}&goal=${encodeURIComponent(destination)}`,
-        {
-          headers: {
-            "x-naver-client-id": naverClientId,
-            "x-naver-client-secret": naverClientSecret,
-          },
-        }
+        `/api/naver-directions?start=${encodeURIComponent(origin)}&goal=${encodeURIComponent(destination)}&clientId=${encodeURIComponent(naverClientId)}&clientSecret=${encodeURIComponent(naverClientSecret)}`
       );
       if (!response.ok) {
         throw new Error(`Naver proxy response status: ${response.status}`);
