@@ -1,40 +1,8 @@
-let loadPromise: Promise<any> | null = null;
-
-export function loadGoogleMaps(apiKey?: string): Promise<any> {
-  if (window.google) return Promise.resolve(window.google);
-  if (loadPromise) return loadPromise;
-
-  loadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    if (apiKey) {
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&v=weekly&libraries=places,geocoding,geometry`;
-    } else {
-      const defaultKey = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
-      const forgeBaseUrl =
-        import.meta.env.VITE_FRONTEND_FORGE_API_URL ||
-        "https://forge.butterfly-effect.dev";
-      const proxyUrl = `${forgeBaseUrl}/v1/maps/proxy`;
-      script.src = `${proxyUrl}/maps/api/js?key=${defaultKey}&v=weekly&libraries=marker,places,geocoding,geometry`;
-    }
-    script.async = true;
-    script.crossOrigin = "anonymous";
-    script.onload = () => {
-      resolve(window.google);
-    };
-    script.onerror = (e) => {
-      loadPromise = null;
-      reject(e);
-    };
-    document.head.appendChild(script);
-  });
-
-  return loadPromise;
-}
-
 export interface TravelEstimation {
   distance: string;
   duration: string;
   realData: boolean;
+  source?: "naver" | "google" | "simulated";
 }
 
 const CACHE_KEY = "lecture-archive-travel-cache";
@@ -73,7 +41,8 @@ export function getCachedOrSimulatedTravel(origin: string, destination: string):
 export async function estimateTravel(
   origin: string,
   destination: string,
-  apiKey?: string
+  naverClientId?: string,
+  naverClientSecret?: string
 ): Promise<TravelEstimation> {
   if (!origin || !destination) {
     return { distance: "0 km", duration: "0분", realData: false };
@@ -81,53 +50,50 @@ export async function estimateTravel(
 
   const cacheKey = `${origin}_${destination}`;
 
-  // If no API Key is provided, directly fallback to deterministic simulation to avoid console errors/alerts
-  if (!apiKey) {
-    return simulateDistance(origin, destination);
-  }
-
   // Check cache first
   const cache = loadCache();
-  if (cache[cacheKey] && cache[cacheKey].realData) {
-    return cache[cacheKey];
+  const cachedVal = cache[cacheKey];
+  if (cachedVal && cachedVal.realData) {
+    // If Naver keys are available, we want to make sure the cached value came from naver.
+    // Otherwise, we recalculate to get the accurate Naver route.
+    if (naverClientId && naverClientSecret) {
+      if (cachedVal.source === "naver") {
+        return cachedVal;
+      }
+    } else {
+      return cachedVal;
+    }
   }
 
-  try {
-    await loadGoogleMaps(apiKey);
-    if (!window.google) throw new Error("Google Maps script not loaded");
-
-    const service = new window.google.maps.DistanceMatrixService();
-    return new Promise((resolve, reject) => {
-      service.getDistanceMatrix(
+  // 1. Try Naver Maps via Proxy if keys are provided
+  if (naverClientId && naverClientSecret) {
+    try {
+      const response = await fetch(
+        `/api/naver-directions?start=${encodeURIComponent(origin)}&goal=${encodeURIComponent(destination)}`,
         {
-          origins: [origin],
-          destinations: [destination],
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (response, status) => {
-          if (
-            status === "OK" &&
-            response &&
-            response.rows[0]?.elements[0]?.status === "OK"
-          ) {
-            const element = response.rows[0].elements[0];
-            const result: TravelEstimation = {
-              distance: element.distance.text,
-              duration: element.duration.text,
-              realData: true,
-            };
-            saveToCache(cacheKey, result);
-            resolve(result);
-          } else {
-            reject(new Error(`Distance Matrix status: ${status}`));
-          }
+          headers: {
+            "x-naver-client-id": naverClientId,
+            "x-naver-client-secret": naverClientSecret,
+          },
         }
       );
-    });
-  } catch (err) {
-    console.warn("Google Maps DistanceMatrix API error, falling back to simulation:", err);
-    return simulateDistance(origin, destination);
+      if (!response.ok) {
+        throw new Error(`Naver proxy response status: ${response.status}`);
+      }
+      const data = await response.json() as TravelEstimation;
+      const result = {
+        ...data,
+        source: "naver" as const,
+      };
+      saveToCache(cacheKey, result);
+      return result;
+    } catch (err) {
+      console.warn("Naver Maps API proxy error, falling back:", err);
+    }
   }
+
+  // 2. Fallback to simulation
+  return simulateDistance(origin, destination);
 }
 
 function simulateDistance(origin: string, destination: string): TravelEstimation {

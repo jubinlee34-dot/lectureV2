@@ -1,6 +1,8 @@
 import { nanoid } from "nanoid";
 import type { Lecture, SmsHistory, SmsType } from "@/types/lecture";
 
+import { supabase } from "@/lib/supabase";
+
 const LECTURES_KEY = "lecture-archive-lectures";
 const SMS_KEY = "lecture-archive-smshistory";
 
@@ -36,7 +38,6 @@ export function recordSmsHistory(
   recipient: string,
   content: string
 ): SmsHistory {
-  const history = loadSmsHistory();
   const record: SmsHistory = {
     id: nanoid(),
     lectureId,
@@ -45,8 +46,24 @@ export function recordSmsHistory(
     content,
     sentAt: new Date().toISOString(),
   };
-  history.push(record);
-  saveSmsHistory(history);
+
+  // Save to Supabase asynchronously
+  supabase
+    .from("sms_history")
+    .insert(record)
+    .then(({ error }) => {
+      if (error) {
+        console.error("Failed to save SMS history to Supabase:", error);
+      }
+    });
+
+  // Dispatch event to sync state in SupabaseContext
+  window.dispatchEvent(
+    new CustomEvent("supabase-sms-added", {
+      detail: record,
+    })
+  );
+
   return record;
 }
 

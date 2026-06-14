@@ -30,15 +30,15 @@ import {
   Briefcase,
 } from "lucide-react";
 import type { InstructorProfile, CustomProfileField } from "../types/instructor";
-
-const PROFILE_KEY = "lecture-archive-instructor-profile";
+import { useSupabase } from "../contexts/SupabaseContext";
 
 const defaultProfile: InstructorProfile = {
   name: "",
   homeAddress: "",
   phone: "",
   email: "",
-  googleMapsApiKey: "",
+  naverMapClientId: "",
+  naverMapClientSecret: "",
   customFields: [
     { id: "bank", label: "주거래 은행 및 계좌번호", value: "" },
     { id: "affiliation", label: "소속 및 직함", value: "" },
@@ -47,37 +47,49 @@ const defaultProfile: InstructorProfile = {
 };
 
 export default function InstructorProfilePage() {
+  const { profile: dbProfile, updateProfile, uploadLocalDataToSupabase } = useSupabase();
   const [profile, setProfile] = useState<InstructorProfile>(defaultProfile);
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [showNaverSecret, setShowNaverSecret] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Lock Screen States
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState("");
 
   // Custom field creation states
   const [newFieldLabel, setNewFieldLabel] = useState("");
   const [newFieldValue, setNewFieldValue] = useState("");
 
-  // Load from localStorage on mount
+  // Sync with DB profile on load
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(PROFILE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as InstructorProfile;
-        // Merge with defaults in case of missing fields
-        setProfile({
-          ...defaultProfile,
-          ...parsed,
-          customFields: parsed.customFields || defaultProfile.customFields,
-        });
+    if (dbProfile) {
+      setProfile({
+        ...defaultProfile,
+        ...dbProfile,
+        customFields: dbProfile.customFields || defaultProfile.customFields,
+      });
+      // If there is no password set in the DB profile, unlock automatically
+      if (!dbProfile.password || dbProfile.password.trim() === "") {
+        setIsUnlocked(true);
       }
-    } catch (err) {
-      console.error("Failed to load profile", err);
+    } else {
+      setIsUnlocked(true);
     }
-  }, []);
+  }, [dbProfile]);
 
-  const handleSave = () => {
+  const handleUnlock = () => {
+    if (dbProfile && enteredPassword === dbProfile.password) {
+      setIsUnlocked(true);
+      toast.success("프로필 잠금이 해제되었습니다.");
+    } else {
+      toast.error("비밀번호가 일치하지 않습니다. 다시 시도해 주세요.");
+    }
+  };
+
+  const handleSave = async () => {
     try {
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      await updateProfile(profile);
       toast.success("강사 프로필 정보가 안전하게 저장되었습니다.");
-      // Trigger storage event to notify other components
-      window.dispatchEvent(new Event("storage"));
     } catch (err) {
       toast.error("프로필 저장에 실패했습니다.");
     }
@@ -126,6 +138,46 @@ export default function InstructorProfilePage() {
     }));
     toast.success(`'${label}' 항목이 삭제되었습니다.`);
   };
+
+  const hasPassword = !!(dbProfile && dbProfile.password && dbProfile.password.trim() !== "");
+
+  if (hasPassword && !isUnlocked) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center px-4 py-12">
+        <Card className="w-full max-w-md border border-border/80 shadow-xl backdrop-blur-md bg-card/75">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Key className="h-6 w-6" />
+            </div>
+            <CardTitle className="text-xl font-bold">프로필 잠금 해제</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1">
+              강사 프로필 및 네이버 지도 API 설정을 편집하려면 비밀번호를 입력해주세요.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="lock-password">비밀번호</Label>
+              <Input
+                id="lock-password"
+                type="password"
+                placeholder="비밀번호 입력"
+                value={enteredPassword}
+                onChange={(e) => setEnteredPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleUnlock();
+                }}
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-2 pt-2">
+            <Button onClick={handleUnlock} className="w-full shadow-md">
+              잠금 해제
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-6">
@@ -221,34 +273,52 @@ export default function InstructorProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Google Maps Integration Card */}
+
+
+          {/* Naver Maps Integration Card */}
           <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Key className="h-5 w-5 text-primary" />
-                  구글 지도 (Google Maps) 연동 설정
+                  <Key className="h-5 w-5 text-green-600" />
+                  네이버 지도 (Naver Maps) 실시간 연동 설정
                 </CardTitle>
-                <Badge variant={profile.googleMapsApiKey ? "default" : "outline"} className="text-[10px] px-2 py-0.5">
-                  {profile.googleMapsApiKey ? "실시간 조회 활성화" : "시뮬레이션 모드"}
+                <Badge variant={profile.naverMapClientId && profile.naverMapClientSecret ? "default" : "outline"} className="text-[10px] px-2 py-0.5 bg-green-500/10 text-green-700 border-green-200">
+                  {profile.naverMapClientId && profile.naverMapClientSecret ? "실시간 연동 활성화" : "시뮬레이션 모드"}
                 </Badge>
               </div>
               <CardDescription>
-                강의 상세 화면에서 집 주소와 강의 장소 사이의 자동차 예상 이동 시간 및 주행 거리를 구글 지도 API로 실시간 계산하기 위한 설정입니다.
+                한국 국내 도로 기준 100% 정확한 실시간 차량 주행 소요 시간 및 이동 거리를 계산하기 위해 네이버 클라우드 플랫폼 API를 연동합니다.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="naver-client-id" className="text-xs font-semibold">
+                  Naver Cloud Client ID (X-NCP-APIGW-API-KEY-ID)
+                </Label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="naver-client-id"
+                    placeholder="네이버 클라우드 Client ID"
+                    value={profile.naverMapClientId || ""}
+                    onChange={e => handleFieldChange("naverMapClientId", e.target.value)}
+                    className="pl-9 font-mono text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="maps-api-key" className="text-xs font-semibold">
-                    Google Maps API Key (선택 사항)
+                  <Label htmlFor="naver-client-secret" className="text-xs font-semibold">
+                    Naver Cloud Client Secret (X-NCP-APIGW-API-KEY)
                   </Label>
                   <button
                     type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
+                    onClick={() => setShowNaverSecret(!showNaverSecret)}
                     className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                   >
-                    {showApiKey ? (
+                    {showNaverSecret ? (
                       <>
                         <EyeOff className="h-3 w-3" /> 숨기기
                       </>
@@ -262,27 +332,104 @@ export default function InstructorProfilePage() {
                 <div className="relative">
                   <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="maps-api-key"
-                    type={showApiKey ? "text" : "password"}
-                    placeholder="AIzaSy..."
-                    value={profile.googleMapsApiKey || ""}
-                    onChange={e => handleFieldChange("googleMapsApiKey", e.target.value)}
+                    id="naver-client-secret"
+                    type={showNaverSecret ? "text" : "password"}
+                    placeholder="네이버 클라우드 Client Secret"
+                    value={profile.naverMapClientSecret || ""}
+                    onChange={e => handleFieldChange("naverMapClientSecret", e.target.value)}
                     className="pl-9 font-mono text-sm"
                   />
                 </div>
               </div>
 
-              <div className="rounded-lg bg-muted/50 border border-border/50 p-3 flex gap-2.5">
-                <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <div className="rounded-lg bg-green-500/5 border border-green-500/10 p-3 flex gap-2.5">
+                <Info className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
                 <div className="text-xs text-muted-foreground leading-relaxed space-y-1">
                   <p>
-                    <strong>API 키가 없으신가요?</strong> 키 입력을 비워두셔도 거리 시뮬레이션 모드가 동작하여 대략적인 이동 통계가 보이며, 
-                    상세 페이지에서 제공하는 <span className="font-semibold text-foreground">구글 지도 길찾기 바로가기</span> 버튼을 통해 무료로 실시간 실 주행 거리와 소요 시간을 구글 맵 앱/웹에서 확인할 수 있습니다.
-                  </p>
-                  <p>
-                    <strong>API 키 발급처:</strong> Google Cloud Console 에서 &quot;Distance Matrix API&quot; 및 &quot;Maps JavaScript API&quot; 가 활성화된 브라우저 API Key를 발급받아 입력하시면 이 앱 내부에서 실시간 정보가 바로 렌더링됩니다.
+                    <strong>실시간 네이버 경로 연동 방법:</strong> 네이버 클라우드 플랫폼(ncloud.com)에 로그인 후, [Console] - [AI·NAVER API] - [Application] 메뉴에서 애플리케이션을 생성하고 
+                    <span className="font-semibold text-foreground"> &apos;Geocoding&apos;</span> 및 
+                    <span className="font-semibold text-foreground"> &apos;Directions&apos;</span> API 서비스를 선택·활성화하여 인증 키를 발급받으실 수 있습니다.
                   </p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 보안 및 데이터 설정 Card */}
+          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                보안 및 데이터 관리
+              </CardTitle>
+              <CardDescription>
+                프로필 잠금 비밀번호를 설정하거나, 브라우저 로컬 데이터를 Supabase 클라우드로 백업합니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Password Setup */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="profile-password-setup" className="text-xs font-semibold">
+                    프로필 잠금 비밀번호 설정
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                  >
+                    {showPassword ? (
+                      <>
+                        <EyeOff className="h-3 w-3" /> 숨기기
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-3 w-3" /> 표시
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="relative">
+                  <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="profile-password-setup"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="비밀번호 설정 (비워두면 잠금 해제)"
+                    value={profile.password || ""}
+                    onChange={e => handleFieldChange("password", e.target.value)}
+                    className="pl-9 text-sm font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  * 비밀번호를 설정하면 강사 프로필 페이지 진입 시 비밀번호를 확인하는 잠금 화면이 나타납니다.
+                </p>
+              </div>
+
+              <Separator className="my-1" />
+
+              {/* Data Migration / Upload */}
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold block">데이터 백업 및 마이그레이션</Label>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  현재 웹 브라우저(localStorage)에 저장되어 있는 모든 강의 일정, 할 일 목록, 준비사항 체크리스트, SMS 발송 이력을 Supabase 클라우드 데이터베이스로 강제 업로드하여 통합(Upsert)합니다.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full text-xs hover:bg-primary/5 hover:text-primary transition-all flex items-center justify-center gap-1 border-primary/20"
+                  onClick={async () => {
+                    if (confirm("정말로 로컬 데이터를 Supabase 클라우드로 업로드하시겠습니까? 기존에 동일한 ID를 가진 데이터는 덮어씌워질 수 있습니다.")) {
+                      try {
+                        await uploadLocalDataToSupabase();
+                      } catch (e) {
+                        // error is handled inside uploadLocalDataToSupabase
+                      }
+                    }
+                  }}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  로컬 데이터를 Supabase에 강제 업로드
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -370,7 +517,7 @@ export default function InstructorProfilePage() {
             <CardFooter className="pb-4 pt-2 shrink-0 flex items-center justify-between border-t border-border/40 mt-auto bg-muted/20 rounded-b-xl px-4 py-2.5">
               <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
-                모든 정보는 로컬 브라우저에 저장됩니다.
+                모든 정보는 Supabase 클라우드 데이터베이스에 실시간 저장됩니다.
               </span>
             </CardFooter>
           </Card>

@@ -21,14 +21,14 @@ export default function LectureFormPage() {
     await new Promise((resolve) => setTimeout(resolve, 150));
     try {
       if (isEdit && params.id) {
-        updateLecture(params.id, data);
+        await updateLecture(params.id, data);
         toast.success("강의를 수정했습니다.");
         navigate(`/lectures/${params.id}`);
       } else {
         if (recurringList && recurringList.length > 0) {
           let firstCreatedId = "";
           for (let i = 0; i < recurringList.length; i++) {
-            const created = addLecture(recurringList[i]);
+            const created = await addLecture(recurringList[i]);
             if (i === 0) firstCreatedId = created.id;
           }
           toast.success(`${recurringList.length}개의 반복 강의를 등록했습니다.`);
@@ -38,11 +38,13 @@ export default function LectureFormPage() {
             navigate("/lectures");
           }
         } else {
-          const created = addLecture(data);
+          const created = await addLecture(data);
           toast.success("강의를 등록했습니다.");
           navigate(`/lectures/${created.id}/manage`);
         }
       }
+    } catch (err) {
+      console.error("Failed to submit lecture form", err);
     } finally {
       setIsSubmitting(false);
     }

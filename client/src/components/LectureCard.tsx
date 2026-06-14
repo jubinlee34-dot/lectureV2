@@ -12,11 +12,12 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
 import { formatDateShort, truncate } from "../utils/format";
 import { getCachedOrSimulatedTravel } from "../utils/maps";
 import type { InstructorProfile } from "../types/instructor";
+import { useSupabase } from "../contexts/SupabaseContext";
 
 interface LectureCardProps {
   lecture: Lecture;
@@ -49,41 +50,17 @@ export function LectureCard({
 }: LectureCardProps) {
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
 
-  // Starred preparations state
-  const [starredBeforeTasks, setStarredBeforeTasks] = useState<WorkTask[]>([]);
-  const [starredAfterTasks, setStarredAfterTasks] = useState<WorkTask[]>([]);
-  const [homeAddress, setHomeAddress] = useState<string>("");
+  const { profile, workTasks } = useSupabase();
 
-  useEffect(() => {
-    const loadProfileAndTasks = () => {
-      try {
-        // Load Instructor Home Address
-        const profileRaw = localStorage.getItem("lecture-archive-instructor-profile");
-        if (profileRaw) {
-          const profile = JSON.parse(profileRaw) as InstructorProfile;
-          setHomeAddress(profile.homeAddress || "");
-        }
+  const homeAddress = profile?.homeAddress || "";
 
-        // Load Starred WorkTasks
-        const tasksRaw = localStorage.getItem("lecture-archive-worktasks");
-        if (tasksRaw) {
-          const allTasks = JSON.parse(tasksRaw) as WorkTask[];
-          const starredTasks = allTasks.filter(t => t.lectureId === lecture.id && t.starred);
-          setStarredBeforeTasks(starredTasks.filter(t => t.stage === "before"));
-          setStarredAfterTasks(starredTasks.filter(t => t.stage === "after"));
-        } else {
-          setStarredBeforeTasks([]);
-          setStarredAfterTasks([]);
-        }
-      } catch (err) {
-        console.error("Failed to load details for LectureCard", err);
-      }
-    };
+  const starredBeforeTasks = useMemo(() => {
+    return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "before");
+  }, [workTasks, lecture.id]);
 
-    loadProfileAndTasks();
-    window.addEventListener("storage", loadProfileAndTasks);
-    return () => window.removeEventListener("storage", loadProfileAndTasks);
-  }, [lecture.id]);
+  const starredAfterTasks = useMemo(() => {
+    return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "after");
+  }, [workTasks, lecture.id]);
 
   const travelInfo = homeAddress && lecture.location
     ? getCachedOrSimulatedTravel(homeAddress, lecture.location)

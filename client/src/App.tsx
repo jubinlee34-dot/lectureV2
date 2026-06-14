@@ -18,6 +18,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { SupabaseProvider } from "./contexts/SupabaseContext";
 
 import BlogPage from "./pages/BlogPage";
 import CalendarPage from "./pages/CalendarPage";
@@ -66,30 +67,32 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <Toaster position="top-right" richColors />
+        <SupabaseProvider>
+          <TooltipProvider>
+            <Toaster position="top-right" richColors />
 
-          {/*
-           * 전체 레이아웃
-           * - 데스크탑: flex row (사이드바 + 메인)
-           * - 모바일: flex col (헤더 + 메인 + 하단탭)
-           *   Sidebar 컴포넌트가 모바일 헤더와 하단탭을 모두 렌더링
-           */}
-          <div className="flex h-screen overflow-hidden bg-background">
-            {/* 데스크탑 사이드바 + 모바일 헤더/하단탭 */}
-            <Sidebar />
+            {/*
+             * 전체 레이아웃
+             * - 데스크탑: flex row (사이드바 + 메인)
+             * - 모바일: flex col (헤더 + 메인 + 하단탭)
+             *   Sidebar 컴포넌트가 모바일 헤더와 하단탭을 모두 렌더링
+             */}
+            <div className="flex h-screen overflow-hidden bg-background">
+              {/* 데스크탑 사이드바 + 모바일 헤더/하단탭 */}
+              <Sidebar />
 
-            {/* 메인 콘텐츠 — 모바일: 상단 헤더(56px) + 하단탭(64px) 제외한 높이 */}
-            <main className="
-              flex-1 min-w-0
-              overflow-y-auto
-              pt-14 pb-16
-              lg:pt-0 lg:pb-0
-            ">
-              <Router />
-            </main>
-          </div>
-        </TooltipProvider>
+              {/* 메인 콘텐츠 — 모바일: 상단 헤더(56px) + 하단탭(64px) 제외한 높이 */}
+              <main className="
+                flex-1 min-w-0
+                overflow-y-auto
+                pt-14 pb-16
+                lg:pt-0 lg:pb-0
+              ">
+                <Router />
+              </main>
+            </div>
+          </TooltipProvider>
+        </SupabaseProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

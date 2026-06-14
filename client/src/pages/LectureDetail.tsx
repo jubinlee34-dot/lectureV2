@@ -37,6 +37,7 @@ import { useLocation, useParams } from "wouter";
 import type { WorkflowStage } from "../types/lecture";
 import { estimateTravel, type TravelEstimation } from "@/utils/maps";
 import type { InstructorProfile } from "../types/instructor";
+import { useSupabase } from "../contexts/SupabaseContext";
 
 
 const stageBadge: Record<WorkflowStage, { label: string; className: string }> = {
@@ -54,10 +55,16 @@ const paymentBadge = {
 interface TravelInfoCardProps {
   homeAddress?: string;
   destination: string;
-  apiKey?: string;
+  naverClientId?: string;
+  naverClientSecret?: string;
 }
 
-function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProps) {
+function TravelInfoCard({
+  homeAddress,
+  destination,
+  naverClientId,
+  naverClientSecret,
+}: TravelInfoCardProps) {
   const [, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
   const [estimation, setEstimation] = useState<TravelEstimation | null>(null);
@@ -69,7 +76,12 @@ function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProp
     const fetchTravel = async () => {
       setLoading(true);
       try {
-        const res = await estimateTravel(homeAddress, destination, apiKey);
+        const res = await estimateTravel(
+          homeAddress,
+          destination,
+          naverClientId,
+          naverClientSecret
+        );
         if (active) {
           setEstimation(res);
         }
@@ -84,7 +96,7 @@ function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProp
     return () => {
       active = false;
     };
-  }, [homeAddress, destination, apiKey]);
+  }, [homeAddress, destination, naverClientId, naverClientSecret]);
 
   if (!homeAddress) {
     return (
@@ -168,8 +180,8 @@ function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProp
               </Badge>
             ) : (
               <Badge variant="outline" className="text-[10px] text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/20 border-green-200 dark:border-green-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                실시간 구글 지도 조회 연동됨
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
+                실시간 네이버 길찾기 연동됨
               </Badge>
             )}
           </div>
@@ -188,25 +200,7 @@ export default function LectureDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
   const lecture = getLectureById(id);
-  const [profile, setProfile] = useState<InstructorProfile | null>(null);
-
-  useEffect(() => {
-    const loadProfile = () => {
-      try {
-        const raw = localStorage.getItem("lecture-archive-instructor-profile");
-        if (raw) {
-          setProfile(JSON.parse(raw));
-        } else {
-          setProfile(null);
-        }
-      } catch (err) {
-        console.error("Failed to load profile", err);
-      }
-    };
-    loadProfile();
-    window.addEventListener("storage", loadProfile);
-    return () => window.removeEventListener("storage", loadProfile);
-  }, []);
+  const { profile } = useSupabase();
 
   if (!lecture) {
     return (
@@ -275,7 +269,8 @@ export default function LectureDetail() {
       <TravelInfoCard
         homeAddress={profile?.homeAddress}
         destination={lecture.location}
-        apiKey={profile?.googleMapsApiKey}
+        naverClientId={profile?.naverMapClientId}
+        naverClientSecret={profile?.naverMapClientSecret}
       />
 
       <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">

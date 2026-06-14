@@ -28,6 +28,7 @@ import { useLocation } from "wouter";
 import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
 import { getCachedOrSimulatedTravel } from "../utils/maps";
 import type { InstructorProfile } from "../types/instructor";
+import { useSupabase } from "../contexts/SupabaseContext";
 
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 const stageLabels: Record<WorkflowStage, string> = {
@@ -263,41 +264,17 @@ function QuickCard({
     promoted: "before",
   };
 
-  // States for travel info and starred tasks
-  const [starredBeforeTasks, setStarredBeforeTasks] = useState<WorkTask[]>([]);
-  const [starredAfterTasks, setStarredAfterTasks] = useState<WorkTask[]>([]);
-  const [homeAddress, setHomeAddress] = useState<string>("");
+  const { profile, workTasks } = useSupabase();
 
-  useEffect(() => {
-    const loadProfileAndTasks = () => {
-      try {
-        // Load Instructor Home Address
-        const profileRaw = localStorage.getItem("lecture-archive-instructor-profile");
-        if (profileRaw) {
-          const profile = JSON.parse(profileRaw) as InstructorProfile;
-          setHomeAddress(profile.homeAddress || "");
-        }
+  const homeAddress = profile?.homeAddress || "";
 
-        // Load Starred WorkTasks
-        const tasksRaw = localStorage.getItem("lecture-archive-worktasks");
-        if (tasksRaw) {
-          const allTasks = JSON.parse(tasksRaw) as WorkTask[];
-          const starredTasks = allTasks.filter(t => t.lectureId === lecture.id && t.starred);
-          setStarredBeforeTasks(starredTasks.filter(t => t.stage === "before"));
-          setStarredAfterTasks(starredTasks.filter(t => t.stage === "after"));
-        } else {
-          setStarredBeforeTasks([]);
-          setStarredAfterTasks([]);
-        }
-      } catch (err) {
-        console.error("Failed to load details for QuickCard", err);
-      }
-    };
+  const starredBeforeTasks = useMemo(() => {
+    return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "before");
+  }, [workTasks, lecture.id]);
 
-    loadProfileAndTasks();
-    window.addEventListener("storage", loadProfileAndTasks);
-    return () => window.removeEventListener("storage", loadProfileAndTasks);
-  }, [lecture.id]);
+  const starredAfterTasks = useMemo(() => {
+    return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "after");
+  }, [workTasks, lecture.id]);
 
   const travelInfo = homeAddress && lecture.location
     ? getCachedOrSimulatedTravel(homeAddress, lecture.location)

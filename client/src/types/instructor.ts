@@ -9,6 +9,8 @@ export interface InstructorProfile {
   homeAddress: string;
   phone: string;
   email: string;
-  googleMapsApiKey?: string;
+  naverMapClientId?: string;
+  naverMapClientSecret?: string;
+  password?: string;
   customFields: CustomProfileField[];
 }
