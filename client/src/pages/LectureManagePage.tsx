@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -60,6 +61,7 @@ export default function LectureManagePage() {
     addTask,
     toggleTask,
     deleteTask,
+    toggleStarTask,
     recordSms,
     deleteSmsRecord,
   } = useWorkTasks(id ?? "");
@@ -208,6 +210,20 @@ export default function LectureManagePage() {
                     {task.doneAt && <span className="text-[10px] text-muted-foreground">{new Date(task.doneAt).toLocaleString("ko-KR")}</span>}
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    toggleStarTask(task.id);
+                    window.dispatchEvent(new Event("storage"));
+                  }}
+                  className={`p-1 transition-all ${
+                    task.starred
+                      ? "text-amber-500 hover:scale-110"
+                      : "text-muted-foreground hover:text-amber-500 hover:scale-110"
+                  }`}
+                  title={task.starred ? "필수 준비사항 해제" : "필수 준비사항 지정"}
+                >
+                  <Star className={`h-3.5 w-3.5 ${task.starred ? "fill-amber-500" : ""}`} />
+                </button>
                 <button onClick={() => deleteTask(task.id)} className="p-1 text-muted-foreground hover:text-destructive">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

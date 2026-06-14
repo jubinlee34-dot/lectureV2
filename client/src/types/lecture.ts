@@ -59,6 +59,7 @@ export interface WorkTask {
   done: boolean;
   doneAt?: string;
   createdAt: string;
+  starred?: boolean;
 }
 
 export type SmsType = "reminder" | "confirm" | "thankyou" | "custom";

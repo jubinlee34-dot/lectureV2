@@ -37,6 +37,39 @@ export interface TravelEstimation {
   realData: boolean;
 }
 
+const CACHE_KEY = "lecture-archive-travel-cache";
+
+function loadCache(): Record<string, TravelEstimation> {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveToCache(key: string, val: TravelEstimation) {
+  try {
+    const cache = loadCache();
+    cache[key] = val;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch (err) {
+    console.error("Failed to save to travel cache", err);
+  }
+}
+
+export function getCachedOrSimulatedTravel(origin: string, destination: string): TravelEstimation {
+  if (!origin || !destination) {
+    return { distance: "0 km", duration: "0분", realData: false };
+  }
+  const cacheKey = `${origin}_${destination}`;
+  const cache = loadCache();
+  if (cache[cacheKey]) {
+    return cache[cacheKey];
+  }
+  return simulateDistance(origin, destination);
+}
+
 export async function estimateTravel(
   origin: string,
   destination: string,
@@ -46,9 +79,17 @@ export async function estimateTravel(
     return { distance: "0 km", duration: "0분", realData: false };
   }
 
+  const cacheKey = `${origin}_${destination}`;
+
   // If no API Key is provided, directly fallback to deterministic simulation to avoid console errors/alerts
   if (!apiKey) {
     return simulateDistance(origin, destination);
+  }
+
+  // Check cache first
+  const cache = loadCache();
+  if (cache[cacheKey] && cache[cacheKey].realData) {
+    return cache[cacheKey];
   }
 
   try {
@@ -70,11 +111,13 @@ export async function estimateTravel(
             response.rows[0]?.elements[0]?.status === "OK"
           ) {
             const element = response.rows[0].elements[0];
-            resolve({
+            const result: TravelEstimation = {
               distance: element.distance.text,
               duration: element.duration.text,
               realData: true,
-            });
+            };
+            saveToCache(cacheKey, result);
+            resolve(result);
           } else {
             reject(new Error(`Distance Matrix status: ${status}`));
           }

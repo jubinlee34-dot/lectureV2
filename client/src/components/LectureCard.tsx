@@ -2,16 +2,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Calendar,
+  Car,
   ClipboardCheck,
   MapPin,
   MessageCircle,
   Pencil,
   Phone,
+  Star,
   Trash2,
   Users,
 } from "lucide-react";
-import type { Lecture, WorkflowStage } from "../types/lecture";
+import { useState, useEffect } from "react";
+import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
 import { formatDateShort, truncate } from "../utils/format";
+import { getCachedOrSimulatedTravel } from "../utils/maps";
+import type { InstructorProfile } from "../types/instructor";
 
 interface LectureCardProps {
   lecture: Lecture;
@@ -43,6 +48,46 @@ export function LectureCard({
   onUpdateStage,
 }: LectureCardProps) {
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
+
+  // Starred preparations state
+  const [starredBeforeTasks, setStarredBeforeTasks] = useState<WorkTask[]>([]);
+  const [starredAfterTasks, setStarredAfterTasks] = useState<WorkTask[]>([]);
+  const [homeAddress, setHomeAddress] = useState<string>("");
+
+  useEffect(() => {
+    const loadProfileAndTasks = () => {
+      try {
+        // Load Instructor Home Address
+        const profileRaw = localStorage.getItem("lecture-archive-instructor-profile");
+        if (profileRaw) {
+          const profile = JSON.parse(profileRaw) as InstructorProfile;
+          setHomeAddress(profile.homeAddress || "");
+        }
+
+        // Load Starred WorkTasks
+        const tasksRaw = localStorage.getItem("lecture-archive-worktasks");
+        if (tasksRaw) {
+          const allTasks = JSON.parse(tasksRaw) as WorkTask[];
+          const starredTasks = allTasks.filter(t => t.lectureId === lecture.id && t.starred);
+          setStarredBeforeTasks(starredTasks.filter(t => t.stage === "before"));
+          setStarredAfterTasks(starredTasks.filter(t => t.stage === "after"));
+        } else {
+          setStarredBeforeTasks([]);
+          setStarredAfterTasks([]);
+        }
+      } catch (err) {
+        console.error("Failed to load details for LectureCard", err);
+      }
+    };
+
+    loadProfileAndTasks();
+    window.addEventListener("storage", loadProfileAndTasks);
+    return () => window.removeEventListener("storage", loadProfileAndTasks);
+  }, [lecture.id]);
+
+  const travelInfo = homeAddress && lecture.location
+    ? getCachedOrSimulatedTravel(homeAddress, lecture.location)
+    : null;
 
   const handleStageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,7 +185,46 @@ export function LectureCard({
             <MapPin className="h-3 w-3" />
             {truncate(lecture.location, 16)}
           </span>
+          {travelInfo && (
+            <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+              <Car className="h-3 w-3" />
+              {travelInfo.duration} ({travelInfo.distance})
+            </span>
+          )}
         </div>
+
+        {/* 담당자 정보 */}
+        {(lecture.managerName || lecture.managerPhone) && (
+          <div className="mb-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground/90">
+            <span className="font-semibold text-foreground/75">담당자:</span>
+            <span>{lecture.managerName || "미등록"}</span>
+            {lecture.managerPhone && <span className="text-[10px] opacity-75">({lecture.managerPhone})</span>}
+          </div>
+        )}
+
+        {/* 필수 준비사항 */}
+        {(starredBeforeTasks.length > 0 || starredAfterTasks.length > 0) && (
+          <div className="mb-3 rounded-lg bg-muted/50 p-2.5 border border-border/50 text-[11px] space-y-1.5" onClick={(e) => e.stopPropagation()}>
+            {starredBeforeTasks.length > 0 && (
+              <div className="flex items-start gap-1">
+                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
+                <span className="font-bold text-amber-800 dark:text-amber-400 shrink-0">[강의전 필수]:</span>
+                <span className="text-foreground/80 leading-relaxed">
+                  {starredBeforeTasks.map(t => t.text).join(", ")}
+                </span>
+              </div>
+            )}
+            {starredAfterTasks.length > 0 && (
+              <div className="flex items-start gap-1">
+                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
+                <span className="font-bold text-amber-800 dark:text-amber-400 shrink-0">[강의후 필수]:</span>
+                <span className="text-foreground/80 leading-relaxed">
+                  {starredAfterTasks.map(t => t.text).join(", ")}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-1.5 border-t border-border pt-2.5" onClick={(e) => e.stopPropagation()}>
           {onManage && (

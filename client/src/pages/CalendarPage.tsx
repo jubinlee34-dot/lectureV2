@@ -9,6 +9,7 @@ import { formatDate } from "@/utils/format";
 import {
   Building2,
   CalendarDays,
+  Car,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -17,13 +18,16 @@ import {
   Phone,
   Plus,
   Sheet,
+  Star,
   Upload,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import type { Lecture, WorkflowStage } from "../types/lecture";
+import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
+import { getCachedOrSimulatedTravel } from "../utils/maps";
+import type { InstructorProfile } from "../types/instructor";
 
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 const stageLabels: Record<WorkflowStage, string> = {
@@ -259,6 +263,46 @@ function QuickCard({
     promoted: "before",
   };
 
+  // States for travel info and starred tasks
+  const [starredBeforeTasks, setStarredBeforeTasks] = useState<WorkTask[]>([]);
+  const [starredAfterTasks, setStarredAfterTasks] = useState<WorkTask[]>([]);
+  const [homeAddress, setHomeAddress] = useState<string>("");
+
+  useEffect(() => {
+    const loadProfileAndTasks = () => {
+      try {
+        // Load Instructor Home Address
+        const profileRaw = localStorage.getItem("lecture-archive-instructor-profile");
+        if (profileRaw) {
+          const profile = JSON.parse(profileRaw) as InstructorProfile;
+          setHomeAddress(profile.homeAddress || "");
+        }
+
+        // Load Starred WorkTasks
+        const tasksRaw = localStorage.getItem("lecture-archive-worktasks");
+        if (tasksRaw) {
+          const allTasks = JSON.parse(tasksRaw) as WorkTask[];
+          const starredTasks = allTasks.filter(t => t.lectureId === lecture.id && t.starred);
+          setStarredBeforeTasks(starredTasks.filter(t => t.stage === "before"));
+          setStarredAfterTasks(starredTasks.filter(t => t.stage === "after"));
+        } else {
+          setStarredBeforeTasks([]);
+          setStarredAfterTasks([]);
+        }
+      } catch (err) {
+        console.error("Failed to load details for QuickCard", err);
+      }
+    };
+
+    loadProfileAndTasks();
+    window.addEventListener("storage", loadProfileAndTasks);
+    return () => window.removeEventListener("storage", loadProfileAndTasks);
+  }, [lecture.id]);
+
+  const travelInfo = homeAddress && lecture.location
+    ? getCachedOrSimulatedTravel(homeAddress, lecture.location)
+    : null;
+
   const handleStageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onUpdateStage) {
@@ -285,10 +329,49 @@ function QuickCard({
           <Badge variant="outline" className="shrink-0 text-[10px]">{stageLabels[lecture.workflowStage]}</Badge>
         )}
       </div>
-      <div className="space-y-1 text-xs text-muted-foreground">
-        <p className="flex items-center gap-1.5"><Building2 className="h-3 w-3" />{lecture.organization}</p>
-        <p className="flex items-center gap-1.5"><MapPin className="h-3 w-3" />{lecture.location}</p>
+      <div className="space-y-1 text-xs text-muted-foreground mb-2">
+        <p className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />{lecture.organization}</p>
+        <p className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{lecture.location}</p>
+        {travelInfo && (
+          <p className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
+            <Car className="h-3.5 w-3.5" />
+            {travelInfo.duration} ({travelInfo.distance})
+          </p>
+        )}
       </div>
+
+      {/* 담당자 정보 */}
+      {(lecture.managerName || lecture.managerPhone) && (
+        <div className="mb-2 text-[11px] text-muted-foreground">
+          <span className="font-semibold text-foreground/75">담당자: </span>
+          <span>{lecture.managerName || "미등록"}</span>
+          {lecture.managerPhone && <span className="text-[10px] opacity-75"> ({lecture.managerPhone})</span>}
+        </div>
+      )}
+
+      {/* 필수 준비사항 */}
+      {(starredBeforeTasks.length > 0 || starredAfterTasks.length > 0) && (
+        <div className="mb-2 rounded-md bg-muted/50 p-2 border border-border/50 text-[10px] space-y-1">
+          {starredBeforeTasks.length > 0 && (
+            <div className="flex items-start gap-1">
+              <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
+              <span className="font-bold text-amber-800 dark:text-amber-400 shrink-0">[강의전 필수]:</span>
+              <span className="text-foreground/80 leading-relaxed">
+                {starredBeforeTasks.map(t => t.text).join(", ")}
+              </span>
+            </div>
+          )}
+          {starredAfterTasks.length > 0 && (
+            <div className="flex items-start gap-1">
+              <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
+              <span className="font-bold text-amber-800 dark:text-amber-400 shrink-0">[강의후 필수]:</span>
+              <span className="text-foreground/80 leading-relaxed">
+                {starredAfterTasks.map(t => t.text).join(", ")}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       <div className="mt-3 flex gap-2 items-center">
         {lecture.managerPhone && (
           <>

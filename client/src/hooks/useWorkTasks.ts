@@ -145,6 +145,15 @@ export function useWorkTasks(lectureId: string) {
     setSmsHistory(updated);
   }, []);
 
+  const toggleStarTask = useCallback((taskId: string) => {
+    const updated = readJson<WorkTask[]>(TASKS_KEY, []).map((task) => {
+      if (task.id !== taskId) return task;
+      return { ...task, starred: !task.starred };
+    });
+    writeJson(TASKS_KEY, updated);
+    setAllTasks(updated);
+  }, []);
+
   const tasks = useMemo(
     () => allTasks.filter((task) => task.lectureId === lectureId),
     [allTasks, lectureId]
@@ -175,6 +184,7 @@ export function useWorkTasks(lectureId: string) {
     addTask,
     toggleTask,
     deleteTask,
+    toggleStarTask,
     recordSms,
     deleteSmsRecord,
   };
