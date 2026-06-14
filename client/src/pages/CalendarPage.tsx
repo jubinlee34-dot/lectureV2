@@ -333,10 +333,17 @@ function QuickCard({
         <p className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />{lecture.organization}</p>
         <p className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{lecture.location}</p>
         {travelInfo && (
-          <p className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
+          <a
+            href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold hover:underline cursor-pointer"
+            title="네이버 지도 길찾기 바로가기"
+          >
             <Car className="h-3.5 w-3.5" />
             {travelInfo.duration} ({travelInfo.distance})
-          </p>
+          </a>
         )}
       </div>
 

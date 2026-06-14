@@ -186,10 +186,17 @@ export function LectureCard({
             {truncate(lecture.location, 16)}
           </span>
           {travelInfo && (
-            <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+            <a
+              href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold hover:underline cursor-pointer"
+              title="네이버 지도 길찾기 바로가기"
+            >
               <Car className="h-3 w-3" />
               {travelInfo.duration} ({travelInfo.distance})
-            </span>
+            </a>
           )}
         </div>
 

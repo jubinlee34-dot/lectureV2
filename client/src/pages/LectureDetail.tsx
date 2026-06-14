@@ -109,9 +109,11 @@ function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProp
     );
   }
 
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+  const naverDirectionsUrl = `https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(
     homeAddress
-  )}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+  )}&dname=${encodeURIComponent(destination)}&stext=${encodeURIComponent(
+    homeAddress
+  )}&etext=${encodeURIComponent(destination)}`;
 
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
@@ -151,13 +153,13 @@ function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProp
 
           <div className="flex flex-col gap-2 pt-1.5 border-t border-border/40 sm:flex-row sm:items-center">
             <a
-              href={directionsUrl}
+              href={naverDirectionsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-8 items-center justify-center rounded-md bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/20 transition-all flex-1 text-center"
+              className="inline-flex h-8 items-center justify-center rounded-md bg-green-500/10 px-3 text-xs font-semibold text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-all flex-1 text-center border border-green-500/20 cursor-pointer"
             >
-              <Navigation className="mr-1.5 h-3.5 w-3.5" />
-              구글 지도 길찾기 바로가기
+              <Navigation className="mr-1.5 h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+              네이버 지도 길찾기 바로가기
             </a>
             {!estimation.realData ? (
               <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
@@ -167,7 +169,7 @@ function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProp
             ) : (
               <Badge variant="outline" className="text-[10px] text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/20 border-green-200 dark:border-green-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                실시간 구글 지도 연동됨
+                실시간 구글 지도 조회 연동됨
               </Badge>
             )}
           </div>
