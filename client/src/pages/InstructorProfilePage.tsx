@@ -87,36 +87,14 @@ export default function InstructorProfilePage() {
     }
   };
 
-  const handleSearchAddress = () => {
-    const container = document.getElementById("postcode-container-profile");
-    if (!container) return;
-
-    if (container.classList.contains("hidden")) {
-      container.classList.remove("hidden");
-      // @ts-ignore
-      new window.daum.Postcode({
-        oncomplete: function (data: any) {
-          let fullAddr = data.roadAddress || data.address;
-          if (data.buildingName) {
-            fullAddr += ` (${data.buildingName})`;
-          }
-          handleFieldChange("homeAddress", fullAddr);
-          container.classList.add("hidden");
-          toast.success("집 주소가 입력되었습니다.");
-        },
-        width: "100%",
-        height: "100%",
-      }).embed(container);
-    } else {
-      container.classList.add("hidden");
+  const handleSearchNaverMap = () => {
+    const address = profile.homeAddress.trim();
+    if (!address) {
+      toast.error("검색할 주소 또는 장소명을 입력해주세요.");
+      return;
     }
-  };
-
-  const closePostcode = () => {
-    const container = document.getElementById("postcode-container-profile");
-    if (container) {
-      container.classList.add("hidden");
-    }
+    const url = `https://map.naver.com/v5/search/${encodeURIComponent(address)}`;
+    window.open(url, "_blank");
   };
 
   const handleSave = async () => {
@@ -303,112 +281,15 @@ export default function InstructorProfilePage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={handleSearchAddress}
+                    onClick={handleSearchNaverMap}
                     className="shrink-0 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all text-xs h-10 px-3"
                   >
-                    주소 검색
+                    네이버 지도 검색
                   </Button>
                 </div>
-                {/* Inline Address Search Widget */}
-                <div
-                  id="postcode-container-profile"
-                  className="hidden border border-border rounded-lg bg-card mt-2 p-1 relative w-full overflow-hidden transition-all shadow-inner"
-                  style={{ height: "400px" }}
-                >
-                  <button
-                    type="button"
-                    onClick={closePostcode}
-                    className="absolute right-3 top-3 z-20 rounded-full bg-muted hover:bg-muted/80 p-1.5 text-muted-foreground shadow-sm transition-all"
-                    title="주소 검색창 닫기"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
                 <p className="text-[11px] text-muted-foreground">
-                  * 입력하신 집 주소는 강의 상세 페이지에서 강의 장소까지의 이동 거리 및 시간(자동차 기준)을 연동/계산할 때 출발지로 사용됩니다.
+                  * 입력하신 집 주소는 강의 상세 페이지 및 강의 카드에서 네이버 지도 길찾기 연결 시 출발지로 사용됩니다.
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-
-
-
-          {/* Naver Maps Integration Card */}
-          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Key className="h-5 w-5 text-green-600" />
-                  네이버 지도 (Naver Maps) 실시간 연동 설정
-                </CardTitle>
-                <Badge variant={profile.naverMapClientId && profile.naverMapClientSecret ? "default" : "outline"} className="text-[10px] px-2 py-0.5 bg-green-500/10 text-green-700 border-green-200">
-                  {profile.naverMapClientId && profile.naverMapClientSecret ? "실시간 연동 활성화" : "시뮬레이션 모드"}
-                </Badge>
-              </div>
-              <CardDescription>
-                한국 국내 도로 기준 100% 정확한 실시간 차량 주행 소요 시간 및 이동 거리를 계산하기 위해 네이버 클라우드 플랫폼 API를 연동합니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="naver-client-id" className="text-xs font-semibold">
-                  Naver Cloud Client ID (X-NCP-APIGW-API-KEY-ID)
-                </Label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="naver-client-id"
-                    placeholder="네이버 클라우드 Client ID"
-                    value={profile.naverMapClientId || ""}
-                    onChange={e => handleFieldChange("naverMapClientId", e.target.value)}
-                    className="pl-9 font-mono text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="naver-client-secret" className="text-xs font-semibold">
-                    Naver Cloud Client Secret (X-NCP-APIGW-API-KEY)
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={() => setShowNaverSecret(!showNaverSecret)}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                  >
-                    {showNaverSecret ? (
-                      <>
-                        <EyeOff className="h-3 w-3" /> 숨기기
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-3 w-3" /> 표시
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="relative">
-                  <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="naver-client-secret"
-                    type={showNaverSecret ? "text" : "password"}
-                    placeholder="네이버 클라우드 Client Secret"
-                    value={profile.naverMapClientSecret || ""}
-                    onChange={e => handleFieldChange("naverMapClientSecret", e.target.value)}
-                    className="pl-9 font-mono text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-green-500/5 border border-green-500/10 p-3 flex gap-2.5">
-                <Info className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-muted-foreground leading-relaxed space-y-1">
-                  <p>
-                    <strong>실시간 네이버 경로 연동 방법:</strong> 네이버 클라우드 플랫폼(ncloud.com)에 로그인 후, [Console] - [AI·NAVER API] - [Application] 메뉴에서 애플리케이션을 생성하고 
-                    <span className="font-semibold text-foreground"> &apos;Geocoding&apos;</span> 및 
-                    <span className="font-semibold text-foreground"> &apos;Directions&apos;</span> API 서비스를 선택·활성화하여 인증 키를 발급받으실 수 있습니다.
-                  </p>
-                </div>
               </div>
             </CardContent>
           </Card>

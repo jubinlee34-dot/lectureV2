@@ -104,36 +104,14 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
     setAdditionalDates((prev) => prev.filter((d) => d !== dateToRemove));
   };
 
-  const handleSearchAddress = () => {
-    const container = document.getElementById("postcode-container");
-    if (!container) return;
-
-    if (container.classList.contains("hidden")) {
-      container.classList.remove("hidden");
-      // @ts-ignore
-      new window.daum.Postcode({
-        oncomplete: function (data: any) {
-          let fullAddr = data.roadAddress || data.address;
-          if (data.buildingName) {
-            fullAddr += ` (${data.buildingName})`;
-          }
-          setField("location", fullAddr);
-          container.classList.add("hidden");
-          toast.success("교육장소 주소가 입력되었습니다.");
-        },
-        width: "100%",
-        height: "100%",
-      }).embed(container);
-    } else {
-      container.classList.add("hidden");
+  const handleSearchNaverMap = () => {
+    const location = formData.location.trim();
+    if (!location) {
+      toast.error("검색할 교육장소(주소 또는 장소명)를 입력해주세요.");
+      return;
     }
-  };
-
-  const closePostcode = () => {
-    const container = document.getElementById("postcode-container");
-    if (container) {
-      container.classList.add("hidden");
-    }
+    const url = `https://map.naver.com/v5/search/${encodeURIComponent(location)}`;
+    window.open(url, "_blank");
   };
 
   const setField = (field: keyof LectureFormData, value: string | number) => {
@@ -240,38 +218,23 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
             label="교육장소"
             required
             error={errors.location}
-            description="* 도로명 주소(예: 영광군 염산면 천년로 36)를 입력하셔야 네이버 지도 실시간 경로가 자동 계산됩니다."
+            description="* 입력하신 교육장소는 상세페이지에서 출발지로부터의 네이버 길찾기 연동 시 목적지로 사용됩니다."
           >
             <div className="flex gap-2">
               <Input
                 value={formData.location}
                 onChange={(e) => setField("location", e.target.value)}
-                placeholder="예: 전남 영광군 염산면 천년로 36"
+                placeholder="예: 전남 영광군 염산면 천년로 36 또는 건물명"
                 className="flex-1"
               />
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleSearchAddress}
+                onClick={handleSearchNaverMap}
                 className="shrink-0 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all text-xs h-10 px-3"
               >
-                주소 검색
+                네이버 지도 검색
               </Button>
-            </div>
-            {/* Inline Address Search Widget */}
-            <div
-              id="postcode-container"
-              className="hidden border border-border rounded-lg bg-card mt-2 p-1 relative w-full overflow-hidden transition-all shadow-inner"
-              style={{ height: "400px" }}
-            >
-              <button
-                type="button"
-                onClick={closePostcode}
-                className="absolute right-3 top-3 z-20 rounded-full bg-muted hover:bg-muted/80 p-1.5 text-muted-foreground shadow-sm transition-all"
-                title="주소 검색창 닫기"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
             </div>
           </Field>
         </div>

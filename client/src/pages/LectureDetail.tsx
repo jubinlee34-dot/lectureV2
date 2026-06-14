@@ -35,7 +35,6 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation, useParams } from "wouter";
 import type { WorkflowStage } from "../types/lecture";
-import { estimateTravel, type TravelEstimation } from "@/utils/maps";
 import type { InstructorProfile } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
 
@@ -55,49 +54,12 @@ const paymentBadge = {
 interface TravelInfoCardProps {
   homeAddress?: string;
   destination: string;
-  naverClientId?: string;
-  naverClientSecret?: string;
 }
 
 function TravelInfoCard({
   homeAddress,
   destination,
-  naverClientId,
-  naverClientSecret,
 }: TravelInfoCardProps) {
-  const [, navigate] = useLocation();
-  const [loading, setLoading] = useState(false);
-  const [estimation, setEstimation] = useState<TravelEstimation | null>(null);
-
-  useEffect(() => {
-    if (!homeAddress || !destination) return;
-
-    let active = true;
-    const fetchTravel = async () => {
-      setLoading(true);
-      try {
-        const res = await estimateTravel(
-          homeAddress,
-          destination,
-          naverClientId,
-          naverClientSecret
-        );
-        if (active) {
-          setEstimation(res);
-        }
-      } catch (err) {
-        console.error("Failed to estimate travel", err);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    fetchTravel();
-    return () => {
-      active = false;
-    };
-  }, [homeAddress, destination, naverClientId, naverClientSecret]);
-
   if (!homeAddress) {
     return (
       <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4 sm:p-5 dark:border-amber-950/35 dark:bg-amber-950/10">
@@ -106,24 +68,11 @@ function TravelInfoCard({
           출강 경로 정보
         </h2>
         <p className="text-xs text-amber-700/95 dark:text-amber-500/90 leading-relaxed">
-          강사의 집 주소가 등록되어 있지 않습니다. 프로필에서 집 주소를 등록하시면 강의 장소까지의 예상 이동 거리 및 소요 시간이 자동으로 표시됩니다.
+          강사의 집 주소가 등록되어 있지 않습니다. 프로필에서 집 주소를 등록하시면 강의 장소까지의 예상 이동 경로 및 길찾기 링크가 활성화됩니다.
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-900/50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-          onClick={() => navigate("/profile")}
-        >
-          <Settings className="mr-1.5 h-3.5 w-3.5" />
-          집 주소 등록하러 가기
-        </Button>
       </section>
     );
   }
-
-  const naverDirectionsUrl = estimation?.startCoords && estimation?.goalCoords
-    ? `https://map.naver.com/index.nhn?menu=route&slng=${estimation.startCoords.x}&slat=${estimation.startCoords.y}&stext=${encodeURIComponent(homeAddress)}&elng=${estimation.goalCoords.x}&elat=${estimation.goalCoords.y}&etext=${encodeURIComponent(destination)}&pathType=1`
-    : `https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(destination)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(destination)}&pathType=1`;
 
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
@@ -132,71 +81,30 @@ function TravelInfoCard({
         출강 경로 정보 (자동차 기준)
       </h2>
 
-      {loading ? (
-        <div className="flex h-16 items-center justify-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          경로 정보를 조회하는 중...
+      <div className="space-y-3">
+        <div className="text-xs text-muted-foreground space-y-1.5">
+          <div className="flex items-start gap-1">
+            <span className="font-semibold text-foreground/80 shrink-0">출발지:</span>
+            <span className="truncate" title={homeAddress}>{homeAddress}</span>
+          </div>
+          <div className="flex items-start gap-1">
+            <span className="font-semibold text-foreground/80 shrink-0">도착지:</span>
+            <span className="truncate" title={destination}>{destination}</span>
+          </div>
         </div>
-      ) : estimation ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/40 p-3 border border-border/40">
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-semibold">예상 이동 시간</p>
-              <p className="text-lg font-bold text-foreground mt-0.5">{estimation.duration}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-semibold">예상 이동 거리</p>
-              <p className="text-lg font-bold text-foreground mt-0.5">{estimation.distance}</p>
-            </div>
-          </div>
 
-          <div className="text-xs text-muted-foreground space-y-1.5">
-            <div className="flex items-start gap-1">
-              <span className="font-semibold text-foreground/80 shrink-0">출발지:</span>
-              <span className="truncate" title={homeAddress}>{homeAddress}</span>
-            </div>
-            <div className="flex items-start gap-1">
-              <span className="font-semibold text-foreground/80 shrink-0">도착지:</span>
-              <span className="truncate" title={destination}>{destination}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 pt-1.5 border-t border-border/40 sm:flex-row sm:items-center">
-            <a
-              href={naverDirectionsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-8 items-center justify-center rounded-md bg-green-500/10 px-3 text-xs font-semibold text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-all flex-1 text-center border border-green-500/20 cursor-pointer"
-            >
-              <Navigation className="mr-1.5 h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-              네이버 지도 길찾기 바로가기
-            </a>
-            {estimation.realData ? (
-              <Badge variant="outline" className="text-[10px] text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/20 border-green-200 dark:border-green-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
-                실시간 네이버 길찾기 연동됨
-              </Badge>
-            ) : naverClientId && naverClientSecret ? (
-              <Badge variant="outline" className="text-[10px] text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/10 border-red-200 dark:border-red-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
-                <Info className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                실시간 경로 조회 실패 (도로명 주소 필요)
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
-                <Info className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                네이버 API 키 미설정 (시뮬레이션 데이터)
-              </Badge>
-            )}
-          </div>
-          {!estimation.realData && naverClientId && naverClientSecret && (
-            <p className="text-[11px] text-red-600 dark:text-red-400 font-medium leading-normal mt-2">
-              * 출발지 또는 목적지 주소가 도로명 주소(예: 영광군 염산면 천년로 36)가 아닌 장소명(&quot;염산중학교&quot;)으로 등록되어 실시간 경로 조회가 실패했습니다. 강의 설정에서 정확한 주소로 수정해주세요.
-            </p>
-          )}
+        <div className="flex flex-col gap-2 pt-1.5 border-t border-border/40 sm:flex-row sm:items-center">
+          <a
+            href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(destination)}&pathType=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-8 items-center justify-center rounded-md bg-green-500/10 px-3 text-xs font-semibold text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-all flex-1 text-center border border-green-500/20 cursor-pointer"
+          >
+            <Navigation className="mr-1.5 h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+            네이버 지도 길찾기 바로가기
+          </a>
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">경로 정보를 가져올 수 없습니다.</p>
-      )}
+      </div>
     </section>
   );
 }
@@ -277,8 +185,6 @@ export default function LectureDetail() {
       <TravelInfoCard
         homeAddress={profile?.homeAddress}
         destination={lecture.location}
-        naverClientId={profile?.naverMapClientId}
-        naverClientSecret={profile?.naverMapClientSecret}
       />
 
       <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">

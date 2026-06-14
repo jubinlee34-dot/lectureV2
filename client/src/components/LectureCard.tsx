@@ -15,7 +15,6 @@ import {
 import { useState, useEffect, useMemo } from "react";
 import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
 import { formatDateShort, truncate } from "../utils/format";
-import { getCachedOrSimulatedTravel, estimateTravel, type TravelEstimation } from "../utils/maps";
 import type { InstructorProfile } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
 
@@ -62,27 +61,7 @@ export function LectureCard({
     return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "after");
   }, [workTasks, lecture.id]);
 
-  const [travelInfo, setTravelInfo] = useState<TravelEstimation | null>(null);
 
-  useEffect(() => {
-    if (homeAddress && lecture.location) {
-      const cached = getCachedOrSimulatedTravel(homeAddress, lecture.location);
-      setTravelInfo(cached);
-
-      const hasNaverKeys = !!(profile?.naverMapClientId && profile?.naverMapClientSecret);
-      if (!cached.realData || (hasNaverKeys && cached.source !== "naver")) {
-        estimateTravel(homeAddress, lecture.location, profile?.naverMapClientId, profile?.naverMapClientSecret)
-          .then((res) => {
-            setTravelInfo(res);
-          })
-          .catch((err) => {
-            console.error("Failed to fetch travel estimation on card:", err);
-          });
-      }
-    } else {
-      setTravelInfo(null);
-    }
-  }, [homeAddress, lecture.location, profile?.naverMapClientId, profile?.naverMapClientSecret]);
 
   const handleStageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -180,21 +159,17 @@ export function LectureCard({
             <MapPin className="h-3 w-3" />
             {truncate(lecture.location, 16)}
           </span>
-          {travelInfo && (
+          {homeAddress && lecture.location && (
             <a
-              href={
-                travelInfo.startCoords && travelInfo.goalCoords
-                  ? `https://map.naver.com/index.nhn?menu=route&slng=${travelInfo.startCoords.x}&slat=${travelInfo.startCoords.y}&stext=${encodeURIComponent(homeAddress)}&elng=${travelInfo.goalCoords.x}&elat=${travelInfo.goalCoords.y}&etext=${encodeURIComponent(lecture.location)}&pathType=1`
-                  : `https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}&pathType=1`
-              }
+              href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&pathType=1`}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold hover:underline cursor-pointer"
+              className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400 font-semibold hover:underline cursor-pointer"
               title="네이버 지도 길찾기 바로가기"
             >
               <Car className="h-3 w-3" />
-              {travelInfo.duration} ({travelInfo.distance})
+              길찾기
             </a>
           )}
         </div>
