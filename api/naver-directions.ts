@@ -5,7 +5,7 @@ interface Coords {
   y: string;
 }
 
-async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
+async function executeGeocode(query: string, clientId: string, clientSecret: string): Promise<Coords> {
   const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(query)}`;
   const response = await fetch(url, {
     headers: {
@@ -28,6 +28,28 @@ async function geocodeNaver(query: string, clientId: string, clientSecret: strin
     x: data.addresses[0].x,
     y: data.addresses[0].y,
   };
+}
+
+async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
+  // 1. Clean parenthesized info (e.g. " (염산중학교)" or detail building names in parentheses)
+  const cleanQuery = query.replace(/\s*\(.*?\)\s*/g, " ").trim();
+
+  try {
+    return await executeGeocode(cleanQuery, clientId, clientSecret);
+  } catch (firstErr) {
+    // 2. If it fails, try trimming words from the end (e.g. floor numbers, apartment names)
+    const words = cleanQuery.split(/\s+/);
+    // Trim up to 3 words, but keep at least 2 words
+    for (let i = 1; i <= 3 && words.length - i >= 2; i++) {
+      const trimmedQuery = words.slice(0, words.length - i).join(" ");
+      try {
+        return await executeGeocode(trimmedQuery, clientId, clientSecret);
+      } catch (err) {
+        // Keep trying
+      }
+    }
+    throw firstErr;
+  }
 }
 
 async function getDirectionsNaver(

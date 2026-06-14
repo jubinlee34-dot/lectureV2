@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   PlusCircle,
   Briefcase,
+  X,
 } from "lucide-react";
 import type { InstructorProfile, CustomProfileField } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
@@ -83,6 +84,38 @@ export default function InstructorProfilePage() {
       toast.success("프로필 잠금이 해제되었습니다.");
     } else {
       toast.error("비밀번호가 일치하지 않습니다. 다시 시도해 주세요.");
+    }
+  };
+
+  const handleSearchAddress = () => {
+    const container = document.getElementById("postcode-container-profile");
+    if (!container) return;
+
+    if (container.classList.contains("hidden")) {
+      container.classList.remove("hidden");
+      // @ts-ignore
+      new window.daum.Postcode({
+        oncomplete: function (data: any) {
+          let fullAddr = data.roadAddress || data.address;
+          if (data.buildingName) {
+            fullAddr += ` (${data.buildingName})`;
+          }
+          handleFieldChange("homeAddress", fullAddr);
+          container.classList.add("hidden");
+          toast.success("집 주소가 입력되었습니다.");
+        },
+        width: "100%",
+        height: "100%",
+      }).embed(container);
+    } else {
+      container.classList.add("hidden");
+    }
+  };
+
+  const closePostcode = () => {
+    const container = document.getElementById("postcode-container-profile");
+    if (container) {
+      container.classList.add("hidden");
     }
   };
 
@@ -256,15 +289,40 @@ export default function InstructorProfilePage() {
                 <Label htmlFor="profile-address" className="text-xs font-semibold">
                   집 주소 (출발지)
                 </Label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="profile-address"
-                    placeholder="예: 서울특별시 강남구 테헤란로 152"
-                    value={profile.homeAddress}
-                    onChange={e => handleFieldChange("homeAddress", e.target.value)}
-                    className="pl-9"
-                  />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="profile-address"
+                      placeholder="예: 서울특별시 강남구 테헤란로 152"
+                      value={profile.homeAddress}
+                      onChange={e => handleFieldChange("homeAddress", e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSearchAddress}
+                    className="shrink-0 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all text-xs h-10 px-3"
+                  >
+                    주소 검색
+                  </Button>
+                </div>
+                {/* Inline Address Search Widget */}
+                <div
+                  id="postcode-container-profile"
+                  className="hidden border border-border rounded-lg bg-card mt-2 p-1 relative w-full overflow-hidden transition-all shadow-inner"
+                  style={{ height: "400px" }}
+                >
+                  <button
+                    type="button"
+                    onClick={closePostcode}
+                    className="absolute right-3 top-3 z-20 rounded-full bg-muted hover:bg-muted/80 p-1.5 text-muted-foreground shadow-sm transition-all"
+                    title="주소 검색창 닫기"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   * 입력하신 집 주소는 강의 상세 페이지에서 강의 장소까지의 이동 거리 및 시간(자동차 기준)을 연동/계산할 때 출발지로 사용됩니다.
