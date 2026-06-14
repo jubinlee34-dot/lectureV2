@@ -61,6 +61,20 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
         }
       : emptyForm
   );
+
+  const [startTime, setStartTime] = useState(() => {
+    if (initialData?.duration && initialData.duration.includes("~")) {
+      return initialData.duration.split("~")[0].trim();
+    }
+    return "09:00";
+  });
+  const [endTime, setEndTime] = useState(() => {
+    if (initialData?.duration && initialData.duration.includes("~")) {
+      return initialData.duration.split("~")[1].trim();
+    }
+    return "11:00";
+  });
+
   const [errors, setErrors] = useState<Partial<Record<keyof LectureFormData, string>>>({});
 
   const setField = (field: keyof LectureFormData, value: string | number) => {
@@ -68,24 +82,26 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
-  const validate = () => {
+  const validate = (data: LectureFormData) => {
     const next: Partial<Record<keyof LectureFormData, string>> = {};
-    if (!formData.organization.trim()) next.organization = "기관명을 입력해주세요.";
-    if (!formData.title.trim()) next.title = "교육명을 입력해주세요.";
-    if (!formData.topic.trim()) next.topic = "교육주제를 입력해주세요.";
-    if (!formData.target.trim()) next.target = "교육대상을 입력해주세요.";
-    if (!formData.date) next.date = "교육일자를 선택해주세요.";
-    if (!formData.duration.trim()) next.duration = "교육시간을 입력해주세요.";
-    if (formData.participants <= 0) next.participants = "참여인원을 입력해주세요.";
-    if (!formData.location.trim()) next.location = "교육장소를 입력해주세요.";
-    if (!formData.content.trim()) next.content = "교육내용을 입력해주세요.";
+    if (!data.organization.trim()) next.organization = "기관명을 입력해주세요.";
+    if (!data.title.trim()) next.title = "교육명을 입력해주세요.";
+    if (!data.topic.trim()) next.topic = "교육주제를 입력해주세요.";
+    if (!data.target.trim()) next.target = "교육대상을 입력해주세요.";
+    if (!data.date) next.date = "교육일자를 선택해주세요.";
+    if (!data.duration.trim() || data.duration === " ~ ") next.duration = "교육시간을 설정해주세요.";
+    if (data.participants <= 0) next.participants = "참여인원을 입력해주세요.";
+    if (!data.location.trim()) next.location = "교육장소를 입력해주세요.";
+    if (!data.content.trim()) next.content = "교육내용을 입력해주세요.";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (validate()) onSubmit(formData);
+    const durationStr = `${startTime} ~ ${endTime}`;
+    const finalData = { ...formData, duration: durationStr };
+    if (validate(finalData)) onSubmit(finalData);
   };
 
   return (
@@ -124,7 +140,27 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
             <Input type="date" value={formData.date} onChange={(e) => setField("date", e.target.value)} />
           </Field>
           <Field label="교육시간" required error={errors.duration}>
-            <Input value={formData.duration} onChange={(e) => setField("duration", e.target.value)} placeholder="예: 2시간" />
+            <div className="flex items-center gap-2">
+              <Input
+                type="time"
+                value={startTime}
+                onChange={(e) => {
+                  setStartTime(e.target.value);
+                  setErrors((prev) => ({ ...prev, duration: undefined }));
+                }}
+                className="w-full"
+              />
+              <span className="text-muted-foreground text-sm font-semibold">~</span>
+              <Input
+                type="time"
+                value={endTime}
+                onChange={(e) => {
+                  setEndTime(e.target.value);
+                  setErrors((prev) => ({ ...prev, duration: undefined }));
+                }}
+                className="w-full"
+              />
+            </div>
           </Field>
           <Field label="참여인원" required error={errors.participants}>
             <Input type="number" min={0} value={formData.participants || ""} onChange={(e) => setField("participants", Number(e.target.value) || 0)} placeholder="예: 25" />

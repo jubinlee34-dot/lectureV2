@@ -57,72 +57,66 @@ export function useLectures() {
       id: nanoid(),
       createdAt: new Date().toISOString(),
     };
-    setLectures((prev) => {
-      const next = [newLecture, ...prev];
-      saveLectures(next);
-      return next;
-    });
+    const current = loadLectures();
+    const next = [newLecture, ...current];
+    saveLectures(next);
+    setLectures(next);
     return newLecture;
   }, []);
 
   const bulkAddLectures = useCallback(
     (items: LectureFormData[], policy: "skip" | "overwrite" | "add"): number => {
       let count = 0;
-      setLectures((prev) => {
-        let updated = [...prev];
-        for (const item of items) {
-          const duplicateIndex = updated.findIndex(
-            (lecture) => lecture.date === item.date && lecture.title === item.title
-          );
-          if (duplicateIndex >= 0 && policy === "skip") continue;
-          if (duplicateIndex >= 0 && policy === "overwrite") {
-            updated[duplicateIndex] = { ...updated[duplicateIndex], ...item };
-            count += 1;
-            continue;
-          }
-          updated = [{ ...item, id: nanoid(), createdAt: new Date().toISOString() }, ...updated];
+      const current = loadLectures();
+      let updated = [...current];
+      for (const item of items) {
+        const duplicateIndex = updated.findIndex(
+          (lecture) => lecture.date === item.date && lecture.title === item.title
+        );
+        if (duplicateIndex >= 0 && policy === "skip") continue;
+        if (duplicateIndex >= 0 && policy === "overwrite") {
+          updated[duplicateIndex] = { ...updated[duplicateIndex], ...item };
           count += 1;
+          continue;
         }
-        saveLectures(updated);
-        return updated;
-      });
+        updated = [{ ...item, id: nanoid(), createdAt: new Date().toISOString() }, ...updated];
+        count += 1;
+      }
+      saveLectures(updated);
+      setLectures(updated);
       return count;
     },
     []
   );
 
   const updateLecture = useCallback((id: string, data: Partial<Lecture>): void => {
-    setLectures((prev) => {
-      const next = prev.map((lecture) => (lecture.id === id ? { ...lecture, ...data } : lecture));
-      saveLectures(next);
-      return next;
-    });
+    const current = loadLectures();
+    const next = current.map((lecture) => (lecture.id === id ? { ...lecture, ...data } : lecture));
+    saveLectures(next);
+    setLectures(next);
   }, []);
 
   const deleteLecture = useCallback((id: string): void => {
-    setLectures((prev) => {
-      const next = prev.filter((lecture) => lecture.id !== id);
-      saveLectures(next);
-      return next;
-    });
+    const current = loadLectures();
+    const next = current.filter((lecture) => lecture.id !== id);
+    saveLectures(next);
+    setLectures(next);
   }, []);
 
   const bulkDeleteLectures = useCallback((ids: string[]): void => {
-    setLectures((prev) => {
-      const next = prev.filter((lecture) => !ids.includes(lecture.id));
-      saveLectures(next);
-      return next;
-    });
+    const current = loadLectures();
+    const next = current.filter((lecture) => !ids.includes(lecture.id));
+    saveLectures(next);
+    setLectures(next);
   }, []);
 
   const bulkUpdateLectures = useCallback((ids: string[], data: Partial<Lecture>): void => {
-    setLectures((prev) => {
-      const next = prev.map((lecture) =>
-        ids.includes(lecture.id) ? { ...lecture, ...data } : lecture
-      );
-      saveLectures(next);
-      return next;
-    });
+    const current = loadLectures();
+    const next = current.map((lecture) =>
+      ids.includes(lecture.id) ? { ...lecture, ...data } : lecture
+    );
+    saveLectures(next);
+    setLectures(next);
   }, []);
 
   const getLectureById = useCallback(
