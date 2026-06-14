@@ -2,8 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, X } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import type { Lecture, LectureFormData, PaymentStatus, WorkflowStage } from "../types/lecture";
 
 interface LectureFormProps {
@@ -82,8 +83,26 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
   const [errors, setErrors] = useState<Partial<Record<keyof LectureFormData, string>>>({});
 
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceType, setRecurrenceType] = useState<"daily" | "weekly">("weekly");
-  const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
+  const [additionalDates, setAdditionalDates] = useState<string[]>([]);
+  const [newDateInput, setNewDateInput] = useState("");
+
+  const handleAddDate = () => {
+    if (!newDateInput) return;
+    if (newDateInput === formData.date) {
+      toast.error("기본 교육일자와 동일한 날짜입니다.");
+      return;
+    }
+    if (additionalDates.includes(newDateInput)) {
+      toast.error("이미 추가된 날짜입니다.");
+      return;
+    }
+    setAdditionalDates((prev) => [...prev, newDateInput].sort());
+    setNewDateInput("");
+  };
+
+  const handleRemoveDate = (dateToRemove: string) => {
+    setAdditionalDates((prev) => prev.filter((d) => d !== dateToRemove));
+  };
 
   const setField = (field: keyof LectureFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -110,33 +129,13 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
     const durationStr = `${startTime} ~ ${endTime}`;
     const finalData = { ...formData, duration: durationStr };
     if (validate(finalData)) {
-      if (!initialData && isRecurring && recurrenceCount > 1 && finalData.date) {
-        const list: LectureFormData[] = [];
-        const dateParts = finalData.date.split("-");
-        const y = parseInt(dateParts[0]);
-        const m = parseInt(dateParts[1]) - 1;
-        const d = parseInt(dateParts[2]);
-        const baseDate = new Date(y, m, d);
-
-        for (let i = 0; i < recurrenceCount; i++) {
-          const nextDate = new Date(baseDate);
-          if (recurrenceType === "daily") {
-            nextDate.setDate(baseDate.getDate() + i);
-          } else if (recurrenceType === "weekly") {
-            nextDate.setDate(baseDate.getDate() + i * 7);
-          }
-          
-          const yyyy = nextDate.getFullYear();
-          const mm = String(nextDate.getMonth() + 1).padStart(2, "0");
-          const dd = String(nextDate.getDate()).padStart(2, "0");
-          const dateStr = `${yyyy}-${mm}-${dd}`;
-
-          list.push({
-            ...finalData,
-            title: `${finalData.title} (${i + 1}회차)`,
-            date: dateStr,
-          });
-        }
+      if (!initialData && isRecurring && additionalDates.length > 0) {
+        const allDates = [finalData.date, ...additionalDates].sort();
+        const list = allDates.map((dateStr, index) => ({
+          ...finalData,
+          title: allDates.length > 1 ? `${finalData.title} (${index + 1}회차)` : finalData.title,
+          date: dateStr,
+        }));
         onSubmit(finalData, list);
       } else {
         onSubmit(finalData);
@@ -227,28 +226,49 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
               </Label>
             </div>
             {isRecurring && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 bg-muted/20 p-4 rounded-lg border border-border">
-                <Field label="반복 주기">
-                  <select
-                    value={recurrenceType}
-                    onChange={(e) => setRecurrenceType(e.target.value as "daily" | "weekly")}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus:ring-1 focus:ring-ring"
+              <div className="space-y-3 bg-muted/20 p-4 rounded-lg border border-border">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">추가할 교육일자</Label>
+                    <Input
+                      type="date"
+                      value={newDateInput}
+                      onChange={(e) => setNewDateInput(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleAddDate}
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0"
                   >
-                    <option value="weekly">매주 (같은 요일)</option>
-                    <option value="daily">매일</option>
-                  </select>
-                </Field>
-                <Field label="반복 횟수">
-                  <Input
-                    type="number"
-                    min={2}
-                    max={20}
-                    value={recurrenceCount}
-                    onChange={(e) => setRecurrenceCount(Number(e.target.value) || 2)}
-                    placeholder="예: 4"
-                    className="h-10 text-sm"
-                  />
-                </Field>
+                    추가
+                  </Button>
+                </div>
+                {additionalDates.length > 0 && (
+                  <div className="space-y-1.5 pt-2">
+                    <span className="text-xs font-semibold text-muted-foreground">추가된 날짜 목록:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {additionalDates.map((d) => (
+                        <span
+                          key={d}
+                          className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary border border-primary/20"
+                        >
+                          {d}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDate(d)}
+                            className="rounded-full p-0.5 hover:bg-primary/20 cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
