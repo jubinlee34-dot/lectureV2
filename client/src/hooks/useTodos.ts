@@ -65,25 +65,37 @@ export function useTodos() {
         lectureId: data.lectureId,
         createdAt: new Date().toISOString(),
       };
-      setTodos((prev) => [newTodo, ...prev]);
+      setTodos((prev) => {
+        const next = [newTodo, ...prev];
+        saveTodos(next);
+        return next;
+      });
     },
     []
   );
 
   const toggleTodo = useCallback((id: string) => {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-    );
+    setTodos((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t));
+      saveTodos(next);
+      return next;
+    });
   }, []);
 
   const deleteTodo = useCallback((id: string) => {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
+    setTodos((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      saveTodos(next);
+      return next;
+    });
   }, []);
 
   const updateTodo = useCallback((id: string, data: Partial<Todo>) => {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...data } : t))
-    );
+    setTodos((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...data } : t));
+      saveTodos(next);
+      return next;
+    });
   }, []);
 
   /** 특정 강의에 연결된 할일 */

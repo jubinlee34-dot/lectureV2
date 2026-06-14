@@ -1,3 +1,4 @@
+import { BulkEditModal } from "@/components/BulkEditModal";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { EmptyState } from "@/components/EmptyState";
 import { ImportModal } from "@/components/ImportModal";
@@ -14,28 +15,96 @@ import {
 import { useLectures } from "@/hooks/useLectures";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { recordSmsHistory } from "@/utils/storage";
-import { Calendar, PenLine, Sheet, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Calendar, Edit, PenLine, Sheet, Trash2, Upload } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import type { Lecture, SortOption } from "@/types/lecture";
+import type { Lecture, SortOption, PaymentStatus, WorkflowStage } from "@/types/lecture";
 
 export default function LectureList() {
   const [, navigate] = useLocation();
-  const { lectures, deleteLecture, bulkAddLectures } = useLectures();
+  const {
+    lectures,
+    deleteLecture,
+    bulkAddLectures,
+    bulkDeleteLectures,
+    bulkUpdateLectures,
+  } = useLectures();
   const [importOpen, setImportOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+
+  // 필터 변경 시 선택 항목 초기화
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [selectedYear, selectedMonth]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    lectures.forEach((lecture) => {
+      if (lecture.date) {
+        const year = lecture.date.split("-")[0];
+        if (year && year.length === 4) years.add(year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [lectures]);
+
+  const filteredLectures = useMemo(() => {
+    return lectures.filter((lecture) => {
+      if (!lecture.date) return false;
+      const dateParts = lecture.date.split("-");
+      const yearMatch = selectedYear === "all" || dateParts[0] === selectedYear;
+      const monthMatch = selectedMonth === "all" || Number(dateParts[1]).toString() === selectedMonth;
+      return yearMatch && monthMatch;
+    });
+  }, [lectures, selectedYear, selectedMonth]);
 
   const sortedLectures = useMemo(() => {
-    return [...lectures].sort((a, b) => {
+    return [...filteredLectures].sort((a, b) => {
       if (sortBy === "date-desc") return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortBy === "date-asc") return new Date(a.date).getTime() - new Date(b.date).getTime();
       if (sortBy === "title") return a.title.localeCompare(b.title, "ko");
       return a.organization.localeCompare(b.organization, "ko");
     });
-  }, [lectures, sortBy]);
+  }, [filteredLectures, sortBy]);
+
+  const isAllSelected = sortedLectures.length > 0 && selectedIds.length === sortedLectures.length;
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(sortedLectures.map((l) => l.id));
+    }
+  };
+
+  const handleSelect = (id: string, checked: boolean) => {
+    setSelectedIds((prev) =>
+      checked ? [...prev, id] : prev.filter((item) => item !== id)
+    );
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = window.confirm(`선택한 ${selectedIds.length}개의 강의를 모두 삭제하시겠습니까?`);
+    if (confirmed) {
+      bulkDeleteLectures(selectedIds);
+      setSelectedIds([]);
+      toast.success(`${selectedIds.length}개의 강의를 일괄 삭제했습니다.`);
+    }
+  };
+
+  const handleBulkEditConfirm = (data: { workflowStage?: WorkflowStage; paymentStatus?: PaymentStatus }) => {
+    bulkUpdateLectures(selectedIds, data);
+    setSelectedIds([]);
+    toast.success(`${selectedIds.length}개의 강의를 일괄 수정했습니다.`);
+  };
 
   const handleDelete = (id: string) => {
     const lecture = lectures.find((item) => item.id === id);
@@ -88,9 +157,37 @@ export default function LectureList() {
       </div>
 
       {lectures.length > 0 && (
-        <div className="mb-4 flex justify-end">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 bg-muted/20 p-3 rounded-lg border border-border/60">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">전체 연도</option>
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}년
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">전체 월</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                <option key={month} value={month.toString()}>
+                  {month}월
+                </option>
+              ))}
+            </select>
+          </div>
+
           <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-            <SelectTrigger className="h-8 w-40 text-sm">
+            <SelectTrigger className="h-8 w-36 text-xs font-semibold">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -100,6 +197,40 @@ export default function LectureList() {
               <SelectItem value="organization">기관명순</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+      )}
+
+      {sortedLectures.length > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={handleToggleSelectAll}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+            />
+            <span className="font-semibold text-foreground/80">
+              전체 선택 ({sortedLectures.length}개 중 {selectedIds.length}개 선택됨)
+            </span>
+          </div>
+          {selectedIds.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setBulkEditOpen(true)}
+                className="flex items-center gap-1 rounded border border-primary/20 bg-background px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/5 cursor-pointer transition-colors"
+              >
+                <Edit className="h-3 w-3" />
+                선택 수정
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1 rounded border border-destructive/20 bg-background px-2.5 py-1 text-[11px] font-semibold text-destructive hover:bg-destructive/5 cursor-pointer transition-colors"
+              >
+                <Trash2 className="h-3 w-3" />
+                선택 삭제
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -116,6 +247,8 @@ export default function LectureList() {
               onDelete={handleDelete}
               onManage={(id) => navigate(`/lectures/${id}/manage`)}
               onSms={(lec) => setSmsTarget(lec)}
+              selected={selectedIds.includes(lecture.id)}
+              onSelect={handleSelect}
             />
           ))}
         </div>
@@ -153,6 +286,15 @@ export default function LectureList() {
             recordSmsHistory(smsTarget.id, type, recipient, content);
             toast.success("문자 발송 내역을 기록했습니다.");
           }}
+        />
+      )}
+
+      {bulkEditOpen && (
+        <BulkEditModal
+          open={bulkEditOpen}
+          onClose={() => setBulkEditOpen(false)}
+          onConfirm={handleBulkEditConfirm}
+          selectedCount={selectedIds.length}
         />
       )}
     </div>

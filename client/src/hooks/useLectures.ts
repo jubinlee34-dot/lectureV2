@@ -38,7 +38,11 @@ export function useLectures() {
       id: nanoid(),
       createdAt: new Date().toISOString(),
     };
-    setLectures((prev) => [newLecture, ...prev]);
+    setLectures((prev) => {
+      const next = [newLecture, ...prev];
+      saveLectures(next);
+      return next;
+    });
     return newLecture;
   }, []);
 
@@ -60,6 +64,7 @@ export function useLectures() {
           updated = [{ ...item, id: nanoid(), createdAt: new Date().toISOString() }, ...updated];
           count += 1;
         }
+        saveLectures(updated);
         return updated;
       });
       return count;
@@ -68,13 +73,37 @@ export function useLectures() {
   );
 
   const updateLecture = useCallback((id: string, data: Partial<Lecture>): void => {
-    setLectures((prev) =>
-      prev.map((lecture) => (lecture.id === id ? { ...lecture, ...data } : lecture))
-    );
+    setLectures((prev) => {
+      const next = prev.map((lecture) => (lecture.id === id ? { ...lecture, ...data } : lecture));
+      saveLectures(next);
+      return next;
+    });
   }, []);
 
   const deleteLecture = useCallback((id: string): void => {
-    setLectures((prev) => prev.filter((lecture) => lecture.id !== id));
+    setLectures((prev) => {
+      const next = prev.filter((lecture) => lecture.id !== id);
+      saveLectures(next);
+      return next;
+    });
+  }, []);
+
+  const bulkDeleteLectures = useCallback((ids: string[]): void => {
+    setLectures((prev) => {
+      const next = prev.filter((lecture) => !ids.includes(lecture.id));
+      saveLectures(next);
+      return next;
+    });
+  }, []);
+
+  const bulkUpdateLectures = useCallback((ids: string[], data: Partial<Lecture>): void => {
+    setLectures((prev) => {
+      const next = prev.map((lecture) =>
+        ids.includes(lecture.id) ? { ...lecture, ...data } : lecture
+      );
+      saveLectures(next);
+      return next;
+    });
   }, []);
 
   const getLectureById = useCallback(
@@ -148,6 +177,8 @@ export function useLectures() {
     bulkAddLectures,
     updateLecture,
     deleteLecture,
+    bulkDeleteLectures,
+    bulkUpdateLectures,
     getLectureById,
     searchLectures,
     getLecturesByStage,
