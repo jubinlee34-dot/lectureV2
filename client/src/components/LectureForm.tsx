@@ -104,6 +104,38 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
     setAdditionalDates((prev) => prev.filter((d) => d !== dateToRemove));
   };
 
+  const handleSearchAddress = () => {
+    const container = document.getElementById("postcode-container");
+    if (!container) return;
+
+    if (container.classList.contains("hidden")) {
+      container.classList.remove("hidden");
+      // @ts-ignore
+      new window.daum.Postcode({
+        oncomplete: function (data: any) {
+          let fullAddr = data.roadAddress || data.address;
+          if (data.buildingName) {
+            fullAddr += ` (${data.buildingName})`;
+          }
+          setField("location", fullAddr);
+          container.classList.add("hidden");
+          toast.success("교육장소 주소가 입력되었습니다.");
+        },
+        width: "100%",
+        height: "100%",
+      }).embed(container);
+    } else {
+      container.classList.add("hidden");
+    }
+  };
+
+  const closePostcode = () => {
+    const container = document.getElementById("postcode-container");
+    if (container) {
+      container.classList.add("hidden");
+    }
+  };
+
   const setField = (field: keyof LectureFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -204,8 +236,43 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
           <Field label="참여인원" required error={errors.participants}>
             <Input type="number" min={0} value={formData.participants || ""} onChange={(e) => setField("participants", Number(e.target.value) || 0)} placeholder="예: 25" />
           </Field>
-          <Field label="교육장소" required error={errors.location}>
-            <Input value={formData.location} onChange={(e) => setField("location", e.target.value)} placeholder="예: 강남구 평생학습관 2층" />
+          <Field
+            label="교육장소"
+            required
+            error={errors.location}
+            description="* 도로명 주소(예: 영광군 염산면 천년로 36)를 입력하셔야 네이버 지도 실시간 경로가 자동 계산됩니다."
+          >
+            <div className="flex gap-2">
+              <Input
+                value={formData.location}
+                onChange={(e) => setField("location", e.target.value)}
+                placeholder="예: 전남 영광군 염산면 천년로 36"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSearchAddress}
+                className="shrink-0 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all text-xs h-10 px-3"
+              >
+                주소 검색
+              </Button>
+            </div>
+            {/* Inline Address Search Widget */}
+            <div
+              id="postcode-container"
+              className="hidden border border-border rounded-lg bg-card mt-2 p-1 relative w-full overflow-hidden transition-all shadow-inner"
+              style={{ height: "400px" }}
+            >
+              <button
+                type="button"
+                onClick={closePostcode}
+                className="absolute right-3 top-3 z-20 rounded-full bg-muted hover:bg-muted/80 p-1.5 text-muted-foreground shadow-sm transition-all"
+                title="주소 검색창 닫기"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </Field>
         </div>
       </Section>
