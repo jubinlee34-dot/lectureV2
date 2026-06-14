@@ -22,6 +22,7 @@ interface LectureCardProps {
   onSms?: (lecture: Lecture) => void;
   selected?: boolean;
   onSelect?: (id: string, checked: boolean) => void;
+  onUpdateStage?: (id: string, data: Partial<Lecture>) => void;
 }
 
 const stageBadge: Record<WorkflowStage, { label: string; className: string }> = {
@@ -39,8 +40,21 @@ export function LectureCard({
   onSms,
   selected = false,
   onSelect,
+  onUpdateStage,
 }: LectureCardProps) {
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
+
+  const handleStageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUpdateStage) {
+      const nextStageMap: Record<WorkflowStage, WorkflowStage> = {
+        before: "after",
+        after: "promoted",
+        promoted: "before",
+      };
+      onUpdateStage(lecture.id, { workflowStage: nextStageMap[lecture.workflowStage] });
+    }
+  };
 
   const handleSms = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -99,9 +113,18 @@ export function LectureCard({
           <Badge variant="secondary" className="text-xs font-normal">
             {truncate(lecture.topic, 24)}
           </Badge>
-          <Badge variant="outline" className={`text-[10px] font-medium ${stage.className}`}>
-            {stage.label}
-          </Badge>
+          {onUpdateStage ? (
+            <button
+              onClick={handleStageClick}
+              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-all hover:opacity-85 cursor-pointer ${stage.className}`}
+            >
+              {stage.label}
+            </button>
+          ) : (
+            <Badge variant="outline" className={`text-[10px] font-medium ${stage.className}`}>
+              {stage.label}
+            </Badge>
+          )}
         </div>
 
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

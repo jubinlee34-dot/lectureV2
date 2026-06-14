@@ -10,12 +10,31 @@ const LECTURES_KEY = "lecture-archive-lectures";
 export function useLectures() {
   const [lectures, setLectures] = useState<Lecture[]>(() => {
     const isInit = localStorage.getItem(INIT_KEY);
+    let loaded: Lecture[];
     if (!isInit) {
       saveLectures(dummyLectures);
       localStorage.setItem(INIT_KEY, "true");
-      return dummyLectures;
+      loaded = dummyLectures;
+    } else {
+      loaded = loadLectures();
     }
-    return loadLectures();
+
+    // 오늘 이전 날짜의 강의 중 상태가 "강의 전"인 강의들을 "강의 후"로 자동 전환
+    const todayStr = new Date().toISOString().split("T")[0];
+    let hasChanges = false;
+    const updated = loaded.map((lecture) => {
+      if (lecture.date && lecture.date < todayStr && lecture.workflowStage === "before") {
+        hasChanges = true;
+        return { ...lecture, workflowStage: "after" as const };
+      }
+      return lecture;
+    });
+
+    if (hasChanges) {
+      saveLectures(updated);
+      return updated;
+    }
+    return loaded;
   });
 
   useEffect(() => {

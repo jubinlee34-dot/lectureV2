@@ -18,6 +18,7 @@ import {
   Plus,
   Sheet,
   Upload,
+  Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -33,7 +34,7 @@ const stageLabels: Record<WorkflowStage, string> = {
 
 export default function CalendarPage() {
   const [, navigate] = useLocation();
-  const { lectures, bulkAddLectures } = useLectures();
+  const { lectures, bulkAddLectures, updateLecture, deleteLecture } = useLectures();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -171,7 +172,17 @@ export default function CalendarPage() {
               ) : (
                 <div className="space-y-3">
                   {selectedLectures.map((lecture) => (
-                    <QuickCard key={lecture.id} lecture={lecture} onNavigate={navigate} onSms={(lec) => setSmsTarget(lec)} />
+                    <QuickCard
+                      key={lecture.id}
+                      lecture={lecture}
+                      onNavigate={navigate}
+                      onSms={(lec) => setSmsTarget(lec)}
+                      onUpdateStage={updateLecture}
+                      onDelete={(id) => {
+                        deleteLecture(id);
+                        toast.success("강의 일정을 삭제했습니다.");
+                      }}
+                    />
                   ))}
                 </div>
               )}
@@ -229,32 +240,76 @@ export default function CalendarPage() {
   );
 }
 
-function QuickCard({ lecture, onNavigate, onSms }: { lecture: Lecture; onNavigate: (path: string) => void; onSms?: (lecture: Lecture) => void }) {
+function QuickCard({
+  lecture,
+  onNavigate,
+  onSms,
+  onUpdateStage,
+  onDelete,
+}: {
+  lecture: Lecture;
+  onNavigate: (path: string) => void;
+  onSms?: (lecture: Lecture) => void;
+  onUpdateStage?: (id: string, data: Partial<Lecture>) => void;
+  onDelete?: (id: string) => void;
+}) {
+  const nextStageMap: Record<WorkflowStage, WorkflowStage> = {
+    before: "after",
+    after: "promoted",
+    promoted: "before",
+  };
+
+  const handleStageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUpdateStage) {
+      const nextStage = nextStageMap[lecture.workflowStage];
+      onUpdateStage(lecture.id, { workflowStage: nextStage });
+      toast.success(`"${lecture.title}" 단계가 ${stageLabels[nextStage]}로 변경되었습니다.`);
+    }
+  };
+
   return (
     <div className="rounded-lg border border-border p-3">
       <div className="mb-2 flex items-start justify-between gap-2">
         <button onClick={() => onNavigate(`/lectures/${lecture.id}`)} className="min-w-0 text-left">
-          <p className="text-sm font-medium leading-tight text-foreground">{lecture.title}</p>
+          <p className="text-sm font-semibold leading-tight text-foreground hover:text-primary transition-colors">{lecture.title}</p>
         </button>
-        <Badge variant="outline" className="shrink-0 text-[10px]">{stageLabels[lecture.workflowStage]}</Badge>
+        {onUpdateStage ? (
+          <button
+            onClick={handleStageClick}
+            className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-all hover:opacity-85 cursor-pointer bg-muted hover:bg-muted/80 text-foreground"
+          >
+            {stageLabels[lecture.workflowStage]}
+          </button>
+        ) : (
+          <Badge variant="outline" className="shrink-0 text-[10px]">{stageLabels[lecture.workflowStage]}</Badge>
+        )}
       </div>
       <div className="space-y-1 text-xs text-muted-foreground">
         <p className="flex items-center gap-1.5"><Building2 className="h-3 w-3" />{lecture.organization}</p>
         <p className="flex items-center gap-1.5"><MapPin className="h-3 w-3" />{lecture.location}</p>
       </div>
-      {lecture.managerPhone && (
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={() => onSms?.(lecture)}
-            className="inline-flex h-7 flex-1 items-center justify-center rounded-md border border-green-200 text-xs text-green-700 hover:bg-green-50 cursor-pointer"
-          >
-            <MessageCircle className="mr-1 h-3.5 w-3.5" />문자
-          </button>
-          <a href={`tel:${lecture.managerPhone}`} className="inline-flex h-7 items-center justify-center rounded-md border border-blue-200 px-2 text-xs text-blue-700 hover:bg-blue-50">
-            <Phone className="h-3.5 w-3.5" />
-          </a>
-        </div>
-      )}
+      <div className="mt-3 flex gap-2 items-center">
+        {lecture.managerPhone && (
+          <>
+            <button
+              onClick={() => onSms?.(lecture)}
+              className="inline-flex h-7 flex-1 items-center justify-center rounded-md border border-green-200 text-xs text-green-700 hover:bg-green-50 cursor-pointer"
+            >
+              <MessageCircle className="mr-1 h-3.5 w-3.5" />문자
+            </button>
+            <a href={`tel:${lecture.managerPhone}`} className="inline-flex h-7 items-center justify-center rounded-md border border-blue-200 px-2 text-xs text-blue-700 hover:bg-blue-50">
+              <Phone className="h-3.5 w-3.5" />
+            </a>
+          </>
+        )}
+        <button
+          onClick={() => onDelete?.(lecture.id)}
+          className="inline-flex h-7 px-2.5 items-center justify-center rounded-md border border-red-200 text-xs text-red-700 hover:bg-red-50 cursor-pointer ml-auto"
+        >
+          <Trash2 className="mr-1 h-3.5 w-3.5" />삭제
+        </button>
+      </div>
     </div>
   );
 }

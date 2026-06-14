@@ -98,6 +98,22 @@ export function useTodos() {
     });
   }, []);
 
+  const bulkDeleteTodos = useCallback((ids: string[]) => {
+    setTodos((prev) => {
+      const next = prev.filter((t) => !ids.includes(t.id));
+      saveTodos(next);
+      return next;
+    });
+  }, []);
+
+  const bulkUpdateTodos = useCallback((ids: string[], data: Partial<Todo>) => {
+    setTodos((prev) => {
+      const next = prev.map((t) => (ids.includes(t.id) ? { ...t, ...data } : t));
+      saveTodos(next);
+      return next;
+    });
+  }, []);
+
   /** 특정 강의에 연결된 할일 */
   const getTodosByLecture = useCallback(
     (lectureId: string) => todos.filter((t) => t.lectureId === lectureId),
@@ -121,6 +137,8 @@ export function useTodos() {
     toggleTodo,
     deleteTodo,
     updateTodo,
+    bulkDeleteTodos,
+    bulkUpdateTodos,
     getTodosByLecture,
   };
 }

@@ -29,6 +29,7 @@ export default function LectureList() {
     bulkAddLectures,
     bulkDeleteLectures,
     bulkUpdateLectures,
+    updateLecture,
   } = useLectures();
   const [importOpen, setImportOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("date-desc");
@@ -249,6 +250,7 @@ export default function LectureList() {
               onSms={(lec) => setSmsTarget(lec)}
               selected={selectedIds.includes(lecture.id)}
               onSelect={handleSelect}
+              onUpdateStage={updateLecture}
             />
           ))}
         </div>
