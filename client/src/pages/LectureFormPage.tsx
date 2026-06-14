@@ -4,17 +4,19 @@ import type { LectureFormData } from "@/types/lecture";
 import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 
 export default function LectureFormPage() {
   const [, navigate] = useLocation();
   const params = useParams<{ id?: string }>();
+  const search = useSearch();
+  const queryDate = new URLSearchParams(search).get("date") || "";
   const { addLecture, updateLecture, getLectureById } = useLectures();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEdit = Boolean(params.id);
   const lecture = isEdit && params.id ? getLectureById(params.id) : undefined;
 
-  const handleSubmit = async (data: LectureFormData) => {
+  const handleSubmit = async (data: LectureFormData, recurringList?: LectureFormData[]) => {
     setIsSubmitting(true);
     await new Promise((resolve) => setTimeout(resolve, 150));
     try {
@@ -23,9 +25,23 @@ export default function LectureFormPage() {
         toast.success("강의를 수정했습니다.");
         navigate(`/lectures/${params.id}`);
       } else {
-        const created = addLecture(data);
-        toast.success("강의를 등록했습니다.");
-        navigate(`/lectures/${created.id}/manage`);
+        if (recurringList && recurringList.length > 0) {
+          let firstCreatedId = "";
+          for (let i = 0; i < recurringList.length; i++) {
+            const created = addLecture(recurringList[i]);
+            if (i === 0) firstCreatedId = created.id;
+          }
+          toast.success(`${recurringList.length}개의 반복 강의를 등록했습니다.`);
+          if (firstCreatedId) {
+            navigate(`/lectures/${firstCreatedId}/manage`);
+          } else {
+            navigate("/lectures");
+          }
+        } else {
+          const created = addLecture(data);
+          toast.success("강의를 등록했습니다.");
+          navigate(`/lectures/${created.id}/manage`);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -60,6 +76,7 @@ export default function LectureFormPage() {
       </div>
       <LectureForm
         initialData={lecture}
+        defaultDate={queryDate}
         onSubmit={handleSubmit}
         onCancel={() => navigate(isEdit && params.id ? `/lectures/${params.id}` : "/lectures")}
         isSubmitting={isSubmitting}

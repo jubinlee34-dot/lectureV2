@@ -113,7 +113,7 @@ export default function CalendarPage() {
               </Button>
             </>
           )}
-          <Button size="sm" onClick={() => navigate("/lectures/new")}>
+          <Button size="sm" onClick={() => navigate(selectedDate ? `/lectures/new?date=${selectedDate}` : "/lectures/new")}>
             <Plus className="mr-1.5 h-4 w-4" />
             강의 등록
           </Button>

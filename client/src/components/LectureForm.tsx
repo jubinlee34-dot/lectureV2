@@ -8,7 +8,8 @@ import type { Lecture, LectureFormData, PaymentStatus, WorkflowStage } from "../
 
 interface LectureFormProps {
   initialData?: Lecture;
-  onSubmit: (data: LectureFormData) => void;
+  defaultDate?: string;
+  onSubmit: (data: LectureFormData, recurringList?: LectureFormData[]) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
 }
@@ -35,7 +36,7 @@ const emptyForm: LectureFormData = {
   memorableQuestion: "",
 };
 
-export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = false }: LectureFormProps) {
+export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSubmitting = false }: LectureFormProps) {
   const [formData, setFormData] = useState<LectureFormData>(
     initialData
       ? {
@@ -59,7 +60,10 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
           instructorMemo: initialData.instructorMemo,
           memorableQuestion: initialData.memorableQuestion,
         }
-      : emptyForm
+      : {
+          ...emptyForm,
+          date: defaultDate || "",
+        }
   );
 
   const [startTime, setStartTime] = useState(() => {
@@ -76,6 +80,10 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof LectureFormData, string>>>({});
+
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<"daily" | "weekly">("weekly");
+  const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
 
   const setField = (field: keyof LectureFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -101,7 +109,39 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
     event.preventDefault();
     const durationStr = `${startTime} ~ ${endTime}`;
     const finalData = { ...formData, duration: durationStr };
-    if (validate(finalData)) onSubmit(finalData);
+    if (validate(finalData)) {
+      if (!initialData && isRecurring && recurrenceCount > 1 && finalData.date) {
+        const list: LectureFormData[] = [];
+        const dateParts = finalData.date.split("-");
+        const y = parseInt(dateParts[0]);
+        const m = parseInt(dateParts[1]) - 1;
+        const d = parseInt(dateParts[2]);
+        const baseDate = new Date(y, m, d);
+
+        for (let i = 0; i < recurrenceCount; i++) {
+          const nextDate = new Date(baseDate);
+          if (recurrenceType === "daily") {
+            nextDate.setDate(baseDate.getDate() + i);
+          } else if (recurrenceType === "weekly") {
+            nextDate.setDate(baseDate.getDate() + i * 7);
+          }
+          
+          const yyyy = nextDate.getFullYear();
+          const mm = String(nextDate.getMonth() + 1).padStart(2, "0");
+          const dd = String(nextDate.getDate()).padStart(2, "0");
+          const dateStr = `${yyyy}-${mm}-${dd}`;
+
+          list.push({
+            ...finalData,
+            title: `${finalData.title} (${i + 1}회차)`,
+            date: dateStr,
+          });
+        }
+        onSubmit(finalData, list);
+      } else {
+        onSubmit(finalData);
+      }
+    }
   };
 
   return (
@@ -170,6 +210,50 @@ export function LectureForm({ initialData, onSubmit, onCancel, isSubmitting = fa
           </Field>
         </div>
       </Section>
+
+      {!initialData && (
+        <Section title="반복 설정 (선택 사항)">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isRecurring"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                className="h-4.5 w-4.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+              />
+              <Label htmlFor="isRecurring" className="text-sm font-semibold text-foreground cursor-pointer">
+                이 일정을 반복해서 등록합니다
+              </Label>
+            </div>
+            {isRecurring && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 bg-muted/20 p-4 rounded-lg border border-border">
+                <Field label="반복 주기">
+                  <select
+                    value={recurrenceType}
+                    onChange={(e) => setRecurrenceType(e.target.value as "daily" | "weekly")}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="weekly">매주 (같은 요일)</option>
+                    <option value="daily">매일</option>
+                  </select>
+                </Field>
+                <Field label="반복 횟수">
+                  <Input
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={recurrenceCount}
+                    onChange={(e) => setRecurrenceCount(Number(e.target.value) || 2)}
+                    placeholder="예: 4"
+                    className="h-10 text-sm"
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
 
       <Section title="강사료 및 입금">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
