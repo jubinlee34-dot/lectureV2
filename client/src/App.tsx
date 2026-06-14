@@ -30,6 +30,7 @@ import SearchPage from "./pages/SearchPage";
 import TodoPage from "./pages/TodoPage";
 import WorkflowPage from "./pages/WorkflowPage";
 import LectureManagePage from "./pages/LectureManagePage";
+import InstructorProfilePage from "./pages/InstructorProfilePage";
 
 function Router() {
   return (
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/calendar" component={CalendarPage} />
       <Route path="/todos" component={TodoPage} />
       <Route path="/workflow" component={WorkflowPage} />
+      <Route path="/profile" component={InstructorProfilePage} />
 
       {/* 강의 관리 */}
       <Route path="/lectures" component={LectureList} />

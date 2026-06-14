@@ -11,24 +11,32 @@ import {
   BookOpen,
   Building2,
   Calendar,
+  Car,
   CheckCircle2,
   ClipboardCheck,
   Clock,
   FileText,
+  Info,
+  Loader2,
   MapPin,
   MessageCircle,
   MessageSquare,
+  Navigation,
   Pencil,
   Phone,
+  Settings,
+  ShieldCheck,
   Trash2,
   User,
   Users,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLocation, useParams } from "wouter";
 import type { WorkflowStage } from "../types/lecture";
+import { estimateTravel, type TravelEstimation } from "@/utils/maps";
+import type { InstructorProfile } from "../types/instructor";
 
 
 const stageBadge: Record<WorkflowStage, { label: string; className: string }> = {
@@ -43,6 +51,134 @@ const paymentBadge = {
   paid: { label: "입금 완료", className: "bg-green-100 text-green-700 border-green-200" },
 };
 
+interface TravelInfoCardProps {
+  homeAddress?: string;
+  destination: string;
+  apiKey?: string;
+}
+
+function TravelInfoCard({ homeAddress, destination, apiKey }: TravelInfoCardProps) {
+  const [, navigate] = useLocation();
+  const [loading, setLoading] = useState(false);
+  const [estimation, setEstimation] = useState<TravelEstimation | null>(null);
+
+  useEffect(() => {
+    if (!homeAddress || !destination) return;
+
+    let active = true;
+    const fetchTravel = async () => {
+      setLoading(true);
+      try {
+        const res = await estimateTravel(homeAddress, destination, apiKey);
+        if (active) {
+          setEstimation(res);
+        }
+      } catch (err) {
+        console.error("Failed to estimate travel", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    fetchTravel();
+    return () => {
+      active = false;
+    };
+  }, [homeAddress, destination, apiKey]);
+
+  if (!homeAddress) {
+    return (
+      <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4 sm:p-5 dark:border-amber-950/35 dark:bg-amber-950/10">
+        <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-400">
+          <Car className="h-4 w-4" />
+          출강 경로 정보
+        </h2>
+        <p className="text-xs text-amber-700/95 dark:text-amber-500/90 leading-relaxed">
+          강사의 집 주소가 등록되어 있지 않습니다. 프로필에서 집 주소를 등록하시면 강의 장소까지의 예상 이동 거리 및 소요 시간이 자동으로 표시됩니다.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-900/50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+          onClick={() => navigate("/profile")}
+        >
+          <Settings className="mr-1.5 h-3.5 w-3.5" />
+          집 주소 등록하러 가기
+        </Button>
+      </section>
+    );
+  }
+
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+    homeAddress
+  )}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+
+  return (
+    <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
+      <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <Car className="h-4 w-4 text-primary" />
+        출강 경로 정보 (자동차 기준)
+      </h2>
+
+      {loading ? (
+        <div className="flex h-16 items-center justify-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          경로 정보를 조회하는 중...
+        </div>
+      ) : estimation ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/40 p-3 border border-border/40">
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase font-semibold">예상 이동 시간</p>
+              <p className="text-lg font-bold text-foreground mt-0.5">{estimation.duration}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase font-semibold">예상 이동 거리</p>
+              <p className="text-lg font-bold text-foreground mt-0.5">{estimation.distance}</p>
+            </div>
+          </div>
+
+          <div className="text-xs text-muted-foreground space-y-1.5">
+            <div className="flex items-start gap-1">
+              <span className="font-semibold text-foreground/80 shrink-0">출발지:</span>
+              <span className="truncate" title={homeAddress}>{homeAddress}</span>
+            </div>
+            <div className="flex items-start gap-1">
+              <span className="font-semibold text-foreground/80 shrink-0">도착지:</span>
+              <span className="truncate" title={destination}>{destination}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-1.5 border-t border-border/40 sm:flex-row sm:items-center">
+            <a
+              href={directionsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-8 items-center justify-center rounded-md bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/20 transition-all flex-1 text-center"
+            >
+              <Navigation className="mr-1.5 h-3.5 w-3.5" />
+              구글 지도 길찾기 바로가기
+            </a>
+            {!estimation.realData ? (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
+                <Info className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                API 키 미설정 (시뮬레이션 데이터)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/20 border-green-200 dark:border-green-900/40 py-1 px-2.5 sm:self-center self-stretch flex items-center justify-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                실시간 구글 지도 연동됨
+              </Badge>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">경로 정보를 가져올 수 없습니다.</p>
+      )}
+    </section>
+  );
+}
+
 export default function LectureDetail() {
   const [, navigate] = useLocation();
   const { id } = useParams<{ id: string }>();
@@ -50,6 +186,25 @@ export default function LectureDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
   const lecture = getLectureById(id);
+  const [profile, setProfile] = useState<InstructorProfile | null>(null);
+
+  useEffect(() => {
+    const loadProfile = () => {
+      try {
+        const raw = localStorage.getItem("lecture-archive-instructor-profile");
+        if (raw) {
+          setProfile(JSON.parse(raw));
+        } else {
+          setProfile(null);
+        }
+      } catch (err) {
+        console.error("Failed to load profile", err);
+      }
+    };
+    loadProfile();
+    window.addEventListener("storage", loadProfile);
+    return () => window.removeEventListener("storage", loadProfile);
+  }, []);
 
   if (!lecture) {
     return (
@@ -114,6 +269,12 @@ export default function LectureDetail() {
         <Separator className="my-4" />
         <InfoItem icon={MapPin} label="교육장소" value={lecture.location} fullWidth />
       </section>
+
+      <TravelInfoCard
+        homeAddress={profile?.homeAddress}
+        destination={lecture.location}
+        apiKey={profile?.googleMapsApiKey}
+      />
 
       <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
         <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">

@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   PenLine,
   Search,
+  User,
   Workflow,
   X,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const navItems = [
   { path: "/lectures", label: "강의 목록", icon: BookOpen, group: "sub" },
   { path: "/search", label: "검색", icon: Search, group: "sub" },
   { path: "/lectures/new", label: "강의 등록", icon: PenLine, group: "sub" },
+  { path: "/profile", label: "강사 프로필", icon: User, group: "sub" },
 ];
 
 const tabItems = navItems.slice(0, 4);
