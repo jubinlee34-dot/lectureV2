@@ -3,6 +3,8 @@ export interface TravelEstimation {
   duration: string;
   realData: boolean;
   source?: "naver" | "google" | "simulated";
+  startCoords?: { x: string; y: string };
+  goalCoords?: { x: string; y: string };
 }
 
 const CACHE_KEY = "lecture-archive-travel-cache";

@@ -15,7 +15,7 @@ import {
 import { useState, useEffect, useMemo } from "react";
 import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
 import { formatDateShort, truncate } from "../utils/format";
-import { getCachedOrSimulatedTravel } from "../utils/maps";
+import { getCachedOrSimulatedTravel, estimateTravel, type TravelEstimation } from "../utils/maps";
 import type { InstructorProfile } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
 
@@ -62,9 +62,27 @@ export function LectureCard({
     return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "after");
   }, [workTasks, lecture.id]);
 
-  const travelInfo = homeAddress && lecture.location
-    ? getCachedOrSimulatedTravel(homeAddress, lecture.location)
-    : null;
+  const [travelInfo, setTravelInfo] = useState<TravelEstimation | null>(null);
+
+  useEffect(() => {
+    if (homeAddress && lecture.location) {
+      const cached = getCachedOrSimulatedTravel(homeAddress, lecture.location);
+      setTravelInfo(cached);
+
+      const hasNaverKeys = !!(profile?.naverMapClientId && profile?.naverMapClientSecret);
+      if (!cached.realData || (hasNaverKeys && cached.source !== "naver")) {
+        estimateTravel(homeAddress, lecture.location, profile?.naverMapClientId, profile?.naverMapClientSecret)
+          .then((res) => {
+            setTravelInfo(res);
+          })
+          .catch((err) => {
+            console.error("Failed to fetch travel estimation on card:", err);
+          });
+      }
+    } else {
+      setTravelInfo(null);
+    }
+  }, [homeAddress, lecture.location, profile?.naverMapClientId, profile?.naverMapClientSecret]);
 
   const handleStageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -164,7 +182,11 @@ export function LectureCard({
           </span>
           {travelInfo && (
             <a
-              href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}`}
+              href={
+                travelInfo.startCoords && travelInfo.goalCoords
+                  ? `https://map.naver.com/index.nhn?menu=route&slng=${travelInfo.startCoords.x}&slat=${travelInfo.startCoords.y}&stext=${encodeURIComponent(homeAddress)}&elng=${travelInfo.goalCoords.x}&elat=${travelInfo.goalCoords.y}&etext=${encodeURIComponent(lecture.location)}&pathType=1`
+                  : `https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}&pathType=1`
+              }
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}

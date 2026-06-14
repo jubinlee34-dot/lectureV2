@@ -117,7 +117,11 @@ async function startServer() {
       const goalCoords = await geocodeNaver(goal, clientId, clientSecret);
       const directions = await getDirectionsNaver(startCoords, goalCoords, clientId, clientSecret);
 
-      res.status(200).json(directions);
+      res.status(200).json({
+        ...directions,
+        startCoords,
+        goalCoords
+      });
     } catch (error: any) {
       console.error("Naver Directions Proxy Error:", error);
       res.status(500).json({ error: error.message || "Internal Server Error" });

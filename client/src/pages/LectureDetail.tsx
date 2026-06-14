@@ -121,11 +121,9 @@ function TravelInfoCard({
     );
   }
 
-  const naverDirectionsUrl = `https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(
-    homeAddress
-  )}&dname=${encodeURIComponent(destination)}&stext=${encodeURIComponent(
-    homeAddress
-  )}&etext=${encodeURIComponent(destination)}`;
+  const naverDirectionsUrl = estimation?.startCoords && estimation?.goalCoords
+    ? `https://map.naver.com/index.nhn?menu=route&slng=${estimation.startCoords.x}&slat=${estimation.startCoords.y}&stext=${encodeURIComponent(homeAddress)}&elng=${estimation.goalCoords.x}&elat=${estimation.goalCoords.y}&etext=${encodeURIComponent(destination)}&pathType=1`
+    : `https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(destination)}&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(destination)}&pathType=1`;
 
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
