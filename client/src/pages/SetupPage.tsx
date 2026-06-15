@@ -1,7 +1,16 @@
 import { Button } from "@/components/ui/button";
-import { supabase, supabaseConfig } from "@/lib/supabase";
 import { useSupabase } from "@/contexts/SupabaseContext";
-import { CheckCircle2, Clipboard, ExternalLink, Loader2, XCircle, AlertTriangle } from "lucide-react";
+import { supabase, supabaseConfig } from "@/lib/supabase";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clipboard,
+  ExternalLink,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -19,15 +28,23 @@ const REQUIRED_ENV_NAMES = [
   "NAVER_CLIENT_SECRET",
 ];
 
+const VERCEL_NAVER_STEPS = [
+  "Vercel Dashboard에 로그인합니다.",
+  "lectureV2 프로젝트를 선택하고 Settings로 이동합니다.",
+  "Environment Variables 메뉴를 엽니다.",
+  "NAVER_CLIENT_ID를 추가하고 네이버 클라우드 Client ID 값을 입력합니다.",
+  "NAVER_CLIENT_SECRET을 추가하고 네이버 클라우드 Client Secret 값을 입력합니다.",
+  "변경사항을 저장한 뒤 Redeploy를 실행합니다.",
+];
+
 export default function SetupPage() {
   const { profile, loading, error } = useSupabase();
-  const [supabaseStatus, setSupabaseStatus] = useState<SetupStatus>(
-    supabaseConfig.ready ? "missing" : "missing"
-  );
+  const [supabaseStatus, setSupabaseStatus] = useState<SetupStatus>("missing");
   const [supabaseMessage, setSupabaseMessage] = useState("확인 중입니다.");
   const [naverStatus, setNaverStatus] = useState<SetupStatus>("missing");
   const [naverMessage, setNaverMessage] = useState("확인 중입니다.");
   const [checking, setChecking] = useState(true);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -126,18 +143,61 @@ export default function SetupPage() {
       </div>
 
       <div className="mb-4 rounded-lg border border-border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold text-foreground">Vercel Environment Variables</h2>
-          <a
-            href="https://vercel.com/docs/projects/environment-variables"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            Vercel 문서
-            <ExternalLink className="h-3 w-3" />
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setGuideOpen((open) => !open)}>
+              {guideOpen ? <ChevronUp className="mr-1.5 h-4 w-4" /> : <ChevronDown className="mr-1.5 h-4 w-4" />}
+              설정 방법 보기
+            </Button>
+            <a
+              href="https://vercel.com/docs/projects/environment-variables"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-border px-3 text-xs font-medium text-primary hover:bg-muted"
+            >
+              Vercel 문서
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
         </div>
+
+        {guideOpen && (
+          <div className="mb-4 rounded-md border border-primary/20 bg-primary/5 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">네이버 API 환경변수 설정 순서</h3>
+            <ol className="space-y-2">
+              {VERCEL_NAVER_STEPS.map((step, index) => (
+                <li key={step} className="flex gap-2 text-sm text-foreground/85">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                    {index + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => copyText("NAVER_CLIENT_ID\nNAVER_CLIENT_SECRET", "네이버 환경변수 이름을 복사했습니다.")}
+              >
+                <Clipboard className="mr-1.5 h-4 w-4" />
+                네이버 변수명 복사
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => copyText(REQUIRED_ENV_NAMES.join("\n"), "필수 환경변수 이름을 복사했습니다.")}
+              >
+                <Clipboard className="mr-1.5 h-4 w-4" />
+                전체 변수명 복사
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-2 sm:grid-cols-2">
           {REQUIRED_ENV_NAMES.map((name) => (
             <button
@@ -167,7 +227,7 @@ export default function SetupPage() {
           title="네이버 API 환경변수"
           status={naverStatus}
           message={naverMessage}
-          action="Vercel Project Settings > Environment Variables에 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET을 입력하세요."
+          action="설정 방법 보기를 눌러 Vercel Dashboard에서 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET을 입력한 뒤 Redeploy하세요."
         />
         <SetupRow
           title="강사 프로필"
@@ -244,7 +304,7 @@ function StatusIcon({ status }: { status: SetupStatus }) {
 }
 
 function StatusBadge({ status }: { status: SetupStatus }) {
-  const config = {
+  const label = {
     normal: "정상",
     missing: "미설정",
     error: "오류",
@@ -258,7 +318,7 @@ function StatusBadge({ status }: { status: SetupStatus }) {
 
   return (
     <span className={`inline-flex shrink-0 items-center rounded-md border px-2 py-1 text-xs font-semibold ${className[status]}`}>
-      {config[status]}
+      {label[status]}
     </span>
   );
 }
