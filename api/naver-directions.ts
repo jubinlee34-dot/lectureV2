@@ -20,7 +20,7 @@ function getNaverKeys() {
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new HttpError("NAVER_CLIENT_ID and NAVER_CLIENT_SECRET must be set on the server", 500);
+    throw new HttpError("네이버 API 환경변수가 설정되지 않았습니다", 500);
   }
 
   return { clientId, clientSecret };
