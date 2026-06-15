@@ -10,6 +10,7 @@ import {
   Circle,
   ClipboardCheck,
   MessageCircle,
+  Minus,
   Phone,
   Plus,
   Star,
@@ -184,9 +185,18 @@ export default function LectureManagePage() {
       {(activeTab === "before" || activeTab === "after") && (
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {currentTasks.filter((task) => task.done).length}/{currentTasks.length}개 완료
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {currentTasks.filter((task) => task.done).length}/{currentTasks.length}개 완료
+              </span>
+              <button
+                onClick={() => setAddingStage(activeTab)}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none outline-none cursor-pointer"
+                title="업무 추가"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
             <div className="flex items-center gap-2">
               <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                 <div className="h-full rounded-full bg-primary" style={{ width: `${currentProgress}%` }} />
@@ -224,8 +234,8 @@ export default function LectureManagePage() {
                 >
                   <Star className={`h-3.5 w-3.5 ${task.starred ? "fill-amber-500" : ""}`} />
                 </button>
-                <button onClick={() => deleteTask(task.id)} className="p-1 text-muted-foreground hover:text-destructive">
-                  <Trash2 className="h-3.5 w-3.5" />
+                <button onClick={() => deleteTask(task.id)} className="p-1 text-muted-foreground hover:text-destructive" title="삭제">
+                  <Minus className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}

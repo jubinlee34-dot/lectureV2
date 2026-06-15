@@ -87,7 +87,7 @@ export default function CalendarPage() {
           <p className="mt-0.5 text-sm text-muted-foreground">캘린더에서 일정과 담당자 연락 버튼을 바로 확인합니다.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
             가져오기
           </Button>
@@ -100,6 +100,7 @@ export default function CalendarPage() {
                   downloadCSV(lectures, "강의목록.csv");
                   toast.success("구글 스프레드시트용 CSV 파일을 다운로드했습니다.");
                 }}
+                className="hidden lg:inline-flex"
               >
                 <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
                 구글 시트(CSV)
@@ -111,6 +112,7 @@ export default function CalendarPage() {
                   downloadICS(lectures, "강의일정.ics");
                   toast.success("구글 캘린더용 ICS 파일을 다운로드했습니다.");
                 }}
+                className="hidden lg:inline-flex"
               >
                 <Download className="mr-1.5 h-4 w-4 text-blue-600" />
                 구글 캘린더(ICS)
@@ -308,7 +310,7 @@ function QuickCard({
         <p className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{lecture.location}</p>
         {homeAddress && lecture.location && (
           <a
-            href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&pathType=1`}
+            href={`https://map.naver.com/index.nhn?menu=route&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}&pathType=0`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

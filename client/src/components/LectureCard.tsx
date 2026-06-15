@@ -161,7 +161,7 @@ export function LectureCard({
           </span>
           {homeAddress && lecture.location && (
             <a
-              href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(lecture.location)}&pathType=1`}
+              href={`https://map.naver.com/index.nhn?menu=route&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}&pathType=0`}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { nanoid } from "nanoid";
 import { dummyLectures, dummyTodos } from "../data/dummyData";
@@ -88,6 +88,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<InstructorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const initializingRef = useRef<Record<string, boolean>>({});
 
   // Initialize and Sync / Migrate / Seed
   useEffect(() => {
@@ -484,54 +485,69 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Check database directly
-    const { data: dbExisting, error: checkErr } = await supabase
-      .from("work_tasks")
-      .select("*")
-      .eq("lectureId", lectureId);
-
-    if (checkErr) throw checkErr;
-    if (dbExisting && dbExisting.length > 0) {
-      // Add missing tasks to state
-      setWorkTasks((prev) => {
-        const filtered = prev.filter((task) => task.lectureId !== lectureId);
-        return [...filtered, ...dbExisting];
-      });
+    if (initializingRef.current[lectureId]) {
       return;
     }
+    initializingRef.current[lectureId] = true;
 
-    // Seed default tasks
-    const now = new Date().toISOString();
-    const seeded: WorkTask[] = [
-      ...DEFAULT_BEFORE_TASKS.map((task) => ({
-        id: nanoid(),
-        lectureId,
-        stage: "before" as WorkTaskStage,
-        category: task.category,
-        text: task.text,
-        done: false,
-        createdAt: now,
-        starred: false,
-      })),
-      ...DEFAULT_AFTER_TASKS.map((task) => ({
-        id: nanoid(),
-        lectureId,
-        stage: "after" as WorkTaskStage,
-        category: task.category,
-        text: task.text,
-        done: false,
-        createdAt: now,
-        starred: false,
-      })),
-    ];
+    try {
+      // Check database directly
+      const { data: dbExisting, error: checkErr } = await supabase
+        .from("work_tasks")
+        .select("*")
+        .eq("lectureId", lectureId);
 
-    const { error } = await supabase.from("work_tasks").insert(seeded);
-    if (error) {
-      toast.error(`준비사항 초기화 실패: ${error.message}`);
-      throw error;
+      if (checkErr) {
+        initializingRef.current[lectureId] = false;
+        throw checkErr;
+      }
+      
+      if (dbExisting && dbExisting.length > 0) {
+        // Add missing tasks to state
+        setWorkTasks((prev) => {
+          const filtered = prev.filter((task) => task.lectureId !== lectureId);
+          return [...filtered, ...dbExisting];
+        });
+        return;
+      }
+
+      // Seed default tasks
+      const now = new Date().toISOString();
+      const seeded: WorkTask[] = [
+        ...DEFAULT_BEFORE_TASKS.map((task) => ({
+          id: nanoid(),
+          lectureId,
+          stage: "before" as WorkTaskStage,
+          category: task.category,
+          text: task.text,
+          done: false,
+          createdAt: now,
+          starred: false,
+        })),
+        ...DEFAULT_AFTER_TASKS.map((task) => ({
+          id: nanoid(),
+          lectureId,
+          stage: "after" as WorkTaskStage,
+          category: task.category,
+          text: task.text,
+          done: false,
+          createdAt: now,
+          starred: false,
+        })),
+      ];
+
+      const { error } = await supabase.from("work_tasks").insert(seeded);
+      if (error) {
+        initializingRef.current[lectureId] = false;
+        toast.error(`준비사항 초기화 실패: ${error.message}`);
+        throw error;
+      }
+
+      setWorkTasks((prev) => [...prev, ...seeded]);
+    } catch (e) {
+      initializingRef.current[lectureId] = false;
+      throw e;
     }
-
-    setWorkTasks((prev) => [...prev, ...seeded]);
   }, [workTasks]);
 
   const addWorkTask = useCallback(async (lectureId: string, stage: WorkTaskStage, text: string, category: WorkTaskCategory = "other"): Promise<void> => {

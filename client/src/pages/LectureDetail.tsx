@@ -95,7 +95,7 @@ function TravelInfoCard({
 
         <div className="flex flex-col gap-2 pt-1.5 border-t border-border/40 sm:flex-row sm:items-center">
           <a
-            href={`https://map.naver.com/index.nhn?menu=route&sname=${encodeURIComponent(homeAddress)}&dname=${encodeURIComponent(destination)}&pathType=1`}
+            href={`https://map.naver.com/index.nhn?menu=route&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(destination)}&pathType=0`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-8 items-center justify-center rounded-md bg-green-500/10 px-3 text-xs font-semibold text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-all flex-1 text-center border border-green-500/20 cursor-pointer"

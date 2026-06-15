@@ -120,7 +120,7 @@ export default function LectureList() {
           <p className="mt-0.5 text-sm text-muted-foreground">총 {lectures.length}개의 강의가 등록되어 있습니다.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
             가져오기
           </Button>
@@ -133,6 +133,7 @@ export default function LectureList() {
                   downloadCSV(sortedLectures, "강의목록.csv");
                   toast.success("구글 스프레드시트용 CSV 파일을 다운로드했습니다.");
                 }}
+                className="hidden lg:inline-flex"
               >
                 <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
                 구글 시트(CSV)
@@ -144,6 +145,7 @@ export default function LectureList() {
                   downloadICS(sortedLectures, "강의일정.ics");
                   toast.success("구글 캘린더용 ICS 파일을 다운로드했습니다.");
                 }}
+                className="hidden lg:inline-flex"
               >
                 <Calendar className="mr-1.5 h-4 w-4 text-blue-600" />
                 구글 캘린더(ICS)

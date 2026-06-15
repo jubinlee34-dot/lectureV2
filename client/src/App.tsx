@@ -11,6 +11,8 @@
  * - 모바일: 상단 fixed 헤더 + 하단 탭 네비게이션 + 메인 콘텐츠
  */
 
+import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -64,6 +66,15 @@ function Router() {
 }
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    const saved = localStorage.getItem("sidebarOpen");
+    return saved !== null ? saved === "true" : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sidebarOpen", String(sidebarOpen));
+  }, [sidebarOpen]);
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
@@ -77,9 +88,9 @@ function App() {
              * - 모바일: flex col (헤더 + 메인 + 하단탭)
              *   Sidebar 컴포넌트가 모바일 헤더와 하단탭을 모두 렌더링
              */}
-            <div className="flex h-screen overflow-hidden bg-background">
+            <div className="flex h-screen overflow-hidden bg-background max-w-full overflow-x-hidden">
               {/* 데스크탑 사이드바 + 모바일 헤더/하단탭 */}
-              <Sidebar />
+              <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
               {/* 메인 콘텐츠 — 모바일: 상단 헤더(56px) + 하단탭(64px) 제외한 높이 */}
               <main className="
@@ -87,7 +98,17 @@ function App() {
                 overflow-y-auto
                 pt-14 pb-16
                 lg:pt-0 lg:pb-0
+                max-w-full overflow-x-hidden relative
               ">
+                {!sidebarOpen && (
+                  <button
+                    onClick={() => setSidebarOpen(true)}
+                    className="hidden lg:flex fixed left-4 top-4 z-40 h-8 w-8 items-center justify-center rounded-lg border border-border bg-card shadow-md hover:bg-muted text-muted-foreground transition-all duration-200"
+                    title="메뉴 열기"
+                  >
+                    <ChevronRight className="h-4.5 w-4.5" />
+                  </button>
+                )}
                 <Router />
               </main>
             </div>

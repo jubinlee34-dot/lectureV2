@@ -41,6 +41,7 @@ export default function Dashboard() {
   const { lectures, stats, upcomingLectures } = useLectures();
   const { pendingTodos, toggleTodo } = useTodos();
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
+  const [feeOpen, setFeeOpen] = useState(false);
 
   const beforeCount = lectures.filter((lecture) => lecture.workflowStage === "before").length;
   const afterCount = lectures.filter((lecture) => lecture.workflowStage === "after").length;
@@ -72,22 +73,6 @@ export default function Dashboard() {
         <StatCard icon={<CalendarDays className="h-5 w-5 text-amber-600" />} label="예정 강의" value={`${stats.upcomingCount}건`} onClick={() => navigate("/calendar")} />
       </div>
 
-      <div className="mb-4 rounded-xl border border-border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-            <Wallet className="h-4 w-4 text-primary" />
-            이번 달 강사료 현황
-          </h2>
-          <button onClick={() => navigate("/lectures")} className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-primary">
-            전체 보기 <ArrowRight className="h-3 w-3" />
-          </button>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <MoneyBox label="총 강사료" value={formatKRW(stats.thisMonthFee)} />
-          <MoneyBox label="입금 완료" value={formatKRW(stats.thisMonthPaid)} tone="green" />
-          <MoneyBox label="미입금" value={formatKRW(stats.thisMonthUnpaid)} tone="red" />
-        </div>
-      </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <section className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
@@ -242,6 +227,29 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+      </div>
+
+      {/* 강사료 현황 토글 */}
+      <div className="mt-4 rounded-xl border border-border bg-card p-4">
+        <button
+          onClick={() => setFeeOpen((open) => !open)}
+          className="w-full flex items-center justify-between text-sm font-semibold text-foreground cursor-pointer border-none bg-transparent outline-none"
+        >
+          <span className="flex items-center gap-1.5">
+            <Wallet className="h-4 w-4 text-primary" />
+            이번 달 강사료 현황
+          </span>
+          <span className="text-xs text-muted-foreground font-medium">
+            {feeOpen ? "접기 ▲" : "펼치기 ▼"}
+          </span>
+        </button>
+        {feeOpen && (
+          <div className="mt-4 grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
+            <MoneyBox label="총 강사료" value={formatKRW(stats.thisMonthFee)} />
+            <MoneyBox label="입금 완료" value={formatKRW(stats.thisMonthPaid)} tone="green" />
+            <MoneyBox label="미입금" value={formatKRW(stats.thisMonthUnpaid)} tone="red" />
+          </div>
+        )}
       </div>
 
       {smsTarget && (
