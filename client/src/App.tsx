@@ -30,6 +30,7 @@ import LectureFormPage from "./pages/LectureFormPage";
 import LectureList from "./pages/LectureList";
 import ReportPage from "./pages/ReportPage";
 import SearchPage from "./pages/SearchPage";
+import SetupPage from "./pages/SetupPage";
 import TodoPage from "./pages/TodoPage";
 import WorkflowPage from "./pages/WorkflowPage";
 import LectureManagePage from "./pages/LectureManagePage";
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/todos" component={TodoPage} />
       <Route path="/workflow" component={WorkflowPage} />
       <Route path="/profile" component={InstructorProfilePage} />
+      <Route path="/setup" component={SetupPage} />
 
       {/* 강의 관리 */}
       <Route path="/lectures" component={LectureList} />

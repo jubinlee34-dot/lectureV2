@@ -101,9 +101,17 @@ function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
       server.middlewares.use("/api/naver-directions", async (req, res) => {
         try {
           const parsedUrl = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+          const health = parsedUrl.searchParams.get("health");
           const start = parsedUrl.searchParams.get("start");
           const goal = parsedUrl.searchParams.get("goal");
           const query = parsedUrl.searchParams.get("query");
+
+          if (health === "1") {
+            writeJson(res, 200, {
+              configured: Boolean((env.NAVER_CLIENT_ID || process.env.NAVER_CLIENT_ID) && (env.NAVER_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET)),
+            });
+            return;
+          }
 
           if (!query && !(start && goal)) {
             writeJson(res, 400, { error: "Missing query or start/goal parameters" });

@@ -98,9 +98,17 @@ async function startServer() {
 
   app.get("/api/naver-directions", async (req, res) => {
     try {
+      const health = typeof req.query.health === "string" ? req.query.health : "";
       const query = typeof req.query.query === "string" ? req.query.query : "";
       const start = typeof req.query.start === "string" ? req.query.start : "";
       const goal = typeof req.query.goal === "string" ? req.query.goal : "";
+
+      if (health === "1") {
+        res.json({
+          configured: Boolean(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET),
+        });
+        return;
+      }
 
       if (!query && !(start && goal)) {
         res.status(400).json({ error: "Missing query or start/goal parameters" });

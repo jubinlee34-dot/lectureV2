@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   PenLine,
   Search,
+  Settings,
   User,
   Workflow,
   X,
@@ -24,6 +25,7 @@ const navItems = [
   { path: "/search", label: "검색", icon: Search, group: "sub" },
   { path: "/lectures/new", label: "강의 등록", icon: PenLine, group: "sub" },
   { path: "/profile", label: "강사 프로필", icon: User, group: "sub" },
+  { path: "/setup", label: "설정 점검", icon: Settings, group: "sub" },
 ];
 
 const tabItems = navItems.slice(0, 4);

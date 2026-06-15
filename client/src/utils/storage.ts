@@ -47,15 +47,18 @@ export function recordSmsHistory(
     sentAt: new Date().toISOString(),
   };
 
-  // Save to Supabase asynchronously
-  supabase
-    .from("sms_history")
-    .insert(record)
-    .then(({ error }) => {
-      if (error) {
-        console.error("Failed to save SMS history to Supabase:", error);
-      }
-    });
+  try {
+    supabase
+      .from("sms_history")
+      .insert(record)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to save SMS history to Supabase:", error);
+        }
+      });
+  } catch (error) {
+    console.error("Failed to save SMS history to Supabase:", error);
+  }
 
   // Dispatch event to sync state in SupabaseContext
   window.dispatchEvent(
