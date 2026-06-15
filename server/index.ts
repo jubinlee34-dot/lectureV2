@@ -142,8 +142,8 @@ async function startServer() {
 
   const staticPath =
     process.env.NODE_ENV === "production"
-      ? path.resolve(__dirname, "public")
-      : path.resolve(__dirname, "..", "dist", "public");
+      ? path.resolve(__dirname, "..", "dist")
+      : path.resolve(__dirname, "..", "dist");
 
   app.use(express.static(staticPath));
 
