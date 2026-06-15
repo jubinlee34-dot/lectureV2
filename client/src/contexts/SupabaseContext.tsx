@@ -55,9 +55,6 @@ const DEFAULT_PROFILE: InstructorProfile = {
   homeAddress: "",
   phone: "",
   email: "",
-  naverMapClientId: "",
-  naverMapClientSecret: "",
-  password: "",
   customFields: [
     { id: "bank", label: "주거래 은행 및 계좌번호", value: "" },
     { id: "affiliation", label: "소속 및 직함", value: "" },
@@ -80,6 +77,33 @@ const DEFAULT_AFTER_TASKS: Array<{ category: WorkTaskCategory; text: string }> =
   { category: "invoice", text: "강사료 입금 확인" },
   { category: "blog", text: "블로그/SNS 홍보 초안 작성" },
 ];
+
+function parseCachedDistance(value?: number | string): number | undefined {
+  if (typeof value === "number") return value;
+  if (!value) return undefined;
+  const parsed = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseCachedDuration(value?: number | string): number | undefined {
+  if (typeof value === "number") return value;
+  if (!value) return undefined;
+  const hours = value.match(/(\d+)\s*시간/);
+  const minutes = value.match(/(\d+)\s*분/);
+  const hourValue = hours ? Number.parseInt(hours[1], 10) * 60 : 0;
+  const minuteValue = minutes ? Number.parseInt(minutes[1], 10) : Number.parseInt(value, 10);
+  const total = hourValue + (Number.isFinite(minuteValue) ? minuteValue : 0);
+  return total > 0 ? total : undefined;
+}
+
+function normalizeLecture(row: any): Lecture {
+  return {
+    ...row,
+    travelDistanceKm: parseCachedDistance(row.travelDistanceKm ?? row.travel_distance_km),
+    travelDurationMin: parseCachedDuration(row.travelDurationMin ?? row.travel_duration_min),
+    travelUpdatedAt: row.travelUpdatedAt ?? row.travel_updated_at,
+  } as Lecture;
+}
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [lectures, setLectures] = useState<Lecture[]>([]);
@@ -106,7 +130,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
         if (lecturesError) throw lecturesError;
 
-        let loadedLectures = dbLectures || [];
+        let loadedLectures = (dbLectures || []).map(normalizeLecture);
         let loadedTodos: Todo[] = [];
         let loadedWorkTasks: WorkTask[] = [];
         let loadedSmsHistory: SmsHistory[] = [];
@@ -136,7 +160,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
             if (localLectures.length > 0) {
               const { error: insErr } = await supabase.from("lectures").insert(localLectures);
               if (insErr) throw insErr;
-              loadedLectures = localLectures;
+              loadedLectures = localLectures.map(normalizeLecture);
             }
 
             // Save Todos
@@ -177,7 +201,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
             // Insert default dummy lectures
             const { error: insErr } = await supabase.from("lectures").insert(dummyLectures);
             if (insErr) throw insErr;
-            loadedLectures = dummyLectures;
+            loadedLectures = dummyLectures.map(normalizeLecture);
 
             // Insert default dummy todos
             const { error: insTodoErr } = await supabase.from("todos").insert(dummyTodos);
@@ -287,16 +311,16 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   // ==================== LECTURE CRUD ====================
 
   const addLecture = useCallback(async (formData: LectureFormData): Promise<Lecture> => {
-    let travel_distance_km: string | undefined = undefined;
-    let travel_duration_min: string | undefined = undefined;
-    let travel_updated_at: string | undefined = undefined;
+    let travelDistanceKm: number | undefined = undefined;
+    let travelDurationMin: number | undefined = undefined;
+    let travelUpdatedAt: string | undefined = undefined;
 
     if (profile?.homeAddress && formData.location) {
       try {
         const route = await getRouteInfo(profile.homeAddress, formData.location);
-        travel_distance_km = route.distance;
-        travel_duration_min = route.duration;
-        travel_updated_at = new Date().toISOString();
+        travelDistanceKm = route.distanceKm;
+        travelDurationMin = route.durationMin;
+        travelUpdatedAt = new Date().toISOString();
       } catch (e) {
         console.error("Failed to calculate route info during lecture registration:", e);
       }
@@ -306,9 +330,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       ...formData,
       id: nanoid(),
       createdAt: new Date().toISOString(),
-      travel_distance_km,
-      travel_duration_min,
-      travel_updated_at,
+      travelDistanceKm,
+      travelDurationMin,
+      travelUpdatedAt,
     };
     
     const { error } = await supabase.from("lectures").insert(newLecture);
@@ -374,16 +398,16 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const existing = lectures.find((l) => l.id === id);
     
     const locationChanged = data.location !== undefined && data.location !== existing?.location;
-    const missingTravelInfo = existing && (!existing.travel_distance_km || !existing.travel_duration_min);
+    const missingTravelInfo = existing && (!existing.travelDistanceKm || !existing.travelDurationMin);
     
     if (profile?.homeAddress && (data.location || existing?.location) && (locationChanged || missingTravelInfo)) {
       try {
         const targetLocation = data.location || existing?.location || "";
         const route = await getRouteInfo(profile.homeAddress, targetLocation);
         travelData = {
-          travel_distance_km: route.distance,
-          travel_duration_min: route.duration,
-          travel_updated_at: new Date().toISOString(),
+          travelDistanceKm: route.distanceKm,
+          travelDurationMin: route.durationMin,
+          travelUpdatedAt: new Date().toISOString(),
         };
       } catch (e) {
         console.error("Failed to calculate route info during lecture update:", e);
@@ -576,14 +600,20 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         })),
       ];
 
-      const { error } = await supabase.from("work_tasks").insert(seeded);
+      const { error } = await supabase
+        .from("work_tasks")
+        .upsert(seeded, { onConflict: '"lectureId",stage,text', ignoreDuplicates: true });
       if (error) {
         initializingRef.current[lectureId] = false;
         toast.error(`준비사항 초기화 실패: ${error.message}`);
         throw error;
       }
 
-      setWorkTasks((prev) => [...prev, ...seeded]);
+      setWorkTasks((prev) => {
+        const existingKeys = new Set(prev.map((task) => `${task.lectureId}|${task.stage}|${task.text}`));
+        const nextSeeded = seeded.filter((task) => !existingKeys.has(`${task.lectureId}|${task.stage}|${task.text}`));
+        return [...prev, ...nextSeeded];
+      });
     } catch (e) {
       initializingRef.current[lectureId] = false;
       throw e;
@@ -603,13 +633,23 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       starred: false,
     };
 
-    const { error } = await supabase.from("work_tasks").insert(newTask);
+    const { error } = await supabase
+      .from("work_tasks")
+      .upsert(newTask, { onConflict: '"lectureId",stage,text', ignoreDuplicates: true });
     if (error) {
       toast.error(`준비사항 등록 실패: ${error.message}`);
       throw error;
     }
 
-    setWorkTasks((prev) => [...prev, newTask]);
+    setWorkTasks((prev) => {
+      const exists = prev.some(
+        (task) =>
+          task.lectureId === newTask.lectureId &&
+          task.stage === newTask.stage &&
+          task.text === newTask.text
+      );
+      return exists ? prev : [...prev, newTask];
+    });
     toast.success("준비사항 항목이 추가되었습니다.");
   }, []);
 
@@ -782,7 +822,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       const { data: dbSms } = await supabase.from("sms_history").select("*").order("sentAt", { ascending: false });
       const { data: dbProfile } = await supabase.from("instructor_profile").select("*").eq("id", "default").maybeSingle();
 
-      if (dbLectures) setLectures(dbLectures);
+          if (dbLectures) setLectures(dbLectures.map(normalizeLecture));
       if (dbTodos) setTodos(dbTodos);
       if (dbTasks) setWorkTasks(dbTasks);
       if (dbSms) setSmsHistory(dbSms);

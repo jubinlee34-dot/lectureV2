@@ -1,608 +1,214 @@
-import { useState, useEffect } from "react";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import {
-  User,
-  Phone,
-  Mail,
-  MapPin,
-  Key,
-  Plus,
-  Trash2,
-  Save,
-  Info,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  PlusCircle,
-  Briefcase,
-  X,
-} from "lucide-react";
-import type { InstructorProfile, CustomProfileField } from "../types/instructor";
-import { useSupabase } from "../contexts/SupabaseContext";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import { getRouteInfo } from "@/services/naverRouteService";
-import { Car, Settings, Loader2 } from "lucide-react";
+import type { InstructorProfile } from "@/types/instructor";
+import { Car, Mail, MapPin, Phone, Save, ShieldCheck, User } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 const defaultProfile: InstructorProfile = {
   name: "",
   homeAddress: "",
   phone: "",
   email: "",
-  naverMapClientId: "",
-  naverMapClientSecret: "",
-  customFields: [
-    { id: "bank", label: "주거래 은행 및 계좌번호", value: "" },
-    { id: "affiliation", label: "소속 및 직함", value: "" },
-    { id: "specialty", label: "주요 강의 분야", value: "" },
-  ],
+  customFields: [],
 };
 
 export default function InstructorProfilePage() {
-  const { profile: dbProfile, updateProfile, uploadLocalDataToSupabase, lectures, updateLecture } = useSupabase();
+  const { profile: dbProfile, updateProfile, lectures, updateLecture } = useSupabase();
   const [profile, setProfile] = useState<InstructorProfile>(defaultProfile);
-  const [showNaverSecret, setShowNaverSecret] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
-  const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0 });
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
 
-  const handleRecalculateAllRoutes = async (targetAddress?: string) => {
-    const homeAddress = targetAddress || profile.homeAddress.trim();
-    if (!homeAddress) {
-      toast.error("출발지(집 주소)가 등록되어 있어야 합니다.");
-      return;
-    }
-
-    const lecturesWithLocation = lectures.filter(l => l.location && l.location.trim() !== "");
-    if (lecturesWithLocation.length === 0) {
-      toast.info("장소가 등록된 강의가 없습니다.");
-      return;
-    }
-
-    setIsRecalculating(true);
-    setRecalcProgress({ current: 0, total: lecturesWithLocation.length });
-    const toastId = toast.loading(`전체 경로 계산 중... (0/${lecturesWithLocation.length})`);
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < lecturesWithLocation.length; i++) {
-      const lecture = lecturesWithLocation[i];
-      setRecalcProgress({ current: i + 1, total: lecturesWithLocation.length });
-      toast.loading(`전체 경로 계산 중... (${i + 1}/${lecturesWithLocation.length})`, { id: toastId });
-
-      try {
-        const route = await getRouteInfo(homeAddress, lecture.location);
-        await updateLecture(lecture.id, {
-          travel_distance_km: route.distance,
-          travel_duration_min: route.duration,
-          travel_updated_at: new Date().toISOString()
-        });
-        successCount++;
-      } catch (err) {
-        console.error(`Failed to calculate route for lecture ${lecture.id}:`, err);
-        failCount++;
-      }
-      // Brief pause to prevent rate limiting
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-
-    toast.dismiss(toastId);
-    setIsRecalculating(false);
-    toast.success(`경로 계산이 완료되었습니다. (성공: ${successCount}건, 실패: ${failCount}건)`);
-  };
-
-  // Lock Screen States
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [enteredPassword, setEnteredPassword] = useState("");
-
-  // Custom field creation states
-  const [newFieldLabel, setNewFieldLabel] = useState("");
-  const [newFieldValue, setNewFieldValue] = useState("");
-
-  // Sync with DB profile on load
   useEffect(() => {
-    if (dbProfile) {
-      setProfile({
-        ...defaultProfile,
-        ...dbProfile,
-        customFields: dbProfile.customFields || defaultProfile.customFields,
-      });
-      // If there is no password set in the DB profile, unlock automatically
-      if (!dbProfile.password || dbProfile.password.trim() === "") {
-        setIsUnlocked(true);
-      }
-    } else {
-      setIsUnlocked(true);
-    }
+    if (dbProfile) setProfile({ ...defaultProfile, ...dbProfile });
   }, [dbProfile]);
 
-  const handleUnlock = () => {
-    if (dbProfile && enteredPassword === dbProfile.password) {
-      setIsUnlocked(true);
-      toast.success("프로필 잠금이 해제되었습니다.");
-    } else {
-      toast.error("비밀번호가 일치하지 않습니다. 다시 시도해 주세요.");
+  const handleFieldChange = (field: keyof InstructorProfile, value: string) => {
+    setProfile((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      await updateProfile(profile);
+      toast.success("프로필을 저장했습니다.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "프로필 저장에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleSearchNaverMap = () => {
     const address = profile.homeAddress.trim();
     if (!address) {
-      toast.error("검색할 주소 또는 장소명을 입력해주세요.");
+      toast.error("검색할 주소를 입력해주세요.");
       return;
     }
-    const url = `https://map.naver.com/v5/search/${encodeURIComponent(address)}`;
-    window.open(url, "_blank");
+    window.open(`https://map.naver.com/v5/search/${encodeURIComponent(address)}`, "_blank", "noopener,noreferrer");
   };
 
-  const handleSave = async () => {
-    try {
-      const isAddressChanged = dbProfile && dbProfile.homeAddress !== profile.homeAddress;
-      await updateProfile(profile);
-      toast.success("강사 프로필 정보가 안전하게 저장되었습니다.");
+  const handleRecalculateAllRoutes = async () => {
+    const homeAddress = profile.homeAddress.trim();
+    if (!homeAddress) {
+      toast.error("출발지 주소를 먼저 저장해주세요.");
+      return;
+    }
 
-      if (isAddressChanged && profile.homeAddress.trim() !== "") {
-        if (confirm("출발지(집 주소)가 변경되었습니다. 모든 강의의 예상 출강 경로를 새 주소 기준으로 재계산하시겠습니까?")) {
-          await handleRecalculateAllRoutes(profile.homeAddress);
-        }
+    const lecturesWithLocation = lectures.filter((lecture) => lecture.location?.trim());
+    if (lecturesWithLocation.length === 0) {
+      toast.info("장소가 등록된 강의가 없습니다.");
+      return;
+    }
+
+    setIsRecalculating(true);
+    setProgress({ current: 0, total: lecturesWithLocation.length });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let index = 0; index < lecturesWithLocation.length; index += 1) {
+      const lecture = lecturesWithLocation[index];
+      setProgress({ current: index + 1, total: lecturesWithLocation.length });
+
+      try {
+        const route = await getRouteInfo(homeAddress, lecture.location);
+        await updateLecture(lecture.id, {
+          travelDistanceKm: route.distanceKm,
+          travelDurationMin: route.durationMin,
+          travelUpdatedAt: new Date().toISOString(),
+        });
+        successCount += 1;
+      } catch (error) {
+        console.error(`Failed to calculate route for lecture ${lecture.id}:`, error);
+        failCount += 1;
       }
-    } catch (err) {
-      toast.error("프로필 저장에 실패했습니다.");
-    }
-  };
 
-  const handleFieldChange = (key: keyof Omit<InstructorProfile, "customFields">, val: string) => {
-    setProfile(prev => ({
-      ...prev,
-      [key]: val,
-    }));
-  };
-
-  const handleCustomFieldChange = (id: string, value: string) => {
-    setProfile(prev => ({
-      ...prev,
-      customFields: prev.customFields.map(f => (f.id === id ? { ...f, value } : f)),
-    }));
-  };
-
-  const addCustomField = () => {
-    if (!newFieldLabel.trim()) {
-      toast.error("항목 이름을 입력해주세요.");
-      return;
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
 
-    const newField: CustomProfileField = {
-      id: `custom_${Date.now()}`,
-      label: newFieldLabel.trim(),
-      value: newFieldValue.trim(),
-    };
-
-    setProfile(prev => ({
-      ...prev,
-      customFields: [...prev.customFields, newField],
-    }));
-
-    setNewFieldLabel("");
-    setNewFieldValue("");
-    toast.success(`'${newField.label}' 항목이 추가되었습니다.`);
+    setIsRecalculating(false);
+    toast.success(`경로 계산 완료: 성공 ${successCount}건, 실패 ${failCount}건`);
   };
-
-  const removeCustomField = (id: string, label: string) => {
-    setProfile(prev => ({
-      ...prev,
-      customFields: prev.customFields.filter(f => f.id !== id),
-    }));
-    toast.success(`'${label}' 항목이 삭제되었습니다.`);
-  };
-
-  const hasPassword = !!(dbProfile && dbProfile.password && dbProfile.password.trim() !== "");
-
-  if (hasPassword && !isUnlocked) {
-    return (
-      <div className="flex min-h-[70vh] items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-md border border-border/80 shadow-xl backdrop-blur-md bg-card/75">
-          <CardHeader className="text-center pb-2">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Key className="h-6 w-6" />
-            </div>
-            <CardTitle className="text-xl font-bold">프로필 잠금 해제</CardTitle>
-            <CardDescription className="text-sm text-muted-foreground mt-1">
-              강사 프로필 및 네이버 지도 API 설정을 편집하려면 비밀번호를 입력해주세요.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="lock-password">비밀번호</Label>
-              <Input
-                id="lock-password"
-                type="password"
-                placeholder="비밀번호 입력"
-                value={enteredPassword}
-                onChange={(e) => setEnteredPassword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleUnlock();
-                }}
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-2 pt-2">
-            <Button onClick={handleUnlock} className="w-full shadow-md">
-              잠금 해제
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">강사 프로필 설정</h1>
-          <p className="text-sm text-muted-foreground">
-            강사 개인 정보와 개인 강사 업무에 필요한 관리 항목을 입력하고 조율할 수 있습니다.
-          </p>
-        </div>
-        <Button onClick={handleSave} className="w-full sm:w-auto shadow-md transition-all">
-          <Save className="mr-2 h-4 w-4" />
-          저장하기
-        </Button>
+    <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-foreground">강사 프로필</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          연락처와 출발 주소를 관리합니다. 네이버 API secret은 이 화면에 저장하지 않습니다.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Left Column: Basic Profile & Google Maps config */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Basic Info Card */}
-          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <User className="h-5 w-5 text-primary" />
-                기본 인적 사항
-              </CardTitle>
-              <CardDescription>출강 시 매칭 및 안내에 활용될 기본적인 강사 프로필 정보입니다.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="profile-name" className="text-xs font-semibold">이름</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="profile-name"
-                      placeholder="홍길동"
-                      value={profile.name}
-                      onChange={e => handleFieldChange("name", e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="profile-phone" className="text-xs font-semibold">연락처</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="profile-phone"
-                      placeholder="010-1234-5678"
-                      value={profile.phone}
-                      onChange={e => handleFieldChange("phone", e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="profile-email" className="text-xs font-semibold">이메일 주소</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="profile-email"
-                    type="email"
-                    placeholder="instructor@example.com"
-                    value={profile.email}
-                    onChange={e => handleFieldChange("email", e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="profile-address" className="text-xs font-semibold">
-                  집 주소 (출발지)
-                </Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="profile-address"
-                      placeholder="예: 서울특별시 강남구 테헤란로 152"
-                      value={profile.homeAddress}
-                      onChange={e => handleFieldChange("homeAddress", e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleSearchNaverMap}
-                    className="shrink-0 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all text-xs h-10 px-3"
-                  >
-                    네이버 지도 검색
-                  </Button>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  * 입력하신 집 주소는 강의 상세 페이지 및 강의 카드에서 네이버 지도 길찾기 연결 시 출발지로 사용됩니다.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Naver Map API Settings Card */}
-          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Settings className="h-5 w-5 text-primary" />
-                네이버 지도 API 설정
-              </CardTitle>
-              <CardDescription>
-                출강 경로(예상 거리 및 소요 시간)를 실시간으로 자동 계산하기 위한 네이버 OpenAPI 키 설정입니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="naver-client-id" className="text-xs font-semibold">Naver Client ID</Label>
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <User className="h-5 w-5 text-primary" />
+              기본 정보
+            </CardTitle>
+            <CardDescription>강의 관리와 문자 템플릿에 사용할 정보를 입력합니다.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Field icon={User} id="profile-name" label="이름">
+              <Input
+                id="profile-name"
+                value={profile.name}
+                onChange={(event) => handleFieldChange("name", event.target.value)}
+              />
+            </Field>
+            <Field icon={Phone} id="profile-phone" label="전화번호">
+              <Input
+                id="profile-phone"
+                value={profile.phone}
+                onChange={(event) => handleFieldChange("phone", event.target.value)}
+              />
+            </Field>
+            <Field icon={Mail} id="profile-email" label="이메일">
+              <Input
+                id="profile-email"
+                type="email"
+                value={profile.email}
+                onChange={(event) => handleFieldChange("email", event.target.value)}
+              />
+            </Field>
+            <Field icon={MapPin} id="profile-address" label="출발 주소">
+              <div className="flex gap-2">
                 <Input
-                  id="naver-client-id"
-                  placeholder="Naver Map Client ID 입력"
-                  value={profile.naverMapClientId || ""}
-                  onChange={e => handleFieldChange("naverMapClientId", e.target.value)}
+                  id="profile-address"
+                  value={profile.homeAddress}
+                  onChange={(event) => handleFieldChange("homeAddress", event.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="naver-client-secret" className="text-xs font-semibold">Naver Client Secret</Label>
-                  <button
-                    type="button"
-                    onClick={() => setShowNaverSecret(!showNaverSecret)}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                  >
-                    {showNaverSecret ? (
-                      <>
-                        <EyeOff className="h-3 w-3" /> 숨기기
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-3 w-3" /> 표시
-                      </>
-                    )}
-                  </button>
-                </div>
-                <Input
-                  id="naver-client-secret"
-                  type={showNaverSecret ? "text" : "password"}
-                  placeholder="Naver Map Client Secret 입력"
-                  value={profile.naverMapClientSecret || ""}
-                  onChange={e => handleFieldChange("naverMapClientSecret", e.target.value)}
-                  className="font-mono"
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                * 네이버 클라우드 플랫폼(NCP)의 [AI·Naver API] 서비스에서 Map (Geocoding, Directions 15) 권한이 추가된 Application의 Client ID와 Client Secret을 입력해주세요.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* 보안 및 데이터 설정 Card */}
-          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ShieldCheck className="h-5 w-5 text-primary" />
-                보안 및 데이터 관리
-              </CardTitle>
-              <CardDescription>
-                프로필 잠금 비밀번호를 설정하거나, 브라우저 로컬 데이터를 Supabase 클라우드로 백업합니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {/* Password Setup */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="profile-password-setup" className="text-xs font-semibold">
-                    프로필 잠금 비밀번호 설정
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                  >
-                    {showPassword ? (
-                      <>
-                        <EyeOff className="h-3 w-3" /> 숨기기
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-3 w-3" /> 표시
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="relative">
-                  <Key className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="profile-password-setup"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="비밀번호 설정 (비워두면 잠금 해제)"
-                    value={profile.password || ""}
-                    onChange={e => handleFieldChange("password", e.target.value)}
-                    className="pl-9 text-sm font-mono"
-                  />
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  * 비밀번호를 설정하면 강사 프로필 페이지 진입 시 비밀번호를 확인하는 잠금 화면이 나타납니다.
-                </p>
-              </div>
-
-              <Separator className="my-1" />
-
-              {/* Data Migration / Upload */}
-              <div className="space-y-3">
-                <Label className="text-xs font-semibold block">데이터 백업 및 마이그레이션</Label>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  현재 웹 브라우저(localStorage)에 저장되어 있는 모든 강의 일정, 할 일 목록, 준비사항 체크리스트, SMS 발송 이력을 Supabase 클라우드 데이터베이스로 강제 업로드하여 통합(Upsert)합니다.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full text-xs hover:bg-primary/5 hover:text-primary transition-all flex items-center justify-center gap-1 border-primary/20"
-                  onClick={async () => {
-                    if (confirm("정말로 로컬 데이터를 Supabase 클라우드로 업로드하시겠습니까? 기존에 동일한 ID를 가진 데이터는 덮어씌워질 수 있습니다.")) {
-                      try {
-                        await uploadLocalDataToSupabase();
-                      } catch (e) {
-                        // error is handled inside uploadLocalDataToSupabase
-                      }
-                    }
-                  }}
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  로컬 데이터를 Supabase에 강제 업로드
+                <Button type="button" variant="outline" onClick={handleSearchNaverMap}>
+                  지도 검색
                 </Button>
               </div>
+            </Field>
+            <Button type="button" onClick={handleSave} disabled={isSaving}>
+              <Save className="mr-1.5 h-4 w-4" />
+              {isSaving ? "저장 중" : "저장"}
+            </Button>
+          </CardContent>
+        </Card>
 
-              <Separator className="my-1" />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Car className="h-5 w-5 text-primary" />
+              경로 캐시
+            </CardTitle>
+            <CardDescription>
+              모든 강의의 거리/시간을 수동으로 다시 계산해 Supabase 캐시값을 갱신합니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" variant="outline" onClick={handleRecalculateAllRoutes} disabled={isRecalculating}>
+              {isRecalculating ? `계산 중 (${progress.current}/${progress.total})` : "전체 경로 다시 계산"}
+            </Button>
+          </CardContent>
+        </Card>
 
-              {/* Travel Route Recalculation */}
-              <div className="space-y-3">
-                <Label className="text-xs font-semibold block">출강 경로 일괄 관리</Label>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  등록된 모든 강의의 출강 경로(예상 거리 및 소요 시간)를 현재 설정된 집 주소 기준으로 일괄 재계산합니다.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isRecalculating}
-                  className="w-full text-xs hover:bg-primary/5 hover:text-primary transition-all flex items-center justify-center gap-1 border-primary/20"
-                  onClick={() => handleRecalculateAllRoutes()}
-                >
-                  {isRecalculating ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      경로 계산 중 ({recalcProgress.current}/{recalcProgress.total})
-                    </>
-                  ) : (
-                    <>
-                      <Car className="h-3.5 w-3.5" />
-                      전체 경로 재계산
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column: Dynamic Business/Work Items */}
-        <div className="space-y-6">
-          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60 h-full flex flex-col">
-            <CardHeader className="pb-4 shrink-0">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Briefcase className="h-5 w-5 text-primary" />
-                강사 업무용 등록 항목
-              </CardTitle>
-              <CardDescription>
-                개인 강사 업무에 필요한 중요 정보(계좌 정보, 소속, 주요 준비물 등)를 등록하고 관리하는 영역입니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 flex-1 overflow-y-auto">
-              {/* Dynamic input fields list */}
-              <div className="space-y-4">
-                {profile.customFields.map((field) => (
-                  <div key={field.id} className="space-y-1.5 p-3 rounded-lg border border-border bg-background/40 group relative transition-all hover:bg-background/80">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor={`custom-field-${field.id}`} className="text-xs font-semibold text-foreground/90">
-                        {field.label}
-                      </Label>
-                      <button
-                        type="button"
-                        onClick={() => removeCustomField(field.id, field.label)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-destructive hover:bg-destructive/10 rounded transition-all"
-                        title="항목 삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <Input
-                      id={`custom-field-${field.id}`}
-                      placeholder={`${field.label} 내용을 입력하세요`}
-                      value={field.value}
-                      onChange={e => handleCustomFieldChange(field.id, e.target.value)}
-                      className="h-8 text-xs dark:bg-background/40"
-                    />
-                  </div>
-                ))}
-
-                {profile.customFields.length === 0 && (
-                  <div className="py-6 text-center text-xs text-muted-foreground border border-dashed border-border rounded-lg bg-background/10">
-                    등록된 강사 업무 관리 항목이 없습니다.
-                  </div>
-                )}
-              </div>
-
-              <Separator className="my-2" />
-
-              {/* Form to add a new custom field */}
-              <div className="space-y-3 p-3.5 rounded-lg border border-primary/20 bg-primary/5">
-                <span className="text-xs font-bold text-primary flex items-center gap-1">
-                  <PlusCircle className="h-3.5 w-3.5" /> 새 업무 항목 추가
-                </span>
-                <div className="space-y-2">
-                  <Input
-                    placeholder="항목 이름 (예: 보유 자격증, 주소속)"
-                    value={newFieldLabel}
-                    onChange={e => setNewFieldLabel(e.target.value)}
-                    className="h-8 text-xs bg-background"
-                  />
-                  <Input
-                    placeholder="내용 (예: 평생교육사 2급, OOO 아카데미)"
-                    value={newFieldValue}
-                    onChange={e => setNewFieldValue(e.target.value)}
-                    className="h-8 text-xs bg-background"
-                  />
-                  <Button
-                    type="button"
-                    onClick={addCustomField}
-                    size="sm"
-                    className="w-full h-8 text-xs"
-                    variant="secondary"
-                  >
-                    <Plus className="mr-1 h-3.5 w-3.5" /> 항목 추가하기
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="pb-4 pt-2 shrink-0 flex items-center justify-between border-t border-border/40 mt-auto bg-muted/20 rounded-b-xl px-4 py-2.5">
-              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
-                모든 정보는 Supabase 클라우드 데이터베이스에 실시간 저장됩니다.
-              </span>
-            </CardFooter>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              네이버 API 보안 설정
+            </CardTitle>
+            <CardDescription>
+              Vercel 프로젝트 환경변수에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`을 설정하세요. Client Secret은
+              브라우저, Supabase 공개 테이블, `NEXT_PUBLIC_*` 변수에 저장하지 않습니다.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
+    </div>
+  );
+}
+
+function Field({
+  icon: Icon,
+  id,
+  label,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  id: string;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id} className="flex items-center gap-1.5 text-xs font-semibold">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </Label>
+      {children}
     </div>
   );
 }

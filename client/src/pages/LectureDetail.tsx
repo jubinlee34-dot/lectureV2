@@ -1,9 +1,13 @@
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { SmsModal } from "@/components/SmsModal";
+import { TravelInfoCard } from "@/components/TravelInfoCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import { useLectures } from "@/hooks/useLectures";
+import { getRouteInfo } from "@/services/naverRouteService";
+import type { WorkflowStage } from "@/types/lecture";
 import { recordSmsHistory } from "@/utils/storage";
 import { formatDate, formatKRW } from "@/utils/format";
 import {
@@ -11,34 +15,24 @@ import {
   BookOpen,
   Building2,
   Calendar,
-  Car,
   CheckCircle2,
   ClipboardCheck,
   Clock,
   FileText,
   Info,
-  Loader2,
   MapPin,
   MessageCircle,
   MessageSquare,
-  Navigation,
   Pencil,
   Phone,
-  Settings,
-  ShieldCheck,
   Trash2,
   User,
   Users,
-  Wallet,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import type { ComponentType } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation, useParams } from "wouter";
-import type { WorkflowStage } from "../types/lecture";
-import type { InstructorProfile } from "../types/instructor";
-import { useSupabase } from "../contexts/SupabaseContext";
-import { TravelInfoCard } from "@/components/TravelInfoCard";
-
 
 const stageBadge: Record<WorkflowStage, { label: string; className: string }> = {
   before: { label: "강의 전", className: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -52,16 +46,15 @@ const paymentBadge = {
   paid: { label: "입금 완료", className: "bg-green-100 text-green-700 border-green-200" },
 };
 
-// TravelInfoCard component is imported from "@/components/TravelInfoCard"
-
 export default function LectureDetail() {
   const [, navigate] = useLocation();
   const { id } = useParams<{ id: string }>();
   const { getLectureById, deleteLecture, updateLecture } = useLectures();
+  const { profile } = useSupabase();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
+  const [calculatingRoute, setCalculatingRoute] = useState(false);
   const lecture = getLectureById(id);
-  const { profile } = useSupabase();
 
   if (!lecture) {
     return (
@@ -74,17 +67,39 @@ export default function LectureDetail() {
     );
   }
 
-  const handleStageChange = (stage: WorkflowStage) => {
-    updateLecture(lecture.id, { workflowStage: stage });
-    toast.success(`진행 단계가 '${stageBadge[stage].label}'로 변경되었습니다.`);
-  };
-
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
   const payment = paymentBadge[lecture.paymentStatus] ?? paymentBadge.unpaid;
 
+  const handleStageChange = (stageKey: WorkflowStage) => {
+    updateLecture(lecture.id, { workflowStage: stageKey });
+    toast.success(`진행 단계가 '${stageBadge[stageKey].label}'로 변경되었습니다.`);
+  };
+
+  const handleCalculateRoute = async () => {
+    if (!profile?.homeAddress || !lecture.location) return;
+
+    try {
+      setCalculatingRoute(true);
+      const route = await getRouteInfo(profile.homeAddress, lecture.location);
+      await updateLecture(lecture.id, {
+        travelDistanceKm: route.distanceKm,
+        travelDurationMin: route.durationMin,
+        travelUpdatedAt: new Date().toISOString(),
+      });
+      toast.success("경로 정보가 계산되어 저장되었습니다.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "경로 계산에 실패했습니다.");
+    } finally {
+      setCalculatingRoute(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-6">
-      <button onClick={() => navigate("/lectures")} className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <button
+        onClick={() => navigate("/lectures")}
+        className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="h-4 w-4" />
         강의 목록으로 돌아가기
       </button>
@@ -94,7 +109,9 @@ export default function LectureDetail() {
           <div className="min-w-0 flex-1">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold leading-snug text-foreground">{lecture.title}</h1>
-              <Badge variant="outline" className={`text-[10px] ${stage.className}`}>{stage.label}</Badge>
+              <Badge variant="outline" className={`text-[10px] ${stage.className}`}>
+                {stage.label}
+              </Badge>
             </div>
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Building2 className="h-4 w-4" />
@@ -130,8 +147,10 @@ export default function LectureDetail() {
       <TravelInfoCard
         homeAddress={profile?.homeAddress}
         destination={lecture.location}
-        distanceKm={lecture.travel_distance_km}
-        durationMin={lecture.travel_duration_min}
+        distanceKm={lecture.travelDistanceKm}
+        durationMin={lecture.travelDurationMin}
+        calculating={calculatingRoute}
+        onCalculate={handleCalculateRoute}
       />
 
       <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
@@ -148,7 +167,9 @@ export default function LectureDetail() {
           <div>
             <p className="mb-1 text-xs text-muted-foreground">강사료</p>
             <p className="text-sm font-medium text-foreground">{formatKRW(lecture.fee)}</p>
-            <Badge variant="outline" className={`mt-1 text-[10px] ${payment.className}`}>{payment.label}</Badge>
+            <Badge variant="outline" className={`mt-1 text-[10px] ${payment.className}`}>
+              {payment.label}
+            </Badge>
           </div>
         </div>
         {lecture.managerPhone && (
@@ -157,7 +178,10 @@ export default function LectureDetail() {
               <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
               문자 발송
             </Button>
-            <a href={`tel:${lecture.managerPhone}`} className="inline-flex h-8 flex-1 items-center justify-center rounded-md border border-blue-200 text-xs text-blue-700 hover:bg-blue-50">
+            <a
+              href={`tel:${lecture.managerPhone}`}
+              className="inline-flex h-8 flex-1 items-center justify-center rounded-md border border-blue-200 text-xs text-blue-700 hover:bg-blue-50"
+            >
               <Phone className="mr-1.5 h-3.5 w-3.5" />
               전화 연결
             </a>
@@ -176,7 +200,9 @@ export default function LectureDetail() {
               key={key}
               onClick={() => handleStageChange(key)}
               className={`flex-1 rounded-lg border px-2 py-2 text-xs font-medium ${
-                lecture.workflowStage === key ? `${stageBadge[key].className} border-current` : "border-border text-muted-foreground hover:border-primary/40"
+                lecture.workflowStage === key
+                  ? `${stageBadge[key].className} border-current`
+                  : "border-border text-muted-foreground hover:border-primary/40"
               }`}
             >
               {stageBadge[key].label}
@@ -192,7 +218,9 @@ export default function LectureDetail() {
 
       <section className="rounded-xl border border-border bg-muted/50 p-4 sm:p-5">
         <h2 className="mb-1 text-sm font-semibold text-foreground">문서 생성</h2>
-        <p className="mb-4 text-xs text-muted-foreground">강의 기록을 바탕으로 결과보고서와 블로그 초안을 생성합니다.</p>
+        <p className="mb-4 text-xs text-muted-foreground">
+          강의 기록을 바탕으로 결과보고서와 블로그 초안을 생성합니다.
+        </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button variant="outline" size="sm" onClick={() => navigate(`/lectures/${lecture.id}/report`)}>
             <FileText className="mr-2 h-4 w-4" />
@@ -222,14 +250,24 @@ export default function LectureDetail() {
         defaultType={lecture.workflowStage === "after" ? "thankyou" : "reminder"}
         onRecord={(type, recipient, content) => {
           recordSmsHistory(lecture.id, type, recipient, content);
-          toast.success("문자 발송 내역을 기록했습니다.");
+          toast.success("문자 발송 이력을 기록했습니다.");
         }}
       />
     </div>
   );
 }
 
-function InfoItem({ icon: Icon, label, value, fullWidth }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; fullWidth?: boolean }) {
+function InfoItem({
+  icon: Icon,
+  label,
+  value,
+  fullWidth,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  fullWidth?: boolean;
+}) {
   return (
     <div className={fullWidth ? "col-span-full" : ""}>
       <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -241,7 +279,17 @@ function InfoItem({ icon: Icon, label, value, fullWidth }: { icon: React.Compone
   );
 }
 
-function TextSection({ icon: Icon, title, text, fallback }: { icon: React.ComponentType<{ className?: string }>; title: string; text: string; fallback?: string }) {
+function TextSection({
+  icon: Icon,
+  title,
+  text,
+  fallback,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  text: string;
+  fallback?: string;
+}) {
   return (
     <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-6">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">

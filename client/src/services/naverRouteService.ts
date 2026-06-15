@@ -1,6 +1,6 @@
 export interface RouteInfo {
-  distance: string; // e.g. "15.2 km"
-  duration: string; // e.g. "25분" or "1시간 15분"
+  distanceKm: number;
+  durationMin: number;
   realData: boolean;
 }
 
@@ -9,28 +9,48 @@ export interface Coords {
   y: string;
 }
 
-export async function getCoordinates(address: string): Promise<Coords> {
-  const res = await fetch(`/api/naver-directions?query=${encodeURIComponent(address)}`);
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.error || "Geocoding API error");
+async function readJson<T>(response: Response): Promise<T> {
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      typeof body === "object" && body && "error" in body
+        ? String((body as { error: unknown }).error)
+        : "Naver route API error";
+    throw new Error(message);
   }
-  return res.json();
+  return body as T;
+}
+
+export async function getCoordinates(address: string): Promise<Coords> {
+  const params = new URLSearchParams({ query: address });
+  const response = await fetch(`/api/naver-directions?${params.toString()}`);
+  return readJson<Coords>(response);
 }
 
 export async function getRouteInfo(startAddress: string, endAddress: string): Promise<RouteInfo> {
-  const res = await fetch(
-    `/api/naver-directions?start=${encodeURIComponent(startAddress)}&goal=${encodeURIComponent(endAddress)}`
-  );
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.error || "Directions API error");
-  }
-  return res.json();
+  const params = new URLSearchParams({ start: startAddress, goal: endAddress });
+  const response = await fetch(`/api/naver-directions?${params.toString()}`);
+  return readJson<RouteInfo>(response);
 }
 
 export function getNaverMapUrl(startAddress: string, endAddress: string): string {
-  const start = startAddress || "";
-  const end = endAddress || "";
-  return `https://map.naver.com/index.nhn?menu=route&stext=${encodeURIComponent(start)}&etext=${encodeURIComponent(end)}&pathType=0`;
+  const params = new URLSearchParams({
+    menu: "route",
+    stext: startAddress || "",
+    etext: endAddress || "",
+    pathType: "0",
+  });
+  return `https://map.naver.com/index.nhn?${params.toString()}`;
+}
+
+export function formatDistanceKm(distanceKm?: number | null): string {
+  return typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km` : "";
+}
+
+export function formatDurationMin(durationMin?: number | null): string {
+  if (typeof durationMin !== "number") return "";
+  if (durationMin < 60) return `${durationMin}분`;
+  const hours = Math.floor(durationMin / 60);
+  const minutes = durationMin % 60;
+  return minutes > 0 ? `${hours}시간 ${minutes}분` : `${hours}시간`;
 }

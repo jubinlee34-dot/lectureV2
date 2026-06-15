@@ -23,6 +23,9 @@ export interface Lecture {
   instructorMemo: string;
   memorableQuestion: string;
   createdAt: string;
+  travelDistanceKm?: number;
+  travelDurationMin?: number;
+  travelUpdatedAt?: string;
   travel_distance_km?: string;
   travel_duration_min?: string;
   travel_updated_at?: string;

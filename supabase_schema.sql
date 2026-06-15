@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS public.lectures (
     "createdAt" TEXT,
     travel_distance_km TEXT,
     travel_duration_min TEXT,
-    travel_updated_at TEXT
+    travel_updated_at TEXT,
+    "travelDistanceKm" NUMERIC,
+    "travelDurationMin" INTEGER,
+    "travelUpdatedAt" TEXT
 );
 
 -- 2. todos 테이블 생성
@@ -67,9 +70,6 @@ CREATE TABLE IF NOT EXISTS public.instructor_profile (
     "homeAddress" TEXT,
     phone TEXT,
     email TEXT,
-    "naverMapClientId" TEXT,
-    "naverMapClientSecret" TEXT,
-    password TEXT,
     "customFields" JSONB
 );
 
@@ -79,3 +79,6 @@ ALTER TABLE public.todos DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.work_tasks DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sms_history DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.instructor_profile DISABLE ROW LEVEL SECURITY;
+
+CREATE UNIQUE INDEX IF NOT EXISTS work_tasks_lecture_stage_text_unique
+  ON public.work_tasks ("lectureId", stage, text);

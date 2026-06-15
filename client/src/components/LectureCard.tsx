@@ -1,8 +1,14 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NaverRouteButton } from "@/components/NaverRouteButton";
+import { useSupabase } from "@/contexts/SupabaseContext";
+import { useStarredTasks } from "@/hooks/useStarredTasks";
+import { formatDistanceKm, formatDurationMin } from "@/services/naverRouteService";
+import type { Lecture, WorkflowStage } from "@/types/lecture";
+import { formatDateShort, truncate } from "@/utils/format";
+import type { MouseEvent } from "react";
 import {
   Calendar,
-  Car,
   ClipboardCheck,
   MapPin,
   MessageCircle,
@@ -12,13 +18,6 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
-import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
-import { formatDateShort, truncate } from "../utils/format";
-import type { InstructorProfile } from "../types/instructor";
-import { useSupabase } from "../contexts/SupabaseContext";
-import { useStarredTasks } from "../hooks/useStarredTasks";
-import { NaverRouteButton } from "./NaverRouteButton";
 
 interface LectureCardProps {
   lecture: Lecture;
@@ -50,55 +49,53 @@ export function LectureCard({
   onUpdateStage,
 }: LectureCardProps) {
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
-
   const { profile } = useSupabase();
-  const homeAddress = profile?.homeAddress || "";
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
+  const distanceText = formatDistanceKm(lecture.travelDistanceKm);
+  const durationText = formatDurationMin(lecture.travelDurationMin);
 
-
-
-  const handleStageClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onUpdateStage) {
-      const nextStageMap: Record<WorkflowStage, WorkflowStage> = {
-        before: "after",
-        after: "promoted",
-        promoted: "before",
-      };
-      onUpdateStage(lecture.id, { workflowStage: nextStageMap[lecture.workflowStage] });
-    }
+  const handleStageClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    if (!onUpdateStage) return;
+    const nextStageMap: Record<WorkflowStage, WorkflowStage> = {
+      before: "after",
+      after: "promoted",
+      promoted: "before",
+    };
+    onUpdateStage(lecture.id, { workflowStage: nextStageMap[lecture.workflowStage] });
   };
 
-  const handleSms = (event: React.MouseEvent) => {
+  const handleSms = (event: MouseEvent) => {
     event.stopPropagation();
     if (onSms) {
       onSms(lecture);
       return;
     }
+
     const body = encodeURIComponent(
-      `안녕하세요. ${lecture.managerName || "담당자"}님, ${lecture.organization} <${lecture.title}> 강의 관련해 연락드립니다.\n일시: ${formatDateShort(lecture.date)}\n장소: ${lecture.location}\n확인 부탁드립니다.`
+      `안녕하세요. ${lecture.organization} <${lecture.title}> 강의 관련해 연락드립니다.\n일시: ${formatDateShort(lecture.date)}\n장소: ${lecture.location}`
     );
     window.location.href = `sms:${lecture.managerPhone}?body=${body}`;
   };
 
-
   return (
     <div
-      className={`group relative flex gap-3 cursor-pointer rounded-lg border p-4 transition-all hover:border-primary/40 hover:shadow-sm ${
+      className={`group relative flex gap-3 rounded-lg border p-4 transition-all hover:border-primary/40 hover:shadow-sm ${
         selected ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card"
       }`}
       onClick={() => onClick(lecture.id)}
     >
       {onSelect && (
-        <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center" onClick={(event) => event.stopPropagation()}>
           <input
             type="checkbox"
             checked={selected}
-            onChange={(e) => onSelect(lecture.id, e.target.checked)}
-            className="h-4.5 w-4.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+            onChange={(event) => onSelect(lecture.id, event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
           />
         </div>
       )}
+
       <div className="min-w-0 flex-1">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -107,7 +104,7 @@ export function LectureCard({
             </h3>
             <p className="text-xs font-medium text-muted-foreground">{lecture.organization}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(lecture.id)}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -129,7 +126,7 @@ export function LectureCard({
           {onUpdateStage ? (
             <button
               onClick={handleStageClick}
-              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-all hover:opacity-85 cursor-pointer ${stage.className}`}
+              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-all hover:opacity-85 ${stage.className}`}
             >
               {stage.label}
             </button>
@@ -153,48 +150,37 @@ export function LectureCard({
             <MapPin className="h-3 w-3" />
             {truncate(lecture.location, 16)}
           </span>
-          {lecture.travel_distance_km && lecture.travel_duration_min && (
+          {distanceText && durationText && (
             <span className="text-[10px] text-muted-foreground/80">
-              {lecture.travel_distance_km} ({lecture.travel_duration_min})
+              {distanceText} ({durationText})
             </span>
           )}
-          <NaverRouteButton startAddress={homeAddress} endAddress={lecture.location} />
+          <NaverRouteButton startAddress={profile?.homeAddress} endAddress={lecture.location} />
         </div>
 
-        {/* 담당자 정보 */}
         {(lecture.managerName || lecture.managerPhone) && (
           <div className="mb-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground/90">
-            <span className="font-semibold text-foreground/75">담당자:</span>
+            <span className="font-semibold text-foreground/75">담당자</span>
             <span>{lecture.managerName || "미등록"}</span>
             {lecture.managerPhone && <span className="text-[10px] opacity-75">({lecture.managerPhone})</span>}
           </div>
         )}
 
-        {/* 필수 준비사항 */}
         {(starredBeforeTasks.length > 0 || starredAfterTasks.length > 0) && (
-          <div className="mb-3 rounded-lg bg-muted/50 p-2.5 border border-border/50 text-[11px] space-y-1.5" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="mb-3 space-y-1.5 rounded-lg border border-border/50 bg-muted/50 p-2.5 text-[11px]"
+            onClick={(event) => event.stopPropagation()}
+          >
             {starredBeforeTasks.length > 0 && (
-              <div className="flex items-start gap-1">
-                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
-                <span className="font-bold text-amber-800 dark:text-amber-400 shrink-0">[강의전 필수]:</span>
-                <span className="text-foreground/80 leading-relaxed">
-                  {starredBeforeTasks.map(t => t.text).join(", ")}
-                </span>
-              </div>
+              <TaskSummary label="강의 전 필수" texts={starredBeforeTasks.map((task) => task.text)} />
             )}
             {starredAfterTasks.length > 0 && (
-              <div className="flex items-start gap-1">
-                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
-                <span className="font-bold text-amber-800 dark:text-amber-400 shrink-0">[강의후 필수]:</span>
-                <span className="text-foreground/80 leading-relaxed">
-                  {starredAfterTasks.map(t => t.text).join(", ")}
-                </span>
-              </div>
+              <TaskSummary label="강의 후 필수" texts={starredAfterTasks.map((task) => task.text)} />
             )}
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 border-t border-border pt-2.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 border-t border-border pt-2.5" onClick={(event) => event.stopPropagation()}>
           {onManage && (
             <button
               onClick={() => onManage(lecture.id)}
@@ -227,6 +213,16 @@ export function LectureCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TaskSummary({ label, texts }: { label: string; texts: string[] }) {
+  return (
+    <div className="flex items-start gap-1">
+      <Star className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-500 text-amber-500" />
+      <span className="shrink-0 font-bold text-amber-800 dark:text-amber-400">[{label}]:</span>
+      <span className="leading-relaxed text-foreground/80">{texts.join(", ")}</span>
     </div>
   );
 }

@@ -1,6 +1,5 @@
-import React from "react";
+import type { Lecture } from "@/types/lecture";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { Lecture } from "../types/lecture";
 
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -22,10 +21,10 @@ export function CalendarGrid({
   onMoveMonth,
 }: CalendarGridProps) {
   const today = new Date();
-
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
+
   while (cells.length % 7 !== 0) cells.push(null);
 
   const toDateStr = (day: number) =>
@@ -35,16 +34,17 @@ export function CalendarGrid({
   return (
     <section className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
       <div className="mb-4 flex items-center justify-between">
-        <button onClick={() => onMoveMonth(-1)} className="rounded-md p-1.5 hover:bg-muted cursor-pointer">
+        <button onClick={() => onMoveMonth(-1)} className="rounded-md p-1.5 hover:bg-muted" title="이전 달">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <h2 className="text-base font-semibold text-foreground">
           {viewYear}년 {viewMonth + 1}월
         </h2>
-        <button onClick={() => onMoveMonth(1)} className="rounded-md p-1.5 hover:bg-muted cursor-pointer">
+        <button onClick={() => onMoveMonth(1)} className="rounded-md p-1.5 hover:bg-muted" title="다음 달">
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+
       <div className="mb-1 grid grid-cols-7">
         {weekdays.map((day, index) => (
           <div
@@ -57,32 +57,27 @@ export function CalendarGrid({
           </div>
         ))}
       </div>
+
       <div className="grid grid-cols-7 gap-0.5">
         {cells.map((day, index) => {
           if (!day) return <div key={`empty-${index}`} className="aspect-square" />;
+
           const dateStr = toDateStr(day);
           const hasLecture = Boolean(lectureMap[dateStr]);
           const selected = selectedDate === dateStr;
           const isToday = todayStr === dateStr;
+
           return (
             <button
               key={dateStr}
               onClick={() => onSelectDate(selected ? null : dateStr)}
-              className={`flex aspect-square flex-col items-center justify-start rounded-lg pt-1 text-xs font-medium transition-colors cursor-pointer ${
-                selected
-                  ? "bg-primary text-primary-foreground"
-                  : isToday
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted"
+              className={`flex aspect-square flex-col items-center justify-start rounded-lg pt-1 text-xs font-medium transition-colors ${
+                selected ? "bg-primary text-primary-foreground" : isToday ? "bg-primary/10 text-primary" : "hover:bg-muted"
               }`}
             >
               <span>{day}</span>
               {hasLecture && (
-                <span
-                  className={`mt-0.5 h-1.5 w-1.5 rounded-full ${
-                    selected ? "bg-primary-foreground" : "bg-primary"
-                  }`}
-                />
+                <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${selected ? "bg-primary-foreground" : "bg-primary"}`} />
               )}
             </button>
           );

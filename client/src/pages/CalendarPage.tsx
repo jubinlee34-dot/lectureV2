@@ -1,24 +1,18 @@
-import { Button } from "@/components/ui/button";
-import { SmsModal } from "@/components/SmsModal";
+import { CalendarGrid } from "@/components/CalendarGrid";
+import { CalendarQuickCard } from "@/components/CalendarQuickCard";
 import { ImportModal } from "@/components/ImportModal";
+import { MonthLectureList } from "@/components/MonthLectureList";
+import { SmsModal } from "@/components/SmsModal";
+import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
+import type { Lecture } from "@/types/lecture";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
-import { recordSmsHistory } from "@/utils/storage";
 import { formatDate } from "@/utils/format";
-import {
-  CalendarDays,
-  Download,
-  Plus,
-  Sheet,
-  Upload,
-} from "lucide-react";
+import { recordSmsHistory } from "@/utils/storage";
+import { CalendarDays, Download, Plus, Sheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import type { Lecture } from "../types/lecture";
-import { CalendarGrid } from "@/components/CalendarGrid";
-import { CalendarQuickCard } from "@/components/CalendarQuickCard";
-import { MonthLectureList } from "@/components/MonthLectureList";
 
 export default function CalendarPage() {
   const [, navigate] = useLocation();
@@ -31,11 +25,10 @@ export default function CalendarPage() {
   const [importOpen, setImportOpen] = useState(false);
 
   const lectureMap = useMemo(() => {
-    const map: Record<string, Lecture[]> = {};
-    lectures.forEach((lecture) => {
+    return lectures.reduce<Record<string, Lecture[]>>((map, lecture) => {
       map[lecture.date] = [...(map[lecture.date] ?? []), lecture];
-    });
-    return map;
+      return map;
+    }, {});
   }, [lectures]);
 
   const selectedLectures = selectedDate ? lectureMap[selectedDate] ?? [] : [];
@@ -63,8 +56,11 @@ export default function CalendarPage() {
             <CalendarDays className="h-6 w-6 text-primary" />
             강의 캘린더
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">캘린더에서 일정과 담당자 연락 버튼을 바로 확인합니다.</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            캘린더에서 일정과 담당자 연락 버튼을 바로 확인합니다.
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
@@ -77,24 +73,24 @@ export default function CalendarPage() {
                 size="sm"
                 onClick={() => {
                   downloadCSV(lectures, "강의목록.csv");
-                  toast.success("구글 스프레드시트용 CSV 파일을 다운로드했습니다.");
+                  toast.success("CSV 파일을 다운로드했습니다.");
                 }}
                 className="hidden lg:inline-flex"
               >
                 <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
-                구글 시트(CSV)
+                CSV
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   downloadICS(lectures, "강의일정.ics");
-                  toast.success("구글 캘린더용 ICS 파일을 다운로드했습니다.");
+                  toast.success("ICS 파일을 다운로드했습니다.");
                 }}
                 className="hidden lg:inline-flex"
               >
                 <Download className="mr-1.5 h-4 w-4 text-blue-600" />
-                구글 캘린더(ICS)
+                ICS
               </Button>
             </>
           )}
@@ -128,10 +124,10 @@ export default function CalendarPage() {
                       key={lecture.id}
                       lecture={lecture}
                       onNavigate={navigate}
-                      onSms={(lec) => setSmsTarget(lec)}
+                      onSms={setSmsTarget}
                       onUpdateStage={updateLecture}
-                      onDelete={(id) => {
-                        deleteLecture(id);
+                      onDelete={(lectureId) => {
+                        deleteLecture(lectureId);
                         toast.success("강의 일정을 삭제했습니다.");
                       }}
                     />
@@ -141,11 +137,7 @@ export default function CalendarPage() {
             </section>
           )}
 
-          <MonthLectureList
-            viewMonth={viewMonth}
-            monthLectures={monthLectures}
-            onNavigate={navigate}
-          />
+          <MonthLectureList viewMonth={viewMonth} monthLectures={monthLectures} onNavigate={navigate} />
         </aside>
       </div>
 
@@ -157,7 +149,7 @@ export default function CalendarPage() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={(type, recipient, content) => {
             recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("문자 발송 내역을 기록했습니다.");
+            toast.success("문자 발송 이력을 기록했습니다.");
           }}
         />
       )}
@@ -167,8 +159,8 @@ export default function CalendarPage() {
         onClose={() => setImportOpen(false)}
         defaultType="ics"
         existingLectures={lectures}
-        onImport={(items, policy) => {
-          const count = bulkAddLectures(items, policy);
+        onImport={async (items, policy) => {
+          const count = await bulkAddLectures(items, policy);
           toast.success(`${count}개의 강의를 가져왔습니다.`);
         }}
       />

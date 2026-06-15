@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
-import { getRouteInfo } from "../services/naverRouteService";
+import { useEffect, useState } from "react";
+import { getRouteInfo } from "@/services/naverRouteService";
 
 export function useRouteInfo(startAddress?: string, endAddress?: string) {
-  const [distanceKm, setDistanceKm] = useState<string | null>(null);
-  const [durationMin, setDurationMin] = useState<string | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [durationMin, setDurationMin] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,28 +15,28 @@ export function useRouteInfo(startAddress?: string, endAddress?: string) {
       return;
     }
 
+    const start = startAddress;
+    const end = endAddress;
     let isMounted = true;
-    const fetchRoute = async () => {
+
+    async function fetchRoute() {
       setLoading(true);
       setError(null);
-      try {
-        const data = await getRouteInfo(startAddress, endAddress);
-        if (isMounted) {
-          setDistanceKm(data.distance);
-          setDurationMin(data.duration);
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          setError(err.message || "Failed to fetch route info");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
 
-    fetchRoute();
+      try {
+        const data = await getRouteInfo(start, end);
+        if (!isMounted) return;
+        setDistanceKm(data.distanceKm);
+        setDurationMin(data.durationMin);
+      } catch (routeError) {
+        if (!isMounted) return;
+        setError(routeError instanceof Error ? routeError.message : "Failed to fetch route info");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    void fetchRoute();
 
     return () => {
       isMounted = false;
