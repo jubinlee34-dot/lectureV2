@@ -1,47 +1,59 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { defineConfig, type Plugin, type ViteDevServer } from "vite";
+import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
 
 interface Coords {
   x: string;
   y: string;
 }
 
-function getNaverKeys() {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+class HttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
+function getNaverKeys(env: Record<string, string>) {
+  const clientId = env.NAVER_CLIENT_ID || process.env.NAVER_CLIENT_ID;
+  const clientSecret = env.NAVER_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new Error("NAVER_CLIENT_ID and NAVER_CLIENT_SECRET must be set on the server");
+    throw new HttpError("NAVER_CLIENT_ID and NAVER_CLIENT_SECRET must be set on the server", 500);
   }
 
   return { clientId, clientSecret };
 }
 
-async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
-  const cleanQuery = query.replace(/\s*\(.*?\)\s*/g, " ").trim();
-  const response = await fetch(
-    `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(cleanQuery)}`,
-    {
-      headers: {
-        "X-NCP-APIGW-API-KEY-ID": clientId,
-        "X-NCP-APIGW-API-KEY": clientSecret,
-      },
-    }
-  );
+async function fetchNaverJson<T>(url: string, clientId: string, clientSecret: string): Promise<T> {
+  const response = await fetch(url, {
+    headers: {
+      "X-NCP-APIGW-API-KEY-ID": clientId,
+      "X-NCP-APIGW-API-KEY": clientSecret,
+    },
+  });
 
   if (!response.ok) {
-    throw new Error(`Naver geocoding failed with status ${response.status}`);
+    throw new HttpError(`Naver API failed with status ${response.status}`, response.status);
   }
 
-  const data = (await response.json()) as {
+  return (await response.json()) as T;
+}
+
+async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
+  const cleanQuery = query.replace(/\s*\(.*?\)\s*/g, " ").trim();
+  const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(cleanQuery)}`;
+  const data = await fetchNaverJson<{
     status?: string;
     addresses?: Array<{ x: string; y: string }>;
-  };
+  }>(url, clientId, clientSecret);
 
   if (data.status !== "OK" || !data.addresses?.length) {
-    throw new Error(`Address not found: ${cleanQuery}`);
+    throw new HttpError(`Address not found: ${cleanQuery}`, 404);
   }
 
   return { x: data.addresses[0].x, y: data.addresses[0].y };
@@ -53,34 +65,21 @@ async function getDirectionsNaver(
   clientId: string,
   clientSecret: string
 ) {
-  const response = await fetch(
-    `https://naveropenapi.apigw.ntruss.com/map-direction-15/v1/driving?start=${start.x},${start.y}&goal=${goal.x},${goal.y}&option=trafast`,
-    {
-      headers: {
-        "X-NCP-APIGW-API-KEY-ID": clientId,
-        "X-NCP-APIGW-API-KEY": clientSecret,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Naver directions failed with status ${response.status}`);
-  }
-
-  const data = (await response.json()) as {
+  const url = `https://naveropenapi.apigw.ntruss.com/map-direction-15/v1/driving?start=${start.x},${start.y}&goal=${goal.x},${goal.y}&option=trafast`;
+  const data = await fetchNaverJson<{
     route?: {
       trafast?: Array<{ summary?: { distance: number; duration: number } }>;
       tracur?: Array<{ summary?: { distance: number; duration: number } }>;
       traoptimal?: Array<{ summary?: { distance: number; duration: number } }>;
     };
-  };
+  }>(url, clientId, clientSecret);
   const summary =
     data.route?.trafast?.[0]?.summary ??
     data.route?.tracur?.[0]?.summary ??
     data.route?.traoptimal?.[0]?.summary;
 
   if (!summary) {
-    throw new Error("No route found in Naver directions response");
+    throw new HttpError("No route found in Naver directions response", 404);
   }
 
   return {
@@ -90,7 +89,12 @@ async function getDirectionsNaver(
   };
 }
 
-function vitePluginNaverDirectionsProxy(): Plugin {
+function writeJson(res: { writeHead: (status: number, headers: Record<string, string>) => void; end: (body: string) => void }, status: number, body: unknown) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
   return {
     name: "naver-directions-proxy",
     configureServer(server: ViteDevServer) {
@@ -100,12 +104,16 @@ function vitePluginNaverDirectionsProxy(): Plugin {
           const start = parsedUrl.searchParams.get("start");
           const goal = parsedUrl.searchParams.get("goal");
           const query = parsedUrl.searchParams.get("query");
-          const { clientId, clientSecret } = getNaverKeys();
+
+          if (!query && !(start && goal)) {
+            writeJson(res, 400, { error: "Missing query or start/goal parameters" });
+            return;
+          }
+
+          const { clientId, clientSecret } = getNaverKeys(env);
 
           if (query) {
-            const coords = await geocodeNaver(query, clientId, clientSecret);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(coords));
+            writeJson(res, 200, await geocodeNaver(query, clientId, clientSecret));
             return;
           }
 
@@ -114,48 +122,50 @@ function vitePluginNaverDirectionsProxy(): Plugin {
               geocodeNaver(start, clientId, clientSecret),
               geocodeNaver(goal, clientId, clientSecret),
             ]);
-            const directions = await getDirectionsNaver(startCoords, goalCoords, clientId, clientSecret);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(directions));
+            writeJson(res, 200, await getDirectionsNaver(startCoords, goalCoords, clientId, clientSecret));
             return;
           }
 
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Missing query or start/goal parameters" }));
+          writeJson(res, 400, { error: "Missing query or start/goal parameters" });
         } catch (error) {
+          const status = error instanceof HttpError ? error.status : 500;
           const message = error instanceof Error ? error.message : "Internal Server Error";
           console.error("Naver directions proxy error:", message);
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: message }));
+          writeJson(res, status, { error: message });
         }
       });
     },
   };
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), vitePluginNaverDirectionsProxy()],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+export default defineConfig(({ mode }) => {
+  const rootDir = import.meta.dirname;
+  const env = loadEnv(mode, rootDir, "");
+
+  return {
+    plugins: [react(), tailwindcss(), vitePluginNaverDirectionsProxy(env)],
+    resolve: {
+      alias: {
+        "@": path.resolve(rootDir, "client", "src"),
+        "@shared": path.resolve(rootDir, "shared"),
+        "@assets": path.resolve(rootDir, "attached_assets"),
+      },
     },
-  },
-  envDir: path.resolve(import.meta.dirname),
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-  },
-  server: {
-    port: 3000,
-    strictPort: false,
-    host: true,
-    allowedHosts: ["localhost", "127.0.0.1"],
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+    envDir: path.resolve(rootDir),
+    root: path.resolve(rootDir, "client"),
+    build: {
+      outDir: path.resolve(rootDir, "dist/public"),
+      emptyOutDir: true,
     },
-  },
+    server: {
+      port: 3000,
+      strictPort: false,
+      host: true,
+      allowedHosts: ["localhost", "127.0.0.1"],
+      fs: {
+        strict: true,
+        deny: ["**/.*"],
+      },
+    },
+  };
 });

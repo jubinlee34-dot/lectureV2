@@ -9,6 +9,16 @@ export interface Coords {
   y: string;
 }
 
+export class NaverRouteRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "NaverRouteRequestError";
+    this.status = status;
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -16,7 +26,7 @@ async function readJson<T>(response: Response): Promise<T> {
       typeof body === "object" && body && "error" in body
         ? String((body as { error: unknown }).error)
         : "Naver route API error";
-    throw new Error(message);
+    throw new NaverRouteRequestError(message, response.status);
   }
   return body as T;
 }
@@ -49,8 +59,8 @@ export function formatDistanceKm(distanceKm?: number | null): string {
 
 export function formatDurationMin(durationMin?: number | null): string {
   if (typeof durationMin !== "number") return "";
-  if (durationMin < 60) return `${durationMin}분`;
+  if (durationMin < 60) return `${durationMin}\uBD84`;
   const hours = Math.floor(durationMin / 60);
   const minutes = durationMin % 60;
-  return minutes > 0 ? `${hours}시간 ${minutes}분` : `${hours}시간`;
+  return minutes > 0 ? `${hours}\uC2DC\uAC04 ${minutes}\uBD84` : `${hours}\uC2DC\uAC04`;
 }
