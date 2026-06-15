@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { createClient } from "@supabase/supabase-js";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -208,8 +209,32 @@ interface Coords {
   y: string;
 }
 
+const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://nlscziutkejrdzjgfzlj.supabase.co";
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sc2N6aXV0a2VqcmR6amdmemxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0Mzc2MDksImV4cCI6MjA5NzAxMzYwOX0.AvhVV7yzHqf2ffCWvs861dMxhpWQAcFlWptLehSqG08";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+async function getNaverKeys() {
+  const { data, error } = await supabase
+    .from("instructor_profile")
+    .select("naverMapClientId, naverMapClientSecret")
+    .eq("id", "default")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch Naver keys: ${error.message}`);
+  }
+  if (!data || !data.naverMapClientId || !data.naverMapClientSecret) {
+    throw new Error("Naver credentials are not set");
+  }
+  return {
+    clientId: data.naverMapClientId,
+    clientSecret: data.naverMapClientSecret,
+  };
+}
+
 async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
-  const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(query)}`;
+  const cleanQuery = query.replace(/\s*\(.*?\)\s*/g, " ").trim();
+  const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(cleanQuery)}`;
   const response = await fetch(url, {
     headers: {
       "X-NCP-APIGW-API-KEY-ID": clientId,
@@ -224,7 +249,7 @@ async function geocodeNaver(query: string, clientId: string, clientSecret: strin
 
   const data = (await response.json()) as any;
   if (data.status !== "OK" || !data.addresses || data.addresses.length === 0) {
-    throw new Error(`Geocoding failed for address: ${query}`);
+    throw new Error(`Geocoding failed for address: ${cleanQuery}`);
   }
 
   return {
@@ -290,32 +315,33 @@ function vitePluginNaverDirectionsProxy(): Plugin {
           const parsedUrl = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
           const start = parsedUrl.searchParams.get("start");
           const goal = parsedUrl.searchParams.get("goal");
+          const query = parsedUrl.searchParams.get("query");
 
-          const clientId = req.headers["x-naver-client-id"] as string;
-          const clientSecret = req.headers["x-naver-client-secret"] as string;
+          const { clientId, clientSecret } = await getNaverKeys();
 
-          if (!start || !goal) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Missing start or goal parameter" }));
+          if (query) {
+            const coords = await geocodeNaver(query, clientId, clientSecret);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(coords));
             return;
           }
 
-          if (!clientId || !clientSecret) {
-            res.writeHead(401, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Missing Naver API credentials" }));
+          if (start && goal) {
+            // 1. Geocode start address
+            const startCoords = await geocodeNaver(start, clientId, clientSecret);
+            // 2. Geocode goal address
+            const goalCoords = await geocodeNaver(goal, clientId, clientSecret);
+
+            // 3. Get driving directions
+            const directions = await getDirectionsNaver(startCoords, goalCoords, clientId, clientSecret);
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(directions));
             return;
           }
 
-          // 1. Geocode start address
-          const startCoords = await geocodeNaver(start, clientId, clientSecret);
-          // 2. Geocode goal address
-          const goalCoords = await geocodeNaver(goal, clientId, clientSecret);
-
-          // 3. Get driving directions
-          const directions = await getDirectionsNaver(startCoords, goalCoords, clientId, clientSecret);
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(directions));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing query or start/goal parameters" }));
         } catch (error: any) {
           console.error("Naver Directions Proxy Error:", error);
           res.writeHead(500, { "Content-Type": "application/json" });

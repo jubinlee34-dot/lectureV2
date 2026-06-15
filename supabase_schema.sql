@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS public.lectures (
     "participantReaction" TEXT,
     "instructorMemo" TEXT,
     "memorableQuestion" TEXT,
-    "createdAt" TEXT
+    "createdAt" TEXT,
+    travel_distance_km TEXT,
+    travel_duration_min TEXT,
+    travel_updated_at TEXT
 );
 
 -- 2. todos 테이블 생성

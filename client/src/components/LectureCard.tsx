@@ -17,6 +17,8 @@ import type { Lecture, WorkflowStage, WorkTask } from "../types/lecture";
 import { formatDateShort, truncate } from "../utils/format";
 import type { InstructorProfile } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
+import { useStarredTasks } from "../hooks/useStarredTasks";
+import { NaverRouteButton } from "./NaverRouteButton";
 
 interface LectureCardProps {
   lecture: Lecture;
@@ -49,17 +51,9 @@ export function LectureCard({
 }: LectureCardProps) {
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
 
-  const { profile, workTasks } = useSupabase();
-
+  const { profile } = useSupabase();
   const homeAddress = profile?.homeAddress || "";
-
-  const starredBeforeTasks = useMemo(() => {
-    return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "before");
-  }, [workTasks, lecture.id]);
-
-  const starredAfterTasks = useMemo(() => {
-    return workTasks.filter((t) => t.lectureId === lecture.id && t.starred && t.stage === "after");
-  }, [workTasks, lecture.id]);
+  const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
 
 
 
@@ -159,19 +153,12 @@ export function LectureCard({
             <MapPin className="h-3 w-3" />
             {truncate(lecture.location, 16)}
           </span>
-          {homeAddress && lecture.location && (
-            <a
-              href={`https://map.naver.com/index.nhn?menu=route&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(lecture.location)}&pathType=0`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400 font-semibold hover:underline cursor-pointer"
-              title="네이버 지도 길찾기 바로가기"
-            >
-              <Car className="h-3 w-3" />
-              길찾기
-            </a>
+          {lecture.travel_distance_km && lecture.travel_duration_min && (
+            <span className="text-[10px] text-muted-foreground/80">
+              {lecture.travel_distance_km} ({lecture.travel_duration_min})
+            </span>
           )}
+          <NaverRouteButton startAddress={homeAddress} endAddress={lecture.location} />
         </div>
 
         {/* 담당자 정보 */}

@@ -37,6 +37,7 @@ import { useLocation, useParams } from "wouter";
 import type { WorkflowStage } from "../types/lecture";
 import type { InstructorProfile } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
+import { TravelInfoCard } from "@/components/TravelInfoCard";
 
 
 const stageBadge: Record<WorkflowStage, { label: string; className: string }> = {
@@ -51,63 +52,7 @@ const paymentBadge = {
   paid: { label: "입금 완료", className: "bg-green-100 text-green-700 border-green-200" },
 };
 
-interface TravelInfoCardProps {
-  homeAddress?: string;
-  destination: string;
-}
-
-function TravelInfoCard({
-  homeAddress,
-  destination,
-}: TravelInfoCardProps) {
-  if (!homeAddress) {
-    return (
-      <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4 sm:p-5 dark:border-amber-950/35 dark:bg-amber-950/10">
-        <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-400">
-          <Car className="h-4 w-4" />
-          출강 경로 정보
-        </h2>
-        <p className="text-xs text-amber-700/95 dark:text-amber-500/90 leading-relaxed">
-          강사의 집 주소가 등록되어 있지 않습니다. 프로필에서 집 주소를 등록하시면 강의 장소까지의 예상 이동 경로 및 길찾기 링크가 활성화됩니다.
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
-      <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
-        <Car className="h-4 w-4 text-primary" />
-        출강 경로 정보 (자동차 기준)
-      </h2>
-
-      <div className="space-y-3">
-        <div className="text-xs text-muted-foreground space-y-1.5">
-          <div className="flex items-start gap-1">
-            <span className="font-semibold text-foreground/80 shrink-0">출발지:</span>
-            <span className="truncate" title={homeAddress}>{homeAddress}</span>
-          </div>
-          <div className="flex items-start gap-1">
-            <span className="font-semibold text-foreground/80 shrink-0">도착지:</span>
-            <span className="truncate" title={destination}>{destination}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-1.5 border-t border-border/40 sm:flex-row sm:items-center">
-          <a
-            href={`https://map.naver.com/index.nhn?menu=route&stext=${encodeURIComponent(homeAddress)}&etext=${encodeURIComponent(destination)}&pathType=0`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-8 items-center justify-center rounded-md bg-green-500/10 px-3 text-xs font-semibold text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-all flex-1 text-center border border-green-500/20 cursor-pointer"
-          >
-            <Navigation className="mr-1.5 h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-            네이버 지도 길찾기 바로가기
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-}
+// TravelInfoCard component is imported from "@/components/TravelInfoCard"
 
 export default function LectureDetail() {
   const [, navigate] = useLocation();
@@ -185,6 +130,8 @@ export default function LectureDetail() {
       <TravelInfoCard
         homeAddress={profile?.homeAddress}
         destination={lecture.location}
+        distanceKm={lecture.travel_distance_km}
+        durationMin={lecture.travel_duration_min}
       />
 
       <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">

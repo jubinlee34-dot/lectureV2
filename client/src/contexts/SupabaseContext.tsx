@@ -5,6 +5,7 @@ import { dummyLectures, dummyTodos } from "../data/dummyData";
 import type { Lecture, LectureFormData, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
 import type { InstructorProfile } from "../types/instructor";
 import { toast } from "sonner";
+import { getRouteInfo } from "../services/naverRouteService";
 
 interface SupabaseContextType {
   lectures: Lecture[];
@@ -286,10 +287,28 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   // ==================== LECTURE CRUD ====================
 
   const addLecture = useCallback(async (formData: LectureFormData): Promise<Lecture> => {
+    let travel_distance_km: string | undefined = undefined;
+    let travel_duration_min: string | undefined = undefined;
+    let travel_updated_at: string | undefined = undefined;
+
+    if (profile?.homeAddress && formData.location) {
+      try {
+        const route = await getRouteInfo(profile.homeAddress, formData.location);
+        travel_distance_km = route.distance;
+        travel_duration_min = route.duration;
+        travel_updated_at = new Date().toISOString();
+      } catch (e) {
+        console.error("Failed to calculate route info during lecture registration:", e);
+      }
+    }
+
     const newLecture: Lecture = {
       ...formData,
       id: nanoid(),
       createdAt: new Date().toISOString(),
+      travel_distance_km,
+      travel_duration_min,
+      travel_updated_at,
     };
     
     const { error } = await supabase.from("lectures").insert(newLecture);
@@ -301,7 +320,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     setLectures((prev) => [newLecture, ...prev]);
     toast.success(`"${newLecture.title}" 일정이 정상적으로 등록되었습니다.`);
     return newLecture;
-  }, []);
+  }, [profile]);
 
   const bulkAddLectures = useCallback(async (items: LectureFormData[], policy: "skip" | "overwrite" | "add"): Promise<number> => {
     let count = 0;
@@ -351,15 +370,36 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   }, [lectures]);
 
   const updateLecture = useCallback(async (id: string, data: Partial<Lecture>): Promise<void> => {
-    const { error } = await supabase.from("lectures").update(data).eq("id", id);
+    let travelData: Partial<Lecture> = {};
+    const existing = lectures.find((l) => l.id === id);
+    
+    const locationChanged = data.location !== undefined && data.location !== existing?.location;
+    const missingTravelInfo = existing && (!existing.travel_distance_km || !existing.travel_duration_min);
+    
+    if (profile?.homeAddress && (data.location || existing?.location) && (locationChanged || missingTravelInfo)) {
+      try {
+        const targetLocation = data.location || existing?.location || "";
+        const route = await getRouteInfo(profile.homeAddress, targetLocation);
+        travelData = {
+          travel_distance_km: route.distance,
+          travel_duration_min: route.duration,
+          travel_updated_at: new Date().toISOString(),
+        };
+      } catch (e) {
+        console.error("Failed to calculate route info during lecture update:", e);
+      }
+    }
+
+    const finalData = { ...data, ...travelData };
+    const { error } = await supabase.from("lectures").update(finalData).eq("id", id);
     if (error) {
       toast.error(`강의 수정 실패: ${error.message}`);
       throw error;
     }
     setLectures((prev) =>
-      prev.map((lecture) => (lecture.id === id ? { ...lecture, ...data } : lecture))
+      prev.map((lecture) => (lecture.id === id ? { ...lecture, ...finalData } : lecture))
     );
-  }, []);
+  }, [profile, lectures]);
 
   const deleteLecture = useCallback(async (id: string): Promise<void> => {
     const { error } = await supabase.from("lectures").delete().eq("id", id);

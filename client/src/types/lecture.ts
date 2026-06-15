@@ -23,6 +23,9 @@ export interface Lecture {
   instructorMemo: string;
   memorableQuestion: string;
   createdAt: string;
+  travel_distance_km?: string;
+  travel_duration_min?: string;
+  travel_updated_at?: string;
 }
 
 export type LectureFormData = Omit<Lecture, "id" | "createdAt">;

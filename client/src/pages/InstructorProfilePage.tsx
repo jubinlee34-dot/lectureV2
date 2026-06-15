@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import type { InstructorProfile, CustomProfileField } from "../types/instructor";
 import { useSupabase } from "../contexts/SupabaseContext";
+import { getRouteInfo } from "@/services/naverRouteService";
+import { Car, Settings, Loader2 } from "lucide-react";
 
 const defaultProfile: InstructorProfile = {
   name: "",
@@ -48,10 +50,58 @@ const defaultProfile: InstructorProfile = {
 };
 
 export default function InstructorProfilePage() {
-  const { profile: dbProfile, updateProfile, uploadLocalDataToSupabase } = useSupabase();
+  const { profile: dbProfile, updateProfile, uploadLocalDataToSupabase, lectures, updateLecture } = useSupabase();
   const [profile, setProfile] = useState<InstructorProfile>(defaultProfile);
   const [showNaverSecret, setShowNaverSecret] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0 });
+
+  const handleRecalculateAllRoutes = async (targetAddress?: string) => {
+    const homeAddress = targetAddress || profile.homeAddress.trim();
+    if (!homeAddress) {
+      toast.error("출발지(집 주소)가 등록되어 있어야 합니다.");
+      return;
+    }
+
+    const lecturesWithLocation = lectures.filter(l => l.location && l.location.trim() !== "");
+    if (lecturesWithLocation.length === 0) {
+      toast.info("장소가 등록된 강의가 없습니다.");
+      return;
+    }
+
+    setIsRecalculating(true);
+    setRecalcProgress({ current: 0, total: lecturesWithLocation.length });
+    const toastId = toast.loading(`전체 경로 계산 중... (0/${lecturesWithLocation.length})`);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < lecturesWithLocation.length; i++) {
+      const lecture = lecturesWithLocation[i];
+      setRecalcProgress({ current: i + 1, total: lecturesWithLocation.length });
+      toast.loading(`전체 경로 계산 중... (${i + 1}/${lecturesWithLocation.length})`, { id: toastId });
+
+      try {
+        const route = await getRouteInfo(homeAddress, lecture.location);
+        await updateLecture(lecture.id, {
+          travel_distance_km: route.distance,
+          travel_duration_min: route.duration,
+          travel_updated_at: new Date().toISOString()
+        });
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to calculate route for lecture ${lecture.id}:`, err);
+        failCount++;
+      }
+      // Brief pause to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    toast.dismiss(toastId);
+    setIsRecalculating(false);
+    toast.success(`경로 계산이 완료되었습니다. (성공: ${successCount}건, 실패: ${failCount}건)`);
+  };
 
   // Lock Screen States
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -99,8 +149,15 @@ export default function InstructorProfilePage() {
 
   const handleSave = async () => {
     try {
+      const isAddressChanged = dbProfile && dbProfile.homeAddress !== profile.homeAddress;
       await updateProfile(profile);
       toast.success("강사 프로필 정보가 안전하게 저장되었습니다.");
+
+      if (isAddressChanged && profile.homeAddress.trim() !== "") {
+        if (confirm("출발지(집 주소)가 변경되었습니다. 모든 강의의 예상 출강 경로를 새 주소 기준으로 재계산하시겠습니까?")) {
+          await handleRecalculateAllRoutes(profile.homeAddress);
+        }
+      }
     } catch (err) {
       toast.error("프로필 저장에 실패했습니다.");
     }
@@ -294,6 +351,61 @@ export default function InstructorProfilePage() {
             </CardContent>
           </Card>
 
+          {/* Naver Map API Settings Card */}
+          <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Settings className="h-5 w-5 text-primary" />
+                네이버 지도 API 설정
+              </CardTitle>
+              <CardDescription>
+                출강 경로(예상 거리 및 소요 시간)를 실시간으로 자동 계산하기 위한 네이버 OpenAPI 키 설정입니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="naver-client-id" className="text-xs font-semibold">Naver Client ID</Label>
+                <Input
+                  id="naver-client-id"
+                  placeholder="Naver Map Client ID 입력"
+                  value={profile.naverMapClientId || ""}
+                  onChange={e => handleFieldChange("naverMapClientId", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="naver-client-secret" className="text-xs font-semibold">Naver Client Secret</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNaverSecret(!showNaverSecret)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                  >
+                    {showNaverSecret ? (
+                      <>
+                        <EyeOff className="h-3 w-3" /> 숨기기
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-3 w-3" /> 표시
+                      </>
+                    )}
+                  </button>
+                </div>
+                <Input
+                  id="naver-client-secret"
+                  type={showNaverSecret ? "text" : "password"}
+                  placeholder="Naver Map Client Secret 입력"
+                  value={profile.naverMapClientSecret || ""}
+                  onChange={e => handleFieldChange("naverMapClientSecret", e.target.value)}
+                  className="font-mono"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                * 네이버 클라우드 플랫폼(NCP)의 [AI·Naver API] 서비스에서 Map (Geocoding, Directions 15) 권한이 추가된 Application의 Client ID와 Client Secret을 입력해주세요.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* 보안 및 데이터 설정 Card */}
           <Card className="border border-border/80 shadow-sm backdrop-blur-sm bg-card/60">
             <CardHeader className="pb-4">
@@ -368,6 +480,35 @@ export default function InstructorProfilePage() {
                 >
                   <Save className="h-3.5 w-3.5" />
                   로컬 데이터를 Supabase에 강제 업로드
+                </Button>
+              </div>
+
+              <Separator className="my-1" />
+
+              {/* Travel Route Recalculation */}
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold block">출강 경로 일괄 관리</Label>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  등록된 모든 강의의 출강 경로(예상 거리 및 소요 시간)를 현재 설정된 집 주소 기준으로 일괄 재계산합니다.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isRecalculating}
+                  className="w-full text-xs hover:bg-primary/5 hover:text-primary transition-all flex items-center justify-center gap-1 border-primary/20"
+                  onClick={() => handleRecalculateAllRoutes()}
+                >
+                  {isRecalculating ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      경로 계산 중 ({recalcProgress.current}/{recalcProgress.total})
+                    </>
+                  ) : (
+                    <>
+                      <Car className="h-3.5 w-3.5" />
+                      전체 경로 재계산
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
