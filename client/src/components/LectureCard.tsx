@@ -1,9 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NaverRouteButton } from "@/components/NaverRouteButton";
+import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
-import { formatDistanceKm, formatDurationMin } from "@/services/naverRouteService";
 import type { Lecture, WorkflowStage } from "@/types/lecture";
 import { formatDateShort, truncate } from "@/utils/format";
 import type { MouseEvent } from "react";
@@ -51,8 +51,6 @@ export function LectureCard({
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
-  const distanceText = formatDistanceKm(lecture.travelDistanceKm);
-  const durationText = formatDurationMin(lecture.travelDurationMin);
 
   const handleStageClick = (event: MouseEvent) => {
     event.stopPropagation();
@@ -150,11 +148,9 @@ export function LectureCard({
             <MapPin className="h-3 w-3" />
             {truncate(lecture.location, 16)}
           </span>
-          {distanceText && durationText && (
-            <span className="text-[10px] text-muted-foreground/80">
-              {distanceText} ({durationText})
-            </span>
-          )}
+          <span onClick={(event) => event.stopPropagation()}>
+            <TravelRouteSummary lecture={lecture} compact />
+          </span>
           <NaverRouteButton startAddress={profile?.homeAddress} endAddress={lecture.location} />
         </div>
 

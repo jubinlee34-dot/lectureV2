@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { SmsModal } from "@/components/SmsModal";
 import { useLectures } from "@/hooks/useLectures";
 import { useTodos } from "@/hooks/useTodos";
+import { formatDurationMin } from "@/services/naverRouteService";
 import { recordSmsHistory } from "@/utils/storage";
 import { formatDate, formatKRW } from "@/utils/format";
 import {
@@ -110,6 +111,12 @@ export default function Dashboard() {
                         <MapPin className="h-3 w-3" />
                         {lecture.location}
                       </p>
+                      {lecture.travelDurationMin ? (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          🚗 저장된 이동시간 {formatDurationMin(lecture.travelDurationMin)}
+                          {!lecture.travelUpdatedAt ? " · 재계산 필요" : ""}
+                        </p>
+                      ) : null}
                     </button>
                     {lecture.managerPhone && (
                       <div className="flex shrink-0 flex-col gap-1">

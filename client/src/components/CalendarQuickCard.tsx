@@ -1,8 +1,8 @@
 import { NaverRouteButton } from "@/components/NaverRouteButton";
+import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
-import { formatDistanceKm, formatDurationMin } from "@/services/naverRouteService";
 import type { Lecture, WorkflowStage } from "@/types/lecture";
 import { Building2, Car, MapPin, MessageCircle, Phone, Star, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
@@ -31,8 +31,6 @@ export function CalendarQuickCard({
 }: CalendarQuickCardProps) {
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
-  const distanceText = formatDistanceKm(lecture.travelDistanceKm);
-  const durationText = formatDurationMin(lecture.travelDurationMin);
 
   const handleStageClick = (event: MouseEvent) => {
     event.stopPropagation();
@@ -70,7 +68,7 @@ export function CalendarQuickCard({
         )}
       </div>
 
-      <div className="mb-2 space-y-1 text-xs text-muted-foreground">
+      <div className="mb-2 space-y-1.5 text-xs text-muted-foreground">
         <p className="flex items-center gap-1.5">
           <Building2 className="h-3.5 w-3.5" />
           {lecture.organization}
@@ -79,11 +77,9 @@ export function CalendarQuickCard({
           <MapPin className="h-3.5 w-3.5" />
           {lecture.location}
         </p>
-        {distanceText && durationText && (
-          <p className="pl-5 text-[10px] text-muted-foreground/80">
-            예상 거리: {distanceText} · 예상 시간: {durationText}
-          </p>
-        )}
+        <div className="pl-5">
+          <TravelRouteSummary lecture={lecture} compact />
+        </div>
         <div className="pl-5 pt-0.5">
           <NaverRouteButton
             startAddress={profile?.homeAddress}

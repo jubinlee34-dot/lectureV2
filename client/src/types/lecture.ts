@@ -23,12 +23,12 @@ export interface Lecture {
   instructorMemo: string;
   memorableQuestion: string;
   createdAt: string;
-  travelDistanceKm?: number;
-  travelDurationMin?: number;
-  travelUpdatedAt?: string;
-  travel_distance_km?: string;
-  travel_duration_min?: string;
-  travel_updated_at?: string;
+  travelDistanceKm?: number | null;
+  travelDurationMin?: number | null;
+  travelUpdatedAt?: string | null;
+  travel_distance_km?: string | null;
+  travel_duration_min?: string | null;
+  travel_updated_at?: string | null;
 }
 
 export type LectureFormData = Omit<Lecture, "id" | "createdAt">;

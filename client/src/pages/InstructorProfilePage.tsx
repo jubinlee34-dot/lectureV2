@@ -3,9 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSupabase } from "@/contexts/SupabaseContext";
-import { getRouteInfo } from "@/services/naverRouteService";
 import type { InstructorProfile } from "@/types/instructor";
-import { Car, Mail, MapPin, Phone, Save, ShieldCheck, User } from "lucide-react";
+import { Mail, MapPin, Phone, Save, ShieldCheck, User } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -19,11 +18,9 @@ const defaultProfile: InstructorProfile = {
 };
 
 export default function InstructorProfilePage() {
-  const { profile: dbProfile, updateProfile, lectures, updateLecture } = useSupabase();
+  const { profile: dbProfile, updateProfile } = useSupabase();
   const [profile, setProfile] = useState<InstructorProfile>(defaultProfile);
   const [isSaving, setIsSaving] = useState(false);
-  const [isRecalculating, setIsRecalculating] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
     if (dbProfile) setProfile({ ...defaultProfile, ...dbProfile });
@@ -48,53 +45,10 @@ export default function InstructorProfilePage() {
   const handleSearchNaverMap = () => {
     const address = profile.homeAddress.trim();
     if (!address) {
-      toast.error("검색할 주소를 입력해주세요.");
+      toast.error("검색할 주소를 입력해 주세요.");
       return;
     }
     window.open(`https://map.naver.com/v5/search/${encodeURIComponent(address)}`, "_blank", "noopener,noreferrer");
-  };
-
-  const handleRecalculateAllRoutes = async () => {
-    const homeAddress = profile.homeAddress.trim();
-    if (!homeAddress) {
-      toast.error("출발지 주소를 먼저 저장해주세요.");
-      return;
-    }
-
-    const lecturesWithLocation = lectures.filter((lecture) => lecture.location?.trim());
-    if (lecturesWithLocation.length === 0) {
-      toast.info("장소가 등록된 강의가 없습니다.");
-      return;
-    }
-
-    setIsRecalculating(true);
-    setProgress({ current: 0, total: lecturesWithLocation.length });
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let index = 0; index < lecturesWithLocation.length; index += 1) {
-      const lecture = lecturesWithLocation[index];
-      setProgress({ current: index + 1, total: lecturesWithLocation.length });
-
-      try {
-        const route = await getRouteInfo(homeAddress, lecture.location);
-        await updateLecture(lecture.id, {
-          travelDistanceKm: route.distanceKm,
-          travelDurationMin: route.durationMin,
-          travelUpdatedAt: new Date().toISOString(),
-        });
-        successCount += 1;
-      } catch (error) {
-        console.error(`Failed to calculate route for lecture ${lecture.id}:`, error);
-        failCount += 1;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-
-    setIsRecalculating(false);
-    toast.success(`경로 계산 완료: 성공 ${successCount}건, 실패 ${failCount}건`);
   };
 
   return (
@@ -102,7 +56,7 @@ export default function InstructorProfilePage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">강사 프로필</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          연락처와 출발 주소를 관리합니다. 네이버 API secret은 이 화면에 저장하지 않습니다.
+          연락처와 출발 주소를 관리합니다. 집 주소가 변경되면 기존 거리/시간은 재계산 필요 상태로 표시됩니다.
         </p>
       </div>
 
@@ -160,29 +114,12 @@ export default function InstructorProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Car className="h-5 w-5 text-primary" />
-              경로 캐시
-            </CardTitle>
-            <CardDescription>
-              모든 강의의 거리/시간을 수동으로 다시 계산해 Supabase 캐시값을 갱신합니다.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button type="button" variant="outline" onClick={handleRecalculateAllRoutes} disabled={isRecalculating}>
-              {isRecalculating ? `계산 중 (${progress.current}/${progress.total})` : "전체 경로 다시 계산"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
               <ShieldCheck className="h-5 w-5 text-primary" />
               네이버 API 보안 설정
             </CardTitle>
             <CardDescription>
-              Vercel 프로젝트 환경변수에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`을 설정하세요. Client Secret은
-              브라우저, Supabase 공개 테이블, `NEXT_PUBLIC_*` 변수에 저장하지 않습니다.
+              Vercel Environment Variables에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`을 설정하세요. Secret은 브라우저나
+              Supabase 공개 테이블에 저장하지 않습니다.
             </CardDescription>
           </CardHeader>
         </Card>

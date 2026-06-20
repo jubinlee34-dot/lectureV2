@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useLectures } from "@/hooks/useLectures";
-import { getRouteInfo } from "@/services/naverRouteService";
 import type { WorkflowStage } from "@/types/lecture";
 import { recordSmsHistory } from "@/utils/storage";
 import { formatDate, formatKRW } from "@/utils/format";
@@ -49,7 +48,7 @@ const paymentBadge = {
 export default function LectureDetail() {
   const [, navigate] = useLocation();
   const { id } = useParams<{ id: string }>();
-  const { getLectureById, deleteLecture, updateLecture } = useLectures();
+  const { getLectureById, deleteLecture, updateLecture, calculateLectureRoute } = useLectures();
   const { profile } = useSupabase();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
@@ -80,12 +79,7 @@ export default function LectureDetail() {
 
     try {
       setCalculatingRoute(true);
-      const route = await getRouteInfo(profile.homeAddress, lecture.location);
-      await updateLecture(lecture.id, {
-        travelDistanceKm: route.distanceKm,
-        travelDurationMin: route.durationMin,
-        travelUpdatedAt: new Date().toISOString(),
-      });
+      await calculateLectureRoute(lecture.id);
       toast.success("경로 정보가 계산되어 저장되었습니다.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "경로 계산에 실패했습니다.");
@@ -149,6 +143,7 @@ export default function LectureDetail() {
         destination={lecture.location}
         distanceKm={lecture.travelDistanceKm}
         durationMin={lecture.travelDurationMin}
+        updatedAt={lecture.travelUpdatedAt}
         calculating={calculatingRoute}
         onCalculate={handleCalculateRoute}
       />
