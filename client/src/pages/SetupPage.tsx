@@ -18,23 +18,25 @@ type SetupStatus = "normal" | "missing" | "error";
 
 interface NaverHealthResponse {
   configured: boolean;
+  naverApiKeyIdExists?: boolean;
+  naverApiKeyExists?: boolean;
   error?: string;
 }
 
 const REQUIRED_ENV_NAMES = [
   "VITE_SUPABASE_URL",
   "VITE_SUPABASE_ANON_KEY",
-  "NAVER_CLIENT_ID",
-  "NAVER_CLIENT_SECRET",
+  "NAVER_MAPS_API_KEY_ID",
+  "NAVER_MAPS_API_KEY",
 ];
 
 const VERCEL_NAVER_STEPS = [
   "Vercel Dashboard에 로그인합니다.",
   "lectureV2 프로젝트를 선택하고 Settings로 이동합니다.",
   "Environment Variables 메뉴를 엽니다.",
-  "NAVER_CLIENT_ID를 추가하고 네이버 클라우드 Client ID 값을 입력합니다.",
-  "NAVER_CLIENT_SECRET을 추가하고 네이버 클라우드 Client Secret 값을 입력합니다.",
-  "변경사항을 저장한 뒤 Redeploy를 실행합니다.",
+  "NAVER_MAPS_API_KEY_ID를 추가하고 네이버 클라우드 API Key ID 값을 입력합니다.",
+  "NAVER_MAPS_API_KEY를 추가하고 네이버 클라우드 API Key 값을 입력합니다.",
+  "변경 사항을 저장한 뒤 Redeploy를 실행합니다.",
 ];
 
 export default function SetupPage() {
@@ -108,22 +110,22 @@ export default function SetupPage() {
 
       if (!response.ok) {
         setNaverStatus("error");
-        setNaverMessage(body.error || "네이버 API 설정 확인에 실패했습니다.");
+        setNaverMessage(body.error || "네이버 Maps API 설정 확인에 실패했습니다.");
         return;
       }
 
       if (!body.configured) {
         setNaverStatus("missing");
-        setNaverMessage("NAVER_CLIENT_ID 또는 NAVER_CLIENT_SECRET이 서버 환경변수에 없습니다.");
+        setNaverMessage("NAVER_MAPS_API_KEY_ID 또는 NAVER_MAPS_API_KEY가 서버 환경변수에 없습니다.");
         return;
       }
 
       setNaverStatus("normal");
-      setNaverMessage("네이버 API 서버 환경변수가 설정되어 있습니다.");
+      setNaverMessage("네이버 Maps API 서버 환경변수가 설정되어 있습니다.");
     } catch (naverError) {
       if (!mounted) return;
       setNaverStatus("error");
-      setNaverMessage(naverError instanceof Error ? naverError.message : "네이버 API 설정 확인에 실패했습니다.");
+      setNaverMessage(naverError instanceof Error ? naverError.message : "네이버 Maps API 설정 확인에 실패했습니다.");
     }
   }
 
@@ -133,7 +135,7 @@ export default function SetupPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">설정 점검</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            배포 후 필요한 환경변수와 기본 프로필 설정을 한곳에서 확인합니다.
+            배포 후 필요한 환경변수와 기본 프로필 설정을 한 화면에서 확인합니다.
           </p>
         </div>
         <Button variant="outline" onClick={() => copyText(REQUIRED_ENV_NAMES.join("\n"), "환경변수 이름을 복사했습니다.")}>
@@ -164,7 +166,7 @@ export default function SetupPage() {
 
         {guideOpen && (
           <div className="mb-4 rounded-md border border-primary/20 bg-primary/5 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-foreground">네이버 API 환경변수 설정 순서</h3>
+            <h3 className="mb-3 text-sm font-semibold text-foreground">네이버 Maps API 환경변수 설정 순서</h3>
             <ol className="space-y-2">
               {VERCEL_NAVER_STEPS.map((step, index) => (
                 <li key={step} className="flex gap-2 text-sm text-foreground/85">
@@ -180,7 +182,7 @@ export default function SetupPage() {
                 type="button"
                 size="sm"
                 variant="secondary"
-                onClick={() => copyText("NAVER_CLIENT_ID\nNAVER_CLIENT_SECRET", "네이버 환경변수 이름을 복사했습니다.")}
+                onClick={() => copyText("NAVER_MAPS_API_KEY_ID\nNAVER_MAPS_API_KEY", "네이버 환경변수 이름을 복사했습니다.")}
               >
                 <Clipboard className="mr-1.5 h-4 w-4" />
                 네이버 변수명 복사
@@ -211,8 +213,7 @@ export default function SetupPage() {
           ))}
         </div>
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          Supabase 두 값은 프론트엔드에서 사용하는 공개 클라이언트 설정입니다. 네이버 두 값은 서버 API 라우트에서만 읽으며,
-          앱 화면에 입력하거나 Supabase에 저장하지 않습니다.
+          Supabase 값은 프론트엔드 공개 설정입니다. 네이버 Maps API 키는 서버 API 라우트에서만 읽으며 화면이나 Supabase에 저장하지 않습니다.
         </p>
       </div>
 
@@ -224,10 +225,10 @@ export default function SetupPage() {
           action="Vercel Project Settings > Environment Variables에 VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 입력하세요."
         />
         <SetupRow
-          title="네이버 API 환경변수"
+          title="네이버 Maps API 환경변수"
           status={naverStatus}
           message={naverMessage}
-          action="설정 방법 보기를 눌러 Vercel Dashboard에서 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET을 입력한 뒤 Redeploy하세요."
+          action="설정 방법 보기를 눌러 Vercel Dashboard에서 NAVER_MAPS_API_KEY_ID, NAVER_MAPS_API_KEY를 입력한 뒤 Redeploy하세요."
         />
         <SetupRow
           title="강사 프로필"

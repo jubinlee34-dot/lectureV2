@@ -118,7 +118,7 @@ export default function InstructorProfilePage() {
               네이버 API 보안 설정
             </CardTitle>
             <CardDescription>
-              Vercel Environment Variables에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`을 설정하세요. Secret은 브라우저나
+              Vercel Environment Variables에 `NAVER_MAPS_API_KEY_ID`, `NAVER_MAPS_API_KEY`를 설정하세요. Secret은 브라우저나
               Supabase 공개 테이블에 저장하지 않습니다.
             </CardDescription>
           </CardHeader>

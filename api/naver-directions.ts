@@ -17,66 +17,72 @@ class HttpError extends Error {
 
 const NAVER_AUTH_ERROR_MESSAGE =
   "네이버 인증 실패: API 키, 헤더 방식, 서비스 활성화 상태를 확인하세요";
+const NAVER_MAPS_BASE_URL = "https://maps.apigw.ntruss.com";
 
-function hasNaverClientId() {
-  return Boolean(process.env.NAVER_CLIENT_ID);
+function hasNaverApiKeyId() {
+  return Boolean(process.env.NAVER_MAPS_API_KEY_ID);
 }
 
-function hasNaverClientSecret() {
-  return Boolean(process.env.NAVER_CLIENT_SECRET);
+function hasNaverApiKey() {
+  return Boolean(process.env.NAVER_MAPS_API_KEY);
 }
 
 function getNaverKeys() {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const apiKeyId = process.env.NAVER_MAPS_API_KEY_ID;
+  const apiKey = process.env.NAVER_MAPS_API_KEY;
 
-  if (!clientId || !clientSecret) {
-    throw new HttpError("네이버 API 환경변수가 설정되지 않았습니다", 500);
+  if (!apiKeyId || !apiKey) {
+    throw new HttpError("네이버 Maps API 환경변수가 설정되지 않았습니다", 500);
   }
 
-  return { clientId, clientSecret };
+  return { apiKeyId, apiKey };
 }
 
 function logNaverResponse(url: string, status: number, body: string) {
-  console.error("Naver API response", {
-    naverClientIdExists: hasNaverClientId(),
-    naverClientSecretExists: hasNaverClientSecret(),
+  console.error("Naver Maps API response", {
+    naverApiKeyIdExists: hasNaverApiKeyId(),
+    naverApiKeyExists: hasNaverApiKey(),
     naverApiUrl: url,
     naverResponseStatus: status,
     naverResponseBody: body,
   });
 }
 
-async function fetchNaverJson<T>(url: string, clientId: string, clientSecret: string): Promise<T> {
+async function fetchNaverJson<T>(url: string, apiKeyId: string, apiKey: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
-      "x-ncp-apigw-api-key-id": clientId,
-      "x-ncp-apigw-api-key": clientSecret,
+      "x-ncp-apigw-api-key-id": apiKeyId,
+      "x-ncp-apigw-api-key": apiKey,
+      Accept: "application/json",
     },
   });
-
-  const body = await response.text();
+  const body = await response.text().catch(() => "");
 
   if (!response.ok) {
     logNaverResponse(url, response.status, body);
 
-    if (response.status === 401) {
-      throw new HttpError(NAVER_AUTH_ERROR_MESSAGE, 401);
+    if (response.status === 401 || response.status === 403) {
+      throw new HttpError(NAVER_AUTH_ERROR_MESSAGE, response.status);
     }
 
-    throw new HttpError(`Naver API failed with status ${response.status}`, response.status);
+    throw new HttpError(`Naver Maps API failed with status ${response.status}`, response.status);
   }
 
   return JSON.parse(body) as T;
 }
 
-async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
+async function geocodeNaver(query: string, apiKeyId: string, apiKey: string): Promise<Coords> {
   const cleanQuery = query.replace(/\s*\(.*?\)\s*/g, " ").trim();
-  const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(cleanQuery)}`;
+
+  if (!cleanQuery) {
+    throw new HttpError("주소 검색어가 비어 있습니다", 400);
+  }
+
+  const url = `${NAVER_MAPS_BASE_URL}/map-geocode/v2/geocode?query=${encodeURIComponent(cleanQuery)}`;
   const data = await fetchNaverJson<{
     status?: string;
     addresses?: Array<{ x: string; y: string }>;
-  }>(url, clientId, clientSecret);
+  }>(url, apiKeyId, apiKey);
 
   if (data.status !== "OK" || !data.addresses?.length) {
     throw new HttpError(`Address not found: ${cleanQuery}`, 404);
@@ -85,24 +91,20 @@ async function geocodeNaver(query: string, clientId: string, clientSecret: strin
   return { x: data.addresses[0].x, y: data.addresses[0].y };
 }
 
-async function getDirectionsNaver(
-  start: Coords,
-  goal: Coords,
-  clientId: string,
-  clientSecret: string
-) {
-  const url = `https://naveropenapi.apigw.ntruss.com/map-direction-15/v1/driving?start=${start.x},${start.y}&goal=${goal.x},${goal.y}&option=trafast`;
+async function getDirectionsNaver(start: Coords, goal: Coords, apiKeyId: string, apiKey: string) {
+  const params = new URLSearchParams({
+    start: `${start.x},${start.y}`,
+    goal: `${goal.x},${goal.y}`,
+    option: "trafast",
+  });
+  const url = `${NAVER_MAPS_BASE_URL}/map-direction/v1/driving?${params.toString()}`;
   const data = await fetchNaverJson<{
     route?: {
       trafast?: Array<{ summary?: { distance: number; duration: number } }>;
-      tracur?: Array<{ summary?: { distance: number; duration: number } }>;
       traoptimal?: Array<{ summary?: { distance: number; duration: number } }>;
     };
-  }>(url, clientId, clientSecret);
-  const summary =
-    data.route?.trafast?.[0]?.summary ??
-    data.route?.tracur?.[0]?.summary ??
-    data.route?.traoptimal?.[0]?.summary;
+  }>(url, apiKeyId, apiKey);
+  const summary = data.route?.trafast?.[0]?.summary ?? data.route?.traoptimal?.[0]?.summary;
 
   if (!summary) {
     throw new HttpError("No route found in Naver directions response", 404);
@@ -124,7 +126,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (health === "1") {
       res.status(200).json({
-        configured: hasNaverClientId() && hasNaverClientSecret(),
+        configured: hasNaverApiKeyId() && hasNaverApiKey(),
+        naverApiKeyIdExists: hasNaverApiKeyId(),
+        naverApiKeyExists: hasNaverApiKey(),
       });
       return;
     }
@@ -134,19 +138,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const { clientId, clientSecret } = getNaverKeys();
+    const { apiKeyId, apiKey } = getNaverKeys();
 
     if (query) {
-      res.status(200).json(await geocodeNaver(query, clientId, clientSecret));
+      res.status(200).json(await geocodeNaver(query, apiKeyId, apiKey));
       return;
     }
 
     if (start && goal) {
       const [startCoords, goalCoords] = await Promise.all([
-        geocodeNaver(start, clientId, clientSecret),
-        geocodeNaver(goal, clientId, clientSecret),
+        geocodeNaver(start, apiKeyId, apiKey),
+        geocodeNaver(goal, apiKeyId, apiKey),
       ]);
-      res.status(200).json(await getDirectionsNaver(startCoords, goalCoords, clientId, clientSecret));
+      res.status(200).json(await getDirectionsNaver(startCoords, goalCoords, apiKeyId, apiKey));
       return;
     }
 
