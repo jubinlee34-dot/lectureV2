@@ -123,6 +123,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const query = typeof req.query.query === "string" ? req.query.query : "";
     const start = typeof req.query.start === "string" ? req.query.start : "";
     const goal = typeof req.query.goal === "string" ? req.query.goal : "";
+    const goalX = typeof req.query.goalX === "string" ? req.query.goalX : "";
+    const goalY = typeof req.query.goalY === "string" ? req.query.goalY : "";
+    const hasGoalCoords = Boolean(goalX && goalY);
 
     if (health === "1") {
       res.status(200).json({
@@ -133,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    if (!query && !(start && goal)) {
+    if (!query && !(start && (goal || hasGoalCoords))) {
       res.status(400).json({ error: "Missing query or start/goal parameters" });
       return;
     }
@@ -145,11 +148,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    if (start && goal) {
-      const [startCoords, goalCoords] = await Promise.all([
-        geocodeNaver(start, apiKeyId, apiKey),
-        geocodeNaver(goal, apiKeyId, apiKey),
-      ]);
+    if (start && (goal || hasGoalCoords)) {
+      const startCoords = await geocodeNaver(start, apiKeyId, apiKey);
+      const goalCoords = hasGoalCoords ? { x: goalX, y: goalY } : await geocodeNaver(goal, apiKeyId, apiKey);
       res.status(200).json(await getDirectionsNaver(startCoords, goalCoords, apiKeyId, apiKey));
       return;
     }

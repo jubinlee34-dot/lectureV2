@@ -37,8 +37,12 @@ export async function getCoordinates(address: string): Promise<Coords> {
   return readJson<Coords>(response);
 }
 
-export async function getRouteInfo(startAddress: string, endAddress: string): Promise<RouteInfo> {
+export async function getRouteInfo(startAddress: string, endAddress: string, goalCoords?: Coords): Promise<RouteInfo> {
   const params = new URLSearchParams({ start: startAddress, goal: endAddress });
+  if (goalCoords?.x && goalCoords.y) {
+    params.set("goalX", goalCoords.x);
+    params.set("goalY", goalCoords.y);
+  }
   const response = await fetch(`/api/naver-directions?${params.toString()}`);
   return readJson<RouteInfo>(response);
 }

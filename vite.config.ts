@@ -8,6 +8,14 @@ interface Coords {
   y: string;
 }
 
+interface KakaoPlaceDocument {
+  place_name?: string;
+  road_address_name?: string;
+  address_name?: string;
+  x?: string;
+  y?: string;
+}
+
 class HttpError extends Error {
   status: number;
 
@@ -112,6 +120,57 @@ async function getDirectionsNaver(start: Coords, goal: Coords, apiKeyId: string,
   };
 }
 
+function hasKakaoRestApiKey(env: Record<string, string>) {
+  return Boolean(env.KAKAO_REST_API_KEY || process.env.KAKAO_REST_API_KEY);
+}
+
+function getKakaoRestApiKey(env: Record<string, string>) {
+  const apiKey = env.KAKAO_REST_API_KEY || process.env.KAKAO_REST_API_KEY;
+  if (!apiKey) {
+    throw new HttpError("카카오 REST API 키가 설정되지 않았습니다.", 500);
+  }
+  return apiKey;
+}
+
+async function searchKakaoPlaces(query: string, apiKey: string) {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) {
+    throw new HttpError("검색어를 입력하세요.", 400);
+  }
+
+  const params = new URLSearchParams({ query: cleanQuery, size: "10" });
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?${params.toString()}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `KakaoAK ${apiKey}`,
+      Accept: "application/json",
+    },
+  });
+  const body = await response.text().catch(() => "");
+
+  if (!response.ok) {
+    console.error("Kakao Local API request failed", {
+      kakaoRestApiKeyExists: hasKakaoRestApiKey({}),
+      kakaoApiUrl: url,
+      kakaoResponseStatus: response.status,
+      kakaoResponseBody: body,
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new HttpError("카카오 인증 실패: REST API 키 설정을 확인하세요.", response.status);
+    }
+    throw new HttpError(`Kakao Local API failed with status ${response.status}`, response.status);
+  }
+
+  const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
+  return (data.documents || []).map((document) => ({
+    placeName: document.place_name || "",
+    roadAddress: document.road_address_name || "",
+    jibunAddress: document.address_name || "",
+    x: document.x || "",
+    y: document.y || "",
+  }));
+}
+
 function writeJson(
   res: { writeHead: (status: number, headers: Record<string, string>) => void; end: (body: string) => void },
   status: number,
@@ -131,7 +190,10 @@ function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
           const health = parsedUrl.searchParams.get("health");
           const start = parsedUrl.searchParams.get("start");
           const goal = parsedUrl.searchParams.get("goal");
+          const goalX = parsedUrl.searchParams.get("goalX") || "";
+          const goalY = parsedUrl.searchParams.get("goalY") || "";
           const query = parsedUrl.searchParams.get("query");
+          const hasGoalCoords = Boolean(goalX && goalY);
 
           if (health === "1") {
             writeJson(res, 200, {
@@ -142,7 +204,7 @@ function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
             return;
           }
 
-          if (!query && !(start && goal)) {
+          if (!query && !(start && (goal || hasGoalCoords))) {
             writeJson(res, 400, { error: "Missing query or start/goal parameters" });
             return;
           }
@@ -154,11 +216,9 @@ function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
             return;
           }
 
-          if (start && goal) {
-            const [startCoords, goalCoords] = await Promise.all([
-              geocodeNaver(start, apiKeyId, apiKey),
-              geocodeNaver(goal, apiKeyId, apiKey),
-            ]);
+          if (start && (goal || hasGoalCoords)) {
+            const startCoords = await geocodeNaver(start, apiKeyId, apiKey);
+            const goalCoords = hasGoalCoords ? { x: goalX, y: goalY } : await geocodeNaver(goal, apiKeyId, apiKey);
             writeJson(res, 200, await getDirectionsNaver(startCoords, goalCoords, apiKeyId, apiKey));
             return;
           }
@@ -175,12 +235,43 @@ function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
   };
 }
 
+function vitePluginKakaoPlacesProxy(env: Record<string, string>): Plugin {
+  return {
+    name: "kakao-places-proxy",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use("/api/kakao-places", async (req, res) => {
+        try {
+          const parsedUrl = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+          const health = parsedUrl.searchParams.get("health");
+          const query = parsedUrl.searchParams.get("query") || "";
+
+          if (health === "1") {
+            writeJson(res, 200, {
+              configured: hasKakaoRestApiKey(env),
+              kakaoRestApiKeyExists: hasKakaoRestApiKey(env),
+            });
+            return;
+          }
+
+          const apiKey = getKakaoRestApiKey(env);
+          writeJson(res, 200, { places: await searchKakaoPlaces(query, apiKey) });
+        } catch (error) {
+          const status = error instanceof HttpError ? error.status : 500;
+          const message = error instanceof Error ? error.message : "Internal Server Error";
+          console.error("Kakao places proxy error:", message);
+          writeJson(res, status, { error: message });
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const rootDir = import.meta.dirname;
   const env = loadEnv(mode, rootDir, "");
 
   return {
-    plugins: [react(), tailwindcss(), vitePluginNaverDirectionsProxy(env)],
+    plugins: [react(), tailwindcss(), vitePluginNaverDirectionsProxy(env), vitePluginKakaoPlacesProxy(env)],
     resolve: {
       alias: {
         "@": path.resolve(rootDir, "client", "src"),

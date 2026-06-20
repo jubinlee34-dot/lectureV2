@@ -2,9 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Save, X } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { searchKakaoPlaces, type KakaoPlaceCandidate } from "../services/kakaoPlaceService";
 import type { Lecture, LectureFormData, PaymentStatus, WorkflowStage } from "../types/lecture";
 
 interface LectureFormProps {
@@ -24,6 +25,11 @@ const emptyForm: LectureFormData = {
   duration: "",
   participants: 0,
   location: "",
+  locationName: "",
+  roadAddress: "",
+  jibunAddress: "",
+  locationX: "",
+  locationY: "",
   content: "",
   reflection: "",
   managerName: "",
@@ -49,6 +55,11 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
           duration: initialData.duration,
           participants: initialData.participants,
           location: initialData.location,
+          locationName: initialData.locationName || "",
+          roadAddress: initialData.roadAddress || "",
+          jibunAddress: initialData.jibunAddress || "",
+          locationX: initialData.locationX || "",
+          locationY: initialData.locationY || "",
           content: initialData.content,
           reflection: initialData.reflection,
           managerName: initialData.managerName,
@@ -81,6 +92,8 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof LectureFormData, string>>>({});
+  const [placeResults, setPlaceResults] = useState<KakaoPlaceCandidate[]>([]);
+  const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
 
   const [isRecurring, setIsRecurring] = useState(false);
   const [additionalDates, setAdditionalDates] = useState<string[]>([]);
@@ -104,19 +117,58 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
     setAdditionalDates((prev) => prev.filter((d) => d !== dateToRemove));
   };
 
-  const handleSearchNaverMap = () => {
+  const handleSearchPlace = async () => {
     const location = formData.location.trim();
     if (!location) {
-      toast.error("검색할 교육장소(주소 또는 장소명)를 입력해주세요.");
+      toast.error("검색할 교육장소, 기관명 또는 주소를 입력하세요.");
       return;
     }
-    const url = `https://map.naver.com/v5/search/${encodeURIComponent(location)}`;
-    window.open(url, "_blank");
+
+    setPlaceSearchLoading(true);
+    try {
+      const results = await searchKakaoPlaces(location);
+      setPlaceResults(results);
+      if (results.length === 0) {
+        toast.info("카카오 장소 검색 결과가 없습니다. 입력한 주소는 네이버 거리 계산 fallback에 사용됩니다.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "카카오 장소 검색에 실패했습니다.");
+    } finally {
+      setPlaceSearchLoading(false);
+    }
+  };
+
+  const handleSelectPlace = (place: KakaoPlaceCandidate) => {
+    const selectedAddress = place.roadAddress || place.jibunAddress || place.placeName;
+    setFormData((prev) => ({
+      ...prev,
+      location: selectedAddress,
+      locationName: place.placeName,
+      roadAddress: place.roadAddress,
+      jibunAddress: place.jibunAddress,
+      locationX: place.x,
+      locationY: place.y,
+    }));
+    setErrors((prev) => ({ ...prev, location: undefined }));
+    setPlaceResults([]);
+    toast.success("선택한 주소와 좌표를 저장했습니다.");
   };
 
   const setField = (field: keyof LectureFormData, value: string | number) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      if (field !== "location") return { ...prev, [field]: value };
+      return {
+        ...prev,
+        location: String(value),
+        locationName: "",
+        roadAddress: "",
+        jibunAddress: "",
+        locationX: "",
+        locationY: "",
+      };
+    });
     setErrors((prev) => ({ ...prev, [field]: undefined }));
+    if (field === "location") setPlaceResults([]);
   };
 
   const validate = (data: LectureFormData) => {
@@ -230,12 +282,44 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleSearchNaverMap}
+                onClick={handleSearchPlace}
+                disabled={placeSearchLoading}
                 className="shrink-0 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all text-xs h-10 px-3"
               >
-                네이버 지도 검색
+                {placeSearchLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
+                장소 검색
               </Button>
             </div>
+            {(formData.roadAddress || formData.jibunAddress) && (
+              <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">
+                <p className="font-semibold">선택된 주소: {formData.roadAddress || formData.jibunAddress}</p>
+                {formData.locationName && <p className="mt-0.5 text-muted-foreground">장소명: {formData.locationName}</p>}
+                {formData.locationX && formData.locationY && (
+                  <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                    좌표: {formData.locationX}, {formData.locationY}
+                  </p>
+                )}
+              </div>
+            )}
+            {placeResults.length > 0 && (
+              <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-card">
+                {placeResults.map((place) => {
+                  const key = `${place.placeName}-${place.x}-${place.y}`;
+                  return (
+                    <div key={key} className="flex flex-col gap-2 border-b border-border p-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 text-sm">
+                        <p className="font-semibold text-foreground">{place.placeName || "장소명 없음"}</p>
+                        <p className="mt-1 text-xs text-foreground/80">도로명: {place.roadAddress || "없음"}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">지번: {place.jibunAddress || "없음"}</p>
+                      </div>
+                      <Button type="button" size="sm" variant="secondary" className="shrink-0" onClick={() => handleSelectPlace(place)}>
+                        이 주소 사용
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Field>
         </div>
       </Section>

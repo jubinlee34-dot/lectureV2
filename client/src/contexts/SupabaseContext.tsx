@@ -407,7 +407,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     if (!profile?.homeAddress?.trim()) throw new Error("강사 집 주소가 설정되지 않았습니다.");
     if (!target.location?.trim()) throw new Error("강의 장소가 설정되지 않았습니다.");
 
-    const route = await getRouteInfo(profile.homeAddress, target.location);
+    const goalCoords =
+      target.locationX && target.locationY ? { x: target.locationX, y: target.locationY } : undefined;
+    const route = await getRouteInfo(profile.homeAddress, target.location, goalCoords);
     const routeData: Partial<Lecture> = {
       travelDistanceKm: route.distanceKm,
       travelDurationMin: route.durationMin,

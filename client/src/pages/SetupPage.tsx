@@ -23,11 +23,18 @@ interface NaverHealthResponse {
   error?: string;
 }
 
+interface KakaoHealthResponse {
+  configured: boolean;
+  kakaoRestApiKeyExists?: boolean;
+  error?: string;
+}
+
 const REQUIRED_ENV_NAMES = [
   "VITE_SUPABASE_URL",
   "VITE_SUPABASE_ANON_KEY",
   "NAVER_MAPS_API_KEY_ID",
   "NAVER_MAPS_API_KEY",
+  "KAKAO_REST_API_KEY",
 ];
 
 const VERCEL_NAVER_STEPS = [
@@ -45,6 +52,8 @@ export default function SetupPage() {
   const [supabaseMessage, setSupabaseMessage] = useState("확인 중입니다.");
   const [naverStatus, setNaverStatus] = useState<SetupStatus>("missing");
   const [naverMessage, setNaverMessage] = useState("확인 중입니다.");
+  const [kakaoStatus, setKakaoStatus] = useState<SetupStatus>("missing");
+  const [kakaoMessage, setKakaoMessage] = useState("확인 중입니다.");
   const [checking, setChecking] = useState(true);
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -53,7 +62,7 @@ export default function SetupPage() {
 
     async function checkSetup() {
       setChecking(true);
-      await Promise.all([checkSupabase(mounted), checkNaver(mounted)]);
+      await Promise.all([checkSupabase(mounted), checkNaver(mounted), checkKakao(mounted)]);
       if (mounted) setChecking(false);
     }
 
@@ -126,6 +135,33 @@ export default function SetupPage() {
       if (!mounted) return;
       setNaverStatus("error");
       setNaverMessage(naverError instanceof Error ? naverError.message : "네이버 Maps API 설정 확인에 실패했습니다.");
+    }
+  }
+
+  async function checkKakao(mounted: boolean) {
+    try {
+      const response = await fetch("/api/kakao-places?health=1");
+      const body = (await response.json().catch(() => ({}))) as KakaoHealthResponse;
+      if (!mounted) return;
+
+      if (!response.ok) {
+        setKakaoStatus("error");
+        setKakaoMessage(body.error || "카카오 Local API 설정 확인에 실패했습니다.");
+        return;
+      }
+
+      if (!body.configured) {
+        setKakaoStatus("missing");
+        setKakaoMessage("KAKAO_REST_API_KEY가 서버 환경변수에 없습니다.");
+        return;
+      }
+
+      setKakaoStatus("normal");
+      setKakaoMessage("카카오 Local API 서버 환경변수가 설정되어 있습니다.");
+    } catch (kakaoError) {
+      if (!mounted) return;
+      setKakaoStatus("error");
+      setKakaoMessage(kakaoError instanceof Error ? kakaoError.message : "카카오 Local API 설정 확인에 실패했습니다.");
     }
   }
 
@@ -229,6 +265,12 @@ export default function SetupPage() {
           status={naverStatus}
           message={naverMessage}
           action="설정 방법 보기를 눌러 Vercel Dashboard에서 NAVER_MAPS_API_KEY_ID, NAVER_MAPS_API_KEY를 입력한 뒤 Redeploy하세요."
+        />
+        <SetupRow
+          title="카카오 Local API 환경변수"
+          status={kakaoStatus}
+          message={kakaoMessage}
+          action="Vercel Project Settings > Environment Variables에 KAKAO_REST_API_KEY를 입력한 뒤 Redeploy하세요."
         />
         <SetupRow
           title="강사 프로필"

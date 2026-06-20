@@ -11,6 +11,11 @@ export interface Lecture {
   duration: string;
   participants: number;
   location: string;
+  locationName?: string | null;
+  roadAddress?: string | null;
+  jibunAddress?: string | null;
+  locationX?: string | null;
+  locationY?: string | null;
   content: string;
   reflection: string;
   managerName: string;

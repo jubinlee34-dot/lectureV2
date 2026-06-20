@@ -8,6 +8,14 @@ interface Coords {
   y: string;
 }
 
+interface KakaoPlaceDocument {
+  place_name?: string;
+  road_address_name?: string;
+  address_name?: string;
+  x?: string;
+  y?: string;
+}
+
 class HttpError extends Error {
   status: number;
 
@@ -121,6 +129,57 @@ async function getDirectionsNaver(start: Coords, goal: Coords, apiKeyId: string,
   };
 }
 
+function hasKakaoRestApiKey() {
+  return Boolean(process.env.KAKAO_REST_API_KEY);
+}
+
+function getKakaoRestApiKey() {
+  const apiKey = process.env.KAKAO_REST_API_KEY;
+  if (!apiKey) {
+    throw new HttpError("카카오 REST API 키가 설정되지 않았습니다.", 500);
+  }
+  return apiKey;
+}
+
+async function searchKakaoPlaces(query: string, apiKey: string) {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) {
+    throw new HttpError("검색어를 입력하세요.", 400);
+  }
+
+  const params = new URLSearchParams({ query: cleanQuery, size: "10" });
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?${params.toString()}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `KakaoAK ${apiKey}`,
+      Accept: "application/json",
+    },
+  });
+  const body = await response.text().catch(() => "");
+
+  if (!response.ok) {
+    console.error("Kakao Local API request failed", {
+      kakaoRestApiKeyExists: hasKakaoRestApiKey(),
+      kakaoApiUrl: url,
+      kakaoResponseStatus: response.status,
+      kakaoResponseBody: body,
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new HttpError("카카오 인증 실패: REST API 키 설정을 확인하세요.", response.status);
+    }
+    throw new HttpError(`Kakao Local API failed with status ${response.status}`, response.status);
+  }
+
+  const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
+  return (data.documents || []).map((document) => ({
+    placeName: document.place_name || "",
+    roadAddress: document.road_address_name || "",
+    jibunAddress: document.address_name || "",
+    x: document.x || "",
+    y: document.y || "",
+  }));
+}
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
@@ -131,6 +190,9 @@ async function startServer() {
       const query = typeof req.query.query === "string" ? req.query.query : "";
       const start = typeof req.query.start === "string" ? req.query.start : "";
       const goal = typeof req.query.goal === "string" ? req.query.goal : "";
+      const goalX = typeof req.query.goalX === "string" ? req.query.goalX : "";
+      const goalY = typeof req.query.goalY === "string" ? req.query.goalY : "";
+      const hasGoalCoords = Boolean(goalX && goalY);
 
       if (health === "1") {
         res.json({
@@ -141,7 +203,7 @@ async function startServer() {
         return;
       }
 
-      if (!query && !(start && goal)) {
+      if (!query && !(start && (goal || hasGoalCoords))) {
         res.status(400).json({ error: "Missing query or start/goal parameters" });
         return;
       }
@@ -153,11 +215,9 @@ async function startServer() {
         return;
       }
 
-      if (start && goal) {
-        const [startCoords, goalCoords] = await Promise.all([
-          geocodeNaver(start, apiKeyId, apiKey),
-          geocodeNaver(goal, apiKeyId, apiKey),
-        ]);
+      if (start && (goal || hasGoalCoords)) {
+        const startCoords = await geocodeNaver(start, apiKeyId, apiKey);
+        const goalCoords = hasGoalCoords ? { x: goalX, y: goalY } : await geocodeNaver(goal, apiKeyId, apiKey);
 
         res.json(await getDirectionsNaver(startCoords, goalCoords, apiKeyId, apiKey));
         return;
@@ -169,6 +229,30 @@ async function startServer() {
       const message = error instanceof Error ? error.message : "Internal Server Error";
 
       console.error("Express naver directions proxy error:", message);
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.get("/api/kakao-places", async (req, res) => {
+    try {
+      const health = typeof req.query.health === "string" ? req.query.health : "";
+      const query = typeof req.query.query === "string" ? req.query.query : "";
+
+      if (health === "1") {
+        res.json({
+          configured: hasKakaoRestApiKey(),
+          kakaoRestApiKeyExists: hasKakaoRestApiKey(),
+        });
+        return;
+      }
+
+      const apiKey = getKakaoRestApiKey();
+      res.json({ places: await searchKakaoPlaces(query, apiKey) });
+    } catch (error) {
+      const status = error instanceof HttpError ? error.status : 500;
+      const message = error instanceof Error ? error.message : "Internal Server Error";
+
+      console.error("Express kakao places proxy error:", message);
       res.status(status).json({ error: message });
     }
   });
