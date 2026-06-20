@@ -18,6 +18,14 @@ class HttpError extends Error {
 const NAVER_AUTH_ERROR_MESSAGE =
   "네이버 인증 실패: API 키, 헤더 방식, 서비스 활성화 상태를 확인하세요";
 
+function hasNaverClientId() {
+  return Boolean(process.env.NAVER_CLIENT_ID);
+}
+
+function hasNaverClientSecret() {
+  return Boolean(process.env.NAVER_CLIENT_SECRET);
+}
+
 function getNaverKeys() {
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
@@ -29,6 +37,16 @@ function getNaverKeys() {
   return { clientId, clientSecret };
 }
 
+function logNaverResponse(url: string, status: number, body: string) {
+  console.error("Naver API response", {
+    naverClientIdExists: hasNaverClientId(),
+    naverClientSecretExists: hasNaverClientSecret(),
+    naverApiUrl: url,
+    naverResponseStatus: status,
+    naverResponseBody: body,
+  });
+}
+
 async function fetchNaverJson<T>(url: string, clientId: string, clientSecret: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
@@ -37,20 +55,19 @@ async function fetchNaverJson<T>(url: string, clientId: string, clientSecret: st
     },
   });
 
+  const body = await response.text();
+
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    const logPayload = { status: response.status, url, body };
+    logNaverResponse(url, response.status, body);
 
     if (response.status === 401) {
-      console.error("Naver API authentication failed", logPayload);
       throw new HttpError(NAVER_AUTH_ERROR_MESSAGE, 401);
     }
 
-    console.error("Naver API request failed", logPayload);
     throw new HttpError(`Naver API failed with status ${response.status}`, response.status);
   }
 
-  return (await response.json()) as T;
+  return JSON.parse(body) as T;
 }
 
 async function geocodeNaver(query: string, clientId: string, clientSecret: string): Promise<Coords> {
@@ -107,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (health === "1") {
       res.status(200).json({
-        configured: Boolean(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET),
+        configured: hasNaverClientId() && hasNaverClientSecret(),
       });
       return;
     }
@@ -137,7 +154,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof Error ? error.message : "Internal Server Error";
-    console.error("Vercel Naver Directions Proxy Error:", message);
     res.status(status).json({ error: message });
   }
 }
