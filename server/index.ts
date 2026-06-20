@@ -18,6 +18,9 @@ class HttpError extends Error {
   }
 }
 
+const NAVER_AUTH_ERROR_MESSAGE =
+  "네이버 인증 실패: API 키, 헤더 방식, 서비스 활성화 상태를 확인하세요";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -35,12 +38,21 @@ function getNaverKeys() {
 async function fetchNaverJson<T>(url: string, clientId: string, clientSecret: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
-      "X-NCP-APIGW-API-KEY-ID": clientId,
-      "X-NCP-APIGW-API-KEY": clientSecret,
+      "x-ncp-apigw-api-key-id": clientId,
+      "x-ncp-apigw-api-key": clientSecret,
     },
   });
 
   if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    const logPayload = { status: response.status, url, body };
+
+    if (response.status === 401) {
+      console.error("Naver API authentication failed", logPayload);
+      throw new HttpError(NAVER_AUTH_ERROR_MESSAGE, 401);
+    }
+
+    console.error("Naver API request failed", logPayload);
     throw new HttpError(`Naver API failed with status ${response.status}`, response.status);
   }
 
@@ -140,10 +152,7 @@ async function startServer() {
     }
   });
 
-  const staticPath =
-    process.env.NODE_ENV === "production"
-      ? path.resolve(__dirname, "..", "dist")
-      : path.resolve(__dirname, "..", "dist");
+  const staticPath = path.resolve(__dirname, "..", "dist");
 
   app.use(express.static(staticPath));
 

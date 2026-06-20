@@ -18,6 +18,9 @@ class HttpError extends Error {
   }
 }
 
+const NAVER_AUTH_ERROR_MESSAGE =
+  "네이버 인증 실패: API 키, 헤더 방식, 서비스 활성화 상태를 확인하세요";
+
 function getNaverKeys(env: Record<string, string>) {
   const clientId = env.NAVER_CLIENT_ID || process.env.NAVER_CLIENT_ID;
   const clientSecret = env.NAVER_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET;
@@ -32,12 +35,21 @@ function getNaverKeys(env: Record<string, string>) {
 async function fetchNaverJson<T>(url: string, clientId: string, clientSecret: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
-      "X-NCP-APIGW-API-KEY-ID": clientId,
-      "X-NCP-APIGW-API-KEY": clientSecret,
+      "x-ncp-apigw-api-key-id": clientId,
+      "x-ncp-apigw-api-key": clientSecret,
     },
   });
 
   if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    const logPayload = { status: response.status, url, body };
+
+    if (response.status === 401) {
+      console.error("Naver API authentication failed", logPayload);
+      throw new HttpError(NAVER_AUTH_ERROR_MESSAGE, 401);
+    }
+
+    console.error("Naver API request failed", logPayload);
     throw new HttpError(`Naver API failed with status ${response.status}`, response.status);
   }
 
@@ -89,7 +101,11 @@ async function getDirectionsNaver(
   };
 }
 
-function writeJson(res: { writeHead: (status: number, headers: Record<string, string>) => void; end: (body: string) => void }, status: number, body: unknown) {
+function writeJson(
+  res: { writeHead: (status: number, headers: Record<string, string>) => void; end: (body: string) => void },
+  status: number,
+  body: unknown
+) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
@@ -108,7 +124,10 @@ function vitePluginNaverDirectionsProxy(env: Record<string, string>): Plugin {
 
           if (health === "1") {
             writeJson(res, 200, {
-              configured: Boolean((env.NAVER_CLIENT_ID || process.env.NAVER_CLIENT_ID) && (env.NAVER_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET)),
+              configured: Boolean(
+                (env.NAVER_CLIENT_ID || process.env.NAVER_CLIENT_ID) &&
+                  (env.NAVER_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET)
+              ),
             });
             return;
           }
