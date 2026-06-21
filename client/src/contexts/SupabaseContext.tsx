@@ -79,6 +79,85 @@ const DEFAULT_AFTER_TASKS: Array<{ category: WorkTaskCategory; text: string }> =
   { category: "blog", text: "블로그/SNS 홍보 초안 작성" },
 ];
 
+const LECTURE_DB_COLUMNS = [
+  "id",
+  "organization",
+  "title",
+  "topic",
+  "target",
+  "date",
+  "duration",
+  "participants",
+  "location",
+  "locationName",
+  "roadAddress",
+  "jibunAddress",
+  "locationX",
+  "locationY",
+  "content",
+  "reflection",
+  "managerName",
+  "managerPhone",
+  "fee",
+  "paymentStatus",
+  "paidAmount",
+  "workflowStage",
+  "participantReaction",
+  "instructorMemo",
+  "memorableQuestion",
+  "createdAt",
+  "travelDistanceKm",
+  "travelDurationMin",
+  "travelUpdatedAt",
+] as const satisfies readonly (keyof Lecture)[];
+
+type LectureDbPayload = Partial<Pick<Lecture, (typeof LECTURE_DB_COLUMNS)[number]>>;
+
+function pickLectureDbPayload(data: Partial<Lecture>): LectureDbPayload {
+  return LECTURE_DB_COLUMNS.reduce<LectureDbPayload>((payload, column) => {
+    if (Object.prototype.hasOwnProperty.call(data, column)) {
+      payload[column] = data[column] as never;
+    }
+    return payload;
+  }, {});
+}
+
+function formatSupabaseError(error: any): string {
+  const parts = [
+    error?.message,
+    error?.details ? `details: ${error.details}` : "",
+    error?.hint ? `hint: ${error.hint}` : "",
+    error?.code ? `code: ${error.code}` : "",
+  ].filter(Boolean);
+  return parts.join(" | ") || "알 수 없는 Supabase 오류";
+}
+
+function logSupabaseError(context: string, error: any) {
+  console.error(`[Supabase] ${context}`, {
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+    code: error?.code,
+  });
+}
+
+function debugLecturePayload(context: string, payload: LectureDbPayload | LectureDbPayload[]) {
+  const summarize = (item: LectureDbPayload) => ({
+    id: item.id,
+    title: item.title,
+    organization: item.organization,
+    date: item.date,
+    workflowStage: item.workflowStage,
+    paymentStatus: item.paymentStatus,
+    hasLocation: Boolean(item.location),
+    hasSelectedAddress: Boolean(item.roadAddress || item.jibunAddress),
+    hasCoordinates: Boolean(item.locationX && item.locationY),
+    hasRouteCache: Boolean(item.travelDistanceKm || item.travelDurationMin || item.travelUpdatedAt),
+    columns: Object.keys(item),
+  });
+  console.debug(`[Supabase] ${context} lectures payload`, Array.isArray(payload) ? payload.map(summarize) : summarize(payload));
+}
+
 function parseCachedDistance(value?: number | string | null): number | undefined {
   if (typeof value === "number") return value;
   if (!value) return undefined;
@@ -99,11 +178,36 @@ function parseCachedDuration(value?: number | string | null): number | undefined
 
 function normalizeLecture(row: any): Lecture {
   return {
-    ...row,
+    id: row.id,
+    organization: row.organization ?? "",
+    title: row.title ?? "",
+    topic: row.topic ?? "",
+    target: row.target ?? "",
+    date: row.date ?? "",
+    duration: row.duration ?? "",
+    participants: row.participants ?? 0,
+    location: row.location ?? "",
+    locationName: row.locationName ?? row.placeName ?? "",
+    roadAddress: row.roadAddress ?? "",
+    jibunAddress: row.jibunAddress ?? "",
+    locationX: row.locationX ?? row.placeX ?? "",
+    locationY: row.locationY ?? row.placeY ?? "",
+    content: row.content ?? "",
+    reflection: row.reflection ?? "",
+    managerName: row.managerName ?? "",
+    managerPhone: row.managerPhone ?? "",
+    fee: row.fee ?? 0,
+    paymentStatus: row.paymentStatus ?? "unpaid",
+    paidAmount: row.paidAmount ?? 0,
+    workflowStage: row.workflowStage ?? "before",
+    participantReaction: row.participantReaction ?? "",
+    instructorMemo: row.instructorMemo ?? "",
+    memorableQuestion: row.memorableQuestion ?? "",
+    createdAt: row.createdAt ?? new Date().toISOString(),
     travelDistanceKm: parseCachedDistance(row.travelDistanceKm ?? row.travel_distance_km),
     travelDurationMin: parseCachedDuration(row.travelDurationMin ?? row.travel_duration_min),
     travelUpdatedAt: row.travelUpdatedAt ?? row.travel_updated_at,
-  } as Lecture;
+  };
 }
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
@@ -151,7 +255,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
             // ================= MIGRATION FROM LOCALSTORAGE =================
             toast.loading("기존 로컬 데이터를 Supabase로 마이그레이션하는 중...");
             
-            const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw) : [];
+            const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw).map(normalizeLecture) : [];
             const localTodos: Todo[] = localTodosRaw ? JSON.parse(localTodosRaw) : [];
             const localWorkTasks: WorkTask[] = localWorkTasksRaw ? JSON.parse(localWorkTasksRaw) : [];
             const localSmsHistory: SmsHistory[] = localSmsHistoryRaw ? JSON.parse(localSmsHistoryRaw) : [];
@@ -159,9 +263,14 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
             // Save Lectures
             if (localLectures.length > 0) {
-              const { error: insErr } = await supabase.from("lectures").insert(localLectures);
-              if (insErr) throw insErr;
-              loadedLectures = localLectures.map(normalizeLecture);
+              const lecturePayload = localLectures.map((lecture) => pickLectureDbPayload(lecture));
+              debugLecturePayload("local migration insert", lecturePayload);
+              const { error: insErr } = await supabase.from("lectures").insert(lecturePayload);
+              if (insErr) {
+                logSupabaseError("local migration insert lectures failed", insErr);
+                throw insErr;
+              }
+              loadedLectures = localLectures;
             }
 
             // Save Todos
@@ -200,8 +309,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
             toast.loading("데이터베이스 초기 설정을 시작합니다...");
             
             // Insert default dummy lectures
-            const { error: insErr } = await supabase.from("lectures").insert(dummyLectures);
-            if (insErr) throw insErr;
+            const dummyLecturePayload = dummyLectures.map((lecture) => pickLectureDbPayload(normalizeLecture(lecture)));
+            debugLecturePayload("seed insert", dummyLecturePayload);
+            const { error: insErr } = await supabase.from("lectures").insert(dummyLecturePayload);
+            if (insErr) {
+              logSupabaseError("seed insert lectures failed", insErr);
+              throw insErr;
+            }
             loadedLectures = dummyLectures.map(normalizeLecture);
 
             // Insert default dummy todos
@@ -269,9 +383,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
           // Supabase 일괄 업데이트
           const autoTransitionIds = toAutoTransition.map((l) => l.id);
+          const autoTransitionPayload = pickLectureDbPayload({ workflowStage: "after" });
           const { error: updateErr } = await supabase
             .from("lectures")
-            .update({ workflowStage: "after" })
+            .update(autoTransitionPayload)
             .in("id", autoTransitionIds);
 
           if (!updateErr) {
@@ -321,9 +436,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       travelUpdatedAt: null,
     };
     
-    const { error } = await supabase.from("lectures").insert(newLecture);
+    const insertPayload = pickLectureDbPayload(newLecture);
+    debugLecturePayload("insert", insertPayload);
+    const { error } = await supabase.from("lectures").insert(insertPayload);
     if (error) {
-      toast.error(`강의 등록 실패: ${error.message}`);
+      logSupabaseError("insert lecture failed", error);
+      toast.error(`강의 등록 실패: ${formatSupabaseError(error)}`);
       throw error;
     }
     
@@ -361,16 +479,22 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (toInsert.length > 0) {
-      const { error } = await supabase.from("lectures").insert(toInsert);
+      const insertPayload = toInsert.map((lecture) => pickLectureDbPayload(lecture));
+      debugLecturePayload("bulk insert", insertPayload);
+      const { error } = await supabase.from("lectures").insert(insertPayload);
       if (error) {
-        toast.error(`일괄 등록 실패: ${error.message}`);
+        logSupabaseError("bulk insert lectures failed", error);
+        toast.error(`일괄 등록 실패: ${formatSupabaseError(error)}`);
         throw error;
       }
     }
     if (toUpsert.length > 0) {
-      const { error } = await supabase.from("lectures").upsert(toUpsert);
+      const upsertPayload = toUpsert.map((lecture) => pickLectureDbPayload(lecture));
+      debugLecturePayload("bulk upsert", upsertPayload);
+      const { error } = await supabase.from("lectures").upsert(upsertPayload);
       if (error) {
-        toast.error(`일괄 수정 실패: ${error.message}`);
+        logSupabaseError("bulk upsert lectures failed", error);
+        toast.error(`일괄 수정 실패: ${formatSupabaseError(error)}`);
         throw error;
       }
     }
@@ -391,9 +515,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           travelUpdatedAt: null,
         }
       : data;
-    const { error } = await supabase.from("lectures").update(finalData).eq("id", id);
+    const updatePayload = pickLectureDbPayload(finalData);
+    debugLecturePayload("update", updatePayload);
+    const { error } = await supabase.from("lectures").update(updatePayload).eq("id", id);
     if (error) {
-      toast.error(`강의 수정 실패: ${error.message}`);
+      logSupabaseError("update lecture failed", error);
+      toast.error(`강의 수정 실패: ${formatSupabaseError(error)}`);
       throw error;
     }
     setLectures((prev) =>
@@ -416,9 +543,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       travelUpdatedAt: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from("lectures").update(routeData).eq("id", id);
+    const routePayload = pickLectureDbPayload(routeData);
+    debugLecturePayload("route update", routePayload);
+    const { error } = await supabase.from("lectures").update(routePayload).eq("id", id);
     if (error) {
-      toast.error(`경로 정보 저장 실패: ${error.message}`);
+      logSupabaseError("route update lecture failed", error);
+      toast.error(`경로 정보 저장 실패: ${formatSupabaseError(error)}`);
       throw error;
     }
 
@@ -448,9 +578,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const bulkUpdateLectures = useCallback(async (ids: string[], data: Partial<Lecture>): Promise<void> => {
-    const { error } = await supabase.from("lectures").update(data).in("id", ids);
+    const updatePayload = pickLectureDbPayload(data);
+    debugLecturePayload("bulk update", updatePayload);
+    const { error } = await supabase.from("lectures").update(updatePayload).in("id", ids);
     if (error) {
-      toast.error(`일괄 수정 실패: ${error.message}`);
+      logSupabaseError("bulk update lectures failed", error);
+      toast.error(`일괄 수정 실패: ${formatSupabaseError(error)}`);
       throw error;
     }
     setLectures((prev) =>
@@ -766,9 +899,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     if (homeAddressChanged) {
       const staleData: Partial<Lecture> = { travelUpdatedAt: null };
-      const { error: staleError } = await supabase.from("lectures").update(staleData).not("travelDistanceKm", "is", null);
+      const stalePayload = pickLectureDbPayload(staleData);
+      debugLecturePayload("route cache stale update", stalePayload);
+      const { error: staleError } = await supabase.from("lectures").update(stalePayload).not("travelDistanceKm", "is", null);
       if (staleError) {
-        toast.error(`경로 캐시 갱신 상태 변경 실패: ${staleError.message}`);
+        logSupabaseError("route cache stale update failed", staleError);
+        toast.error(`경로 캐시 갱신 상태 변경 실패: ${formatSupabaseError(staleError)}`);
         throw staleError;
       }
       setLectures((prev) =>
@@ -791,7 +927,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       const localSmsHistoryRaw = localStorage.getItem("lecture-archive-smshistory");
       const localProfileRaw = localStorage.getItem("lecture-archive-instructor-profile");
 
-      const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw) : [];
+      const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw).map(normalizeLecture) : [];
       const localTodos: Todo[] = localTodosRaw ? JSON.parse(localTodosRaw) : [];
       const localWorkTasks: WorkTask[] = localWorkTasksRaw ? JSON.parse(localWorkTasksRaw) : [];
       const localSmsHistory: SmsHistory[] = localSmsHistoryRaw ? JSON.parse(localSmsHistoryRaw) : [];
@@ -801,8 +937,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
       // 1. Upload lectures
       if (localLectures.length > 0) {
-        const { error: err } = await supabase.from("lectures").upsert(localLectures);
-        if (err) throw err;
+        const lecturePayload = localLectures.map((lecture) => pickLectureDbPayload(lecture));
+        debugLecturePayload("manual local upload upsert", lecturePayload);
+        const { error: err } = await supabase.from("lectures").upsert(lecturePayload);
+        if (err) {
+          logSupabaseError("manual local upload upsert lectures failed", err);
+          throw err;
+        }
         uploadCount += localLectures.length;
       }
 

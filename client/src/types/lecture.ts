@@ -31,9 +31,6 @@ export interface Lecture {
   travelDistanceKm?: number | null;
   travelDurationMin?: number | null;
   travelUpdatedAt?: string | null;
-  travel_distance_km?: string | null;
-  travel_duration_min?: string | null;
-  travel_updated_at?: string | null;
 }
 
 export type LectureFormData = Omit<Lecture, "id" | "createdAt">;
