@@ -1,0 +1,33 @@
+-- Cleanup proposal for legacy route cache columns.
+-- Do not uncomment the DROP block until the verification queries return zero rows.
+--
+-- Current TypeScript code uses camelCase only:
+--   "travelDistanceKm", "travelDurationMin", "travelUpdatedAt"
+--
+-- Legacy unused drop candidates:
+--   travel_distance_km, travel_duration_min, travel_updated_at
+
+-- Verification query:
+-- SELECT
+--   count(*) FILTER (
+--     WHERE travel_distance_km IS NOT NULL
+--       AND "travelDistanceKm" IS NULL
+--   ) AS missing_distance_backfill,
+--   count(*) FILTER (
+--     WHERE travel_duration_min IS NOT NULL
+--       AND "travelDurationMin" IS NULL
+--   ) AS missing_duration_backfill,
+--   count(*) FILTER (
+--     WHERE travel_updated_at IS NOT NULL
+--       AND "travelUpdatedAt" IS NULL
+--   ) AS missing_updated_at_backfill
+-- FROM public.lectures;
+
+-- Cleanup migration to run only after manual verification:
+-- BEGIN;
+-- ALTER TABLE public.lectures
+--   DROP COLUMN IF EXISTS travel_distance_km,
+--   DROP COLUMN IF EXISTS travel_duration_min,
+--   DROP COLUMN IF EXISTS travel_updated_at;
+-- NOTIFY pgrst, 'reload schema';
+-- COMMIT;

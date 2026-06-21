@@ -204,9 +204,9 @@ function normalizeLecture(row: any): Lecture {
     instructorMemo: row.instructorMemo ?? "",
     memorableQuestion: row.memorableQuestion ?? "",
     createdAt: row.createdAt ?? new Date().toISOString(),
-    travelDistanceKm: parseCachedDistance(row.travelDistanceKm ?? row.travel_distance_km),
-    travelDurationMin: parseCachedDuration(row.travelDurationMin ?? row.travel_duration_min),
-    travelUpdatedAt: row.travelUpdatedAt ?? row.travel_updated_at,
+    travelDistanceKm: parseCachedDistance(row.travelDistanceKm),
+    travelDurationMin: parseCachedDuration(row.travelDurationMin),
+    travelUpdatedAt: row.travelUpdatedAt,
   };
 }
 
