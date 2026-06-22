@@ -81,12 +81,14 @@ export default function LectureList() {
 
   const sortedLectures = useMemo(() => {
     return [...statusFilteredLectures].sort((a, b) => {
+      if (statusFilter === "before") return new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (statusFilter === "after" || statusFilter === "promoted") return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortBy === "date-desc") return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortBy === "date-asc") return new Date(a.date).getTime() - new Date(b.date).getTime();
       if (sortBy === "title") return a.title.localeCompare(b.title, "ko");
       return a.organization.localeCompare(b.organization, "ko");
     });
-  }, [statusFilteredLectures, sortBy]);
+  }, [statusFilteredLectures, sortBy, statusFilter]);
 
   const isAllSelected = sortedLectures.length > 0 && selectedIds.length === sortedLectures.length;
 

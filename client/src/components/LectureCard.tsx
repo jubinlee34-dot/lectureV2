@@ -5,6 +5,7 @@ import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { Lecture } from "@/types/lecture";
+import { hasAfterRecord } from "@/utils/afterRecord";
 import { getPreviousWorkflowStage, statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { formatDateShort, truncate } from "@/utils/format";
 import {
@@ -56,6 +57,7 @@ export function LectureCard({
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+  const afterRecordLabel = getCardAfterRecordLabel(lecture);
 
   const handleSms = () => {
     if (onSms) {
@@ -172,13 +174,23 @@ export function LectureCard({
               )}
               {onAfterRecord && (
                 <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
-                  강의 후 기록 추가
+                  {afterRecordLabel}
                 </CardAction>
               )}
             </>
           )}
           {lecture.workflowStage === "after" && (
             <>
+              {onManage && (
+                <CardAction onClick={() => onManage(lecture.id)} icon={<ClipboardCheck className="h-3 w-3" />}>
+                  업무관리
+                </CardAction>
+              )}
+              {onAfterRecord && (
+                <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
+                  {afterRecordLabel}
+                </CardAction>
+              )}
               {onReport && (
                 <CardAction onClick={() => onReport(lecture.id)} icon={<FileText className="h-3 w-3" />}>
                   결과보고서
@@ -194,6 +206,16 @@ export function LectureCard({
           )}
           {lecture.workflowStage === "promoted" && (
             <>
+              {onAfterRecord && (
+                <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
+                  {afterRecordLabel}
+                </CardAction>
+              )}
+              {onReport && (
+                <CardAction onClick={() => onReport(lecture.id)} icon={<FileText className="h-3 w-3" />}>
+                  결과보고서
+                </CardAction>
+              )}
               {onBlog && <CardAction onClick={() => onBlog(lecture.id)}>블로그 보기</CardAction>}
               {previousStage && onRollback && (
                 <CardAction onClick={() => onRollback(lecture)} icon={<RotateCcw className="h-3 w-3" />}>
@@ -225,6 +247,12 @@ export function LectureCard({
       </div>
     </div>
   );
+}
+
+function getCardAfterRecordLabel(lecture: Lecture): string {
+  if (lecture.workflowStage === "before") return "강의 후 기록 추가";
+  if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
+  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
 }
 
 function CardAction({

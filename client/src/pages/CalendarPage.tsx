@@ -13,7 +13,7 @@ import { formatDate } from "@/utils/format";
 import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
 import { CalendarDays, Download, Plus, Sheet, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -21,13 +21,14 @@ export default function CalendarPage() {
   const [, navigate] = useLocation();
   const { lectures, bulkAddLectures, updateLecture, deleteLecture } = useLectures();
   const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const initialCalendarState = readCalendarQueryState(today);
+  const [viewYear, setViewYear] = useState(initialCalendarState.year);
+  const [viewMonth, setViewMonth] = useState(initialCalendarState.month);
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialCalendarState.date);
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
   const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>(initialCalendarState.status);
 
   const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
   const statusFilteredLectures = useMemo(
@@ -58,6 +59,15 @@ export default function CalendarPage() {
     setViewYear(next.getFullYear());
     setViewMonth(next.getMonth());
   };
+
+  const calendarReturnTo = useMemo(
+    () => buildCalendarReturnTo({ date: selectedDate, status: statusFilter, year: viewYear, month: viewMonth }),
+    [selectedDate, statusFilter, viewYear, viewMonth]
+  );
+
+  useEffect(() => {
+    window.history.replaceState(null, "", calendarReturnTo);
+  }, [calendarReturnTo]);
 
   const promoteLecture = async (lecture: Lecture) => {
     if (!lecture.blogUrl?.trim()) {
@@ -155,6 +165,7 @@ export default function CalendarPage() {
                       key={lecture.id}
                       lecture={lecture}
                       onNavigate={navigate}
+                      returnTo={calendarReturnTo}
                       onSms={setSmsTarget}
                       onAfterRecord={setAfterRecordTarget}
                       onPromote={promoteLecture}
@@ -209,4 +220,54 @@ export default function CalendarPage() {
       />
     </div>
   );
+}
+
+function readCalendarQueryState(today: Date): {
+  date: string | null;
+  status: LectureStatusFilter;
+  year: number;
+  month: number;
+} {
+  const params = new URLSearchParams(window.location.search);
+  const date = params.get("date");
+  const statusParam = params.get("status");
+  const status: LectureStatusFilter =
+    statusParam === "before" || statusParam === "after" || statusParam === "promoted" || statusParam === "all"
+      ? statusParam
+      : "all";
+  const yearFromDate = date?.match(/^\d{4}-\d{2}-\d{2}$/) ? Number(date.slice(0, 4)) : null;
+  const monthFromDate = date?.match(/^\d{4}-\d{2}-\d{2}$/) ? Number(date.slice(5, 7)) - 1 : null;
+  const yearParam = Number(params.get("year"));
+  const monthParam = Number(params.get("month"));
+  const year = Number.isFinite(yearParam) && yearParam > 1900 ? yearParam : yearFromDate ?? today.getFullYear();
+  const month =
+    Number.isFinite(monthParam) && monthParam >= 1 && monthParam <= 12
+      ? monthParam - 1
+      : monthFromDate ?? today.getMonth();
+
+  return {
+    date: date?.match(/^\d{4}-\d{2}-\d{2}$/) ? date : null,
+    status,
+    year,
+    month,
+  };
+}
+
+function buildCalendarReturnTo({
+  date,
+  status,
+  year,
+  month,
+}: {
+  date: string | null;
+  status: LectureStatusFilter;
+  year: number;
+  month: number;
+}) {
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  params.set("status", status);
+  params.set("year", String(year));
+  params.set("month", String(month + 1));
+  return `/calendar?${params.toString()}`;
 }

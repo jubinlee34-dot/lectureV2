@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { Lecture } from "@/types/lecture";
+import { hasAfterRecord } from "@/utils/afterRecord";
 import { getPreviousWorkflowStage, statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { Building2, Car, ClipboardCheck, FileText, MapPin, MessageCircle, Phone, RotateCcw, Star, Trash2 } from "lucide-react";
 import type React from "react";
@@ -11,6 +12,7 @@ import type React from "react";
 interface CalendarQuickCardProps {
   lecture: Lecture;
   onNavigate: (path: string) => void;
+  returnTo?: string;
   onSms?: (lecture: Lecture) => void;
   onPromote?: (lecture: Lecture) => void;
   onRollback?: (lecture: Lecture) => void;
@@ -21,6 +23,7 @@ interface CalendarQuickCardProps {
 export function CalendarQuickCard({
   lecture,
   onNavigate,
+  returnTo,
   onSms,
   onPromote,
   onRollback,
@@ -30,6 +33,9 @@ export function CalendarQuickCard({
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+  const afterRecordLabel = getCardAfterRecordLabel(lecture);
+  const withReturnTo = (path: string) =>
+    returnTo ? `${path}${path.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(returnTo)}` : path;
 
   return (
     <div className="rounded-lg border border-border p-3">
@@ -89,14 +95,22 @@ export function CalendarQuickCard({
             </QuickAction>
             {onAfterRecord && (
               <QuickAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
-                강의 후 기록 추가
+                {afterRecordLabel}
               </QuickAction>
             )}
           </>
         )}
         {lecture.workflowStage === "after" && (
           <>
-            <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/report`)} icon={<FileText className="h-3.5 w-3.5" />}>
+            <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/manage`)} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+              업무관리
+            </QuickAction>
+            {onAfterRecord && (
+              <QuickAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+                {afterRecordLabel}
+              </QuickAction>
+            )}
+            <QuickAction onClick={() => onNavigate(withReturnTo(`/lectures/${lecture.id}/report`))} icon={<FileText className="h-3.5 w-3.5" />}>
               결과보고서
             </QuickAction>
             <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/blog`)}>홍보 블로그 작성</QuickAction>
@@ -109,6 +123,14 @@ export function CalendarQuickCard({
         )}
         {lecture.workflowStage === "promoted" && (
           <>
+            {onAfterRecord && (
+              <QuickAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+                {afterRecordLabel}
+              </QuickAction>
+            )}
+            <QuickAction onClick={() => onNavigate(withReturnTo(`/lectures/${lecture.id}/report`))} icon={<FileText className="h-3.5 w-3.5" />}>
+              결과보고서
+            </QuickAction>
             <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/blog`)}>블로그 보기</QuickAction>
             {previousStage && onRollback && (
               <QuickAction onClick={() => onRollback(lecture)} icon={<RotateCcw className="h-3.5 w-3.5" />}>
@@ -144,6 +166,12 @@ export function CalendarQuickCard({
       </div>
     </div>
   );
+}
+
+function getCardAfterRecordLabel(lecture: Lecture): string {
+  if (lecture.workflowStage === "before") return "강의 후 기록 추가";
+  if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
+  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
 }
 
 function QuickAction({
