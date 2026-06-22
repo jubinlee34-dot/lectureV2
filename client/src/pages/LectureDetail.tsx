@@ -1,4 +1,5 @@
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { SmsModal } from "@/components/SmsModal";
 import { TravelInfoCard } from "@/components/TravelInfoCard";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ export default function LectureDetail() {
   const { profile } = useSupabase();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
+  const [afterRecordOpen, setAfterRecordOpen] = useState(false);
   const [calculatingRoute, setCalculatingRoute] = useState(false);
   const lecture = getLectureById(id);
 
@@ -116,6 +118,10 @@ export default function LectureDetail() {
             <Button size="sm" onClick={() => navigate(`/lectures/${lecture.id}/manage`)}>
               <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />
               업무 관리
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setAfterRecordOpen(true)}>
+              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+              강의 후 기록 추가
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate(`/lectures/${lecture.id}/edit`)}>
               <Pencil className="mr-1.5 h-3.5 w-3.5" />
@@ -247,6 +253,11 @@ export default function LectureDetail() {
           recordSmsHistory(lecture.id, type, recipient, content);
           toast.success("문자 발송 이력을 기록했습니다.");
         }}
+      />
+      <AfterRecordModal
+        lectureId={lecture.id}
+        open={afterRecordOpen}
+        onOpenChange={setAfterRecordOpen}
       />
     </div>
   );

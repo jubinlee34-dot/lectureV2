@@ -26,6 +26,7 @@ interface LectureCardProps {
   onDelete: (id: string) => void;
   onManage?: (id: string) => void;
   onSms?: (lecture: Lecture) => void;
+  onAfterRecord?: (lecture: Lecture) => void;
   selected?: boolean;
   onSelect?: (id: string, checked: boolean) => void;
   onUpdateStage?: (id: string, data: Partial<Lecture>) => void;
@@ -44,6 +45,7 @@ export function LectureCard({
   onDelete,
   onManage,
   onSms,
+  onAfterRecord,
   selected = false,
   onSelect,
   onUpdateStage,
@@ -203,6 +205,15 @@ export function LectureCard({
                 전화
               </a>
             </>
+          )}
+          {onAfterRecord && (
+            <button
+              onClick={() => onAfterRecord(lecture)}
+              className="flex items-center gap-1 rounded-md border border-amber-200 px-2 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-50"
+            >
+              <ClipboardCheck className="h-3 w-3" />
+              강의 후 기록 추가
+            </button>
           )}
           {lecture.managerName && (
             <span className="ml-auto truncate text-[10px] text-muted-foreground">{lecture.managerName}</span>

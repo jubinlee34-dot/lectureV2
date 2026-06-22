@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { Lecture, WorkflowStage } from "@/types/lecture";
-import { Building2, Car, MapPin, MessageCircle, Phone, Star, Trash2 } from "lucide-react";
+import { Building2, Car, ClipboardCheck, MapPin, MessageCircle, Phone, Star, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ interface CalendarQuickCardProps {
   onSms?: (lecture: Lecture) => void;
   onUpdateStage?: (id: string, data: Partial<Lecture>) => Promise<void> | void;
   onDelete?: (id: string) => void;
+  onAfterRecord?: (lecture: Lecture) => void;
 }
 
 export function CalendarQuickCard({
@@ -28,6 +29,7 @@ export function CalendarQuickCard({
   onSms,
   onUpdateStage,
   onDelete,
+  onAfterRecord,
 }: CalendarQuickCardProps) {
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
@@ -111,6 +113,15 @@ export function CalendarQuickCard({
       )}
 
       <div className="mt-3 flex items-center gap-2">
+        {onAfterRecord && (
+          <button
+            onClick={() => onAfterRecord(lecture)}
+            className="inline-flex h-7 items-center justify-center rounded-md border border-amber-200 px-2 text-xs text-amber-700 hover:bg-amber-50"
+          >
+            <ClipboardCheck className="mr-1 h-3.5 w-3.5" />
+            강의 후 기록 추가
+          </button>
+        )}
         {lecture.managerPhone && (
           <>
             <button
