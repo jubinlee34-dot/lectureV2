@@ -5,6 +5,7 @@ import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
 import { LectureCard } from "@/components/LectureCard";
 import { SmsModal } from "@/components/SmsModal";
+import { StatusNavigation } from "@/components/StatusNavigation";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useLectures } from "@/hooks/useLectures";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
+import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
 import { Calendar, Edit, PenLine, Sheet, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -39,13 +41,14 @@ export default function LectureList() {
   const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   // 필터 변경 시 선택 항목 초기화
   useEffect(() => {
     setSelectedIds([]);
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, statusFilter]);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -68,14 +71,22 @@ export default function LectureList() {
     });
   }, [lectures, selectedYear, selectedMonth]);
 
+  const statusCounts = useMemo(() => getStatusCounts(filteredLectures), [filteredLectures]);
+
+  const statusFilteredLectures = useMemo(() => {
+    return statusFilter === "all"
+      ? filteredLectures
+      : filteredLectures.filter((lecture) => lecture.workflowStage === statusFilter);
+  }, [filteredLectures, statusFilter]);
+
   const sortedLectures = useMemo(() => {
-    return [...filteredLectures].sort((a, b) => {
+    return [...statusFilteredLectures].sort((a, b) => {
       if (sortBy === "date-desc") return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortBy === "date-asc") return new Date(a.date).getTime() - new Date(b.date).getTime();
       if (sortBy === "title") return a.title.localeCompare(b.title, "ko");
       return a.organization.localeCompare(b.organization, "ko");
     });
-  }, [filteredLectures, sortBy]);
+  }, [statusFilteredLectures, sortBy]);
 
   const isAllSelected = sortedLectures.length > 0 && selectedIds.length === sortedLectures.length;
 
@@ -112,6 +123,24 @@ export default function LectureList() {
   const handleDelete = (id: string) => {
     const lecture = lectures.find((item) => item.id === id);
     if (lecture) setDeleteTarget({ id, title: lecture.title });
+  };
+
+  const promoteLecture = async (lecture: Lecture) => {
+    if (!lecture.blogUrl?.trim()) {
+      const confirmed = window.confirm("블로그 URL이 비어 있습니다. 그래도 홍보 완료로 처리할까요?");
+      if (!confirmed) return;
+    }
+    await updateLecture(lecture.id, { workflowStage: "promoted", blogWritten: lecture.blogWritten || Boolean(lecture.blogUrl?.trim()) });
+    toast.success("홍보 완료 상태로 변경했습니다.");
+  };
+
+  const rollbackLecture = async (lecture: Lecture) => {
+    const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+    if (!previousStage) return;
+    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} 상태를 ${statusLabels[previousStage]} 상태로 되돌릴까요?`);
+    if (!confirmed) return;
+    await updateLecture(lecture.id, { workflowStage: previousStage });
+    toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
   };
 
   return (
@@ -205,6 +234,8 @@ export default function LectureList() {
         </div>
       )}
 
+      <StatusNavigation value={statusFilter} counts={statusCounts} onChange={setStatusFilter} className="mb-4" />
+
       {sortedLectures.length > 0 && (
         <div className="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
@@ -253,9 +284,12 @@ export default function LectureList() {
               onManage={(id) => navigate(`/lectures/${id}/manage`)}
               onSms={(lec) => setSmsTarget(lec)}
               onAfterRecord={(lec) => setAfterRecordTarget(lec)}
+              onReport={(id) => navigate(`/lectures/${id}/report`)}
+              onBlog={(id) => navigate(`/lectures/${id}/blog`)}
+              onPromote={promoteLecture}
+              onRollback={rollbackLecture}
               selected={selectedIds.includes(lecture.id)}
               onSelect={handleSelect}
-              onUpdateStage={updateLecture}
             />
           ))}
         </div>

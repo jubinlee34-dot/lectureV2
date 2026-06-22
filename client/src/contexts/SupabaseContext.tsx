@@ -6,6 +6,7 @@ import type { Lecture, LectureFormData, Todo, TodoPriority, WorkTask, WorkTaskSt
 import type { InstructorProfile } from "../types/instructor";
 import { toast } from "sonner";
 import { getRouteInfo } from "../services/naverRouteService";
+import { normalizeWorkflowStage } from "../utils/lectureStatus";
 
 interface SupabaseContextType {
   lectures: Lecture[];
@@ -219,7 +220,7 @@ function normalizeLecture(row: any): Lecture {
     fee: row.fee ?? 0,
     paymentStatus: row.paymentStatus ?? "unpaid",
     paidAmount: row.paidAmount ?? 0,
-    workflowStage: row.workflowStage ?? "before",
+    workflowStage: normalizeWorkflowStage(row.workflowStage ?? row.status),
     actualParticipants: row.actualParticipants ?? null,
     paymentDate: row.paymentDate ?? "",
     reportSubmitted: row.reportSubmitted ?? false,

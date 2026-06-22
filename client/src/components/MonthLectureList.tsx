@@ -1,5 +1,6 @@
 import type { Lecture } from "@/types/lecture";
 import { formatDate } from "@/utils/format";
+import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 
 interface MonthLectureListProps {
   viewMonth: number;
@@ -16,7 +17,7 @@ export function MonthLectureList({ viewMonth, monthLectures, onNavigate }: Month
       </h3>
       <div className="space-y-2">
         {monthLectures.length === 0 ? (
-          <p className="py-6 text-center text-xs text-muted-foreground">이번 달 강의가 없습니다.</p>
+          <p className="py-6 text-center text-xs text-muted-foreground">이번 달 조건에 맞는 강의가 없습니다.</p>
         ) : (
           monthLectures.map((lecture) => (
             <button
@@ -24,7 +25,12 @@ export function MonthLectureList({ viewMonth, monthLectures, onNavigate }: Month
               onClick={() => onNavigate(`/lectures/${lecture.id}`)}
               className="w-full rounded-lg border border-border/60 p-2.5 text-left hover:border-primary/40"
             >
-              <p className="truncate text-xs font-medium text-foreground">{lecture.title}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 truncate text-xs font-medium text-foreground">{lecture.title}</p>
+                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass[lecture.workflowStage]}`}>
+                  {statusLabels[lecture.workflowStage]}
+                </span>
+              </div>
               <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(lecture.date)}</p>
             </button>
           ))

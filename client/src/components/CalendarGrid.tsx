@@ -1,14 +1,9 @@
 import type { Lecture } from "@/types/lecture";
 import { cn } from "@/lib/utils";
+import { statusDotClass, workflowStages } from "@/utils/lectureStatus";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-const stageOrder = ["before", "after", "promoted"] as const;
-const stageDotClass = {
-  before: "bg-blue-500",
-  after: "bg-amber-500",
-  promoted: "bg-green-500",
-};
 
 interface CalendarGridProps {
   viewYear: number;
@@ -70,7 +65,7 @@ export function CalendarGrid({
           if (!day) return <div key={`empty-${index}`} className="min-h-12 sm:min-h-14" />;
 
           const dateStr = toDateStr(day);
-          const stages = stageOrder.filter((stage) =>
+          const stages = workflowStages.filter((stage) =>
             lectureMap[dateStr]?.some((lecture) => lecture.workflowStage === stage)
           );
           const selected = selectedDate === dateStr;
@@ -93,7 +88,7 @@ export function CalendarGrid({
                   {stages.slice(0, 3).map((stage) => (
                     <span
                       key={stage}
-                      className={cn("h-1.5 w-1.5 rounded-full", stageDotClass[stage], selected && "ring-1 ring-primary-foreground/80")}
+                      className={cn("h-1.5 w-1.5 rounded-full", statusDotClass[stage], selected && "ring-1 ring-primary-foreground/80")}
                     />
                   ))}
                 </span>

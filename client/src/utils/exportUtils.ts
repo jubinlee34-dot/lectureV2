@@ -1,4 +1,5 @@
 import type { Lecture, LectureFormData, PaymentStatus, WorkflowStage } from "../types/lecture";
+import { normalizeWorkflowStage, statusLabels } from "./lectureStatus";
 
 const escapeCSV = (value: string | number | undefined | null): string => {
   if (value === undefined || value === null) return "";
@@ -12,11 +13,7 @@ const paymentStatusLabel: Record<PaymentStatus, string> = {
   paid: "입금 완료",
 };
 
-const workflowStageLabel: Record<WorkflowStage, string> = {
-  before: "강의 전",
-  after: "강의 후",
-  promoted: "홍보 완료",
-};
+const workflowStageLabel: Record<WorkflowStage, string> = statusLabels;
 
 export function generateCSV(lectures: Lecture[]): string {
   const headers = [
@@ -51,7 +48,7 @@ export function generateCSV(lectures: Lecture[]): string {
     lecture.fee,
     paymentStatusLabel[lecture.paymentStatus],
     lecture.paidAmount,
-    workflowStageLabel[lecture.workflowStage],
+    workflowStageLabel[normalizeWorkflowStage(lecture.workflowStage)],
     lecture.content,
     lecture.reflection,
   ]);
@@ -122,7 +119,7 @@ export function parseCSVToLectures(csvText: string): LectureFormData[] {
       fee: Number(get("강사료")) || 0,
       paymentStatus: parsePaymentStatus(get("입금상태")),
       paidAmount: Number(get("입금금액")) || 0,
-      workflowStage: parseWorkflowStage(get("워크플로우")),
+      workflowStage: normalizeWorkflowStage(get("워크플로우")),
       participantReaction: "",
       instructorMemo: "",
       memorableQuestion: "",
@@ -138,7 +135,10 @@ export function parseICSToLectures(icsText: string): LectureFormData[] {
       return line ? line.slice(line.indexOf(":") + 1).replace(/\\n/g, "\n") : "";
     };
     const rawDate = read("DTSTART").slice(0, 8);
-    const date = rawDate.length === 8 ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}` : new Date().toISOString().slice(0, 10);
+    const date =
+      rawDate.length === 8
+        ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+        : new Date().toISOString().slice(0, 10);
     const summary = read("SUMMARY").replace(/^\[강의\]\s*/, "");
     return {
       organization: summary.includes(" - ") ? summary.split(" - ").slice(1).join(" - ") : "미입력",
@@ -190,10 +190,4 @@ function parsePaymentStatus(value: string): PaymentStatus {
   if (value === "입금 완료" || value === "paid") return "paid";
   if (value === "일부 입금" || value === "partial") return "partial";
   return "unpaid";
-}
-
-function parseWorkflowStage(value: string): WorkflowStage {
-  if (value === "강의 후" || value === "after") return "after";
-  if (value === "홍보 완료" || value === "promoted") return "promoted";
-  return "before";
 }

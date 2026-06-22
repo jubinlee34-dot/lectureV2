@@ -4,11 +4,13 @@ import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
 import { MonthLectureList } from "@/components/MonthLectureList";
 import { SmsModal } from "@/components/SmsModal";
+import { StatusNavigation } from "@/components/StatusNavigation";
 import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture } from "@/types/lecture";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { formatDate } from "@/utils/format";
+import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
 import { CalendarDays, Download, Plus, Sheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -25,29 +27,54 @@ export default function CalendarPage() {
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
   const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>("all");
+
+  const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
+  const statusFilteredLectures = useMemo(
+    () => (statusFilter === "all" ? lectures : lectures.filter((lecture) => lecture.workflowStage === statusFilter)),
+    [lectures, statusFilter]
+  );
 
   const lectureMap = useMemo(() => {
-    return lectures.reduce<Record<string, Lecture[]>>((map, lecture) => {
+    return statusFilteredLectures.reduce<Record<string, Lecture[]>>((map, lecture) => {
       map[lecture.date] = [...(map[lecture.date] ?? []), lecture];
       return map;
     }, {});
-  }, [lectures]);
+  }, [statusFilteredLectures]);
 
   const selectedLectures = selectedDate ? lectureMap[selectedDate] ?? [] : [];
 
   const monthLectures = useMemo(() => {
-    return lectures
+    return statusFilteredLectures
       .filter((lecture) => {
         const date = new Date(lecture.date);
         return date.getFullYear() === viewYear && date.getMonth() === viewMonth;
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [lectures, viewYear, viewMonth]);
+  }, [statusFilteredLectures, viewYear, viewMonth]);
 
   const moveMonth = (diff: number) => {
     const next = new Date(viewYear, viewMonth + diff, 1);
     setViewYear(next.getFullYear());
     setViewMonth(next.getMonth());
+  };
+
+  const promoteLecture = async (lecture: Lecture) => {
+    if (!lecture.blogUrl?.trim()) {
+      const confirmed = window.confirm("블로그 URL이 비어 있습니다. 그래도 홍보 완료로 처리할까요?");
+      if (!confirmed) return;
+    }
+    await updateLecture(lecture.id, { workflowStage: "promoted", blogWritten: lecture.blogWritten || Boolean(lecture.blogUrl?.trim()) });
+    toast.success("홍보 완료 상태로 변경했습니다.");
+  };
+
+  const rollbackLecture = async (lecture: Lecture) => {
+    const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+    if (!previousStage) return;
+    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} 상태를 ${statusLabels[previousStage]} 상태로 되돌릴까요?`);
+    if (!confirmed) return;
+    await updateLecture(lecture.id, { workflowStage: previousStage });
+    toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
   };
 
   return (
@@ -103,6 +130,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      <StatusNavigation value={statusFilter} counts={statusCounts} onChange={setStatusFilter} className="mb-4" />
+
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_320px]">
         <CalendarGrid
           viewYear={viewYear}
@@ -128,7 +157,8 @@ export default function CalendarPage() {
                       onNavigate={navigate}
                       onSms={setSmsTarget}
                       onAfterRecord={setAfterRecordTarget}
-                      onUpdateStage={updateLecture}
+                      onPromote={promoteLecture}
+                      onRollback={rollbackLecture}
                       onDelete={(lectureId) => {
                         deleteLecture(lectureId);
                         toast.success("강의 일정을 삭제했습니다.");
