@@ -1,7 +1,7 @@
 import { CalendarGrid } from "@/components/CalendarGrid";
 import { CalendarQuickCard } from "@/components/CalendarQuickCard";
-import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
+import { LectureActionDrawer, type LectureActionMode } from "@/components/LectureActionDrawer";
 import { MonthLectureList } from "@/components/MonthLectureList";
 import { SmsModal } from "@/components/SmsModal";
 import { StatusNavigation } from "@/components/StatusNavigation";
@@ -26,9 +26,10 @@ export default function CalendarPage() {
   const [viewMonth, setViewMonth] = useState(initialCalendarState.month);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialCalendarState.date);
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
-  const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>(initialCalendarState.status);
+  const [selectedLectureId, setSelectedLectureId] = useState<string | null>(null);
+  const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
 
   const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
   const statusFilteredLectures = useMemo(
@@ -85,6 +86,17 @@ export default function CalendarPage() {
     if (!confirmed) return;
     await updateLecture(lecture.id, { workflowStage: previousStage });
     toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
+  };
+
+  const openLectureAction = (lecture: Lecture, mode: LectureActionMode) => {
+    setSelectedLectureId(lecture.id);
+    setActionMode(mode);
+  };
+
+  const closeLectureAction = (open: boolean) => {
+    if (open) return;
+    setSelectedLectureId(null);
+    setActionMode(null);
   };
 
   return (
@@ -164,10 +176,9 @@ export default function CalendarPage() {
                     <CalendarQuickCard
                       key={lecture.id}
                       lecture={lecture}
-                      onNavigate={navigate}
-                      returnTo={calendarReturnTo}
+                      onAction={openLectureAction}
                       onSms={setSmsTarget}
-                      onAfterRecord={setAfterRecordTarget}
+                      onAfterRecord={() => undefined}
                       onPromote={promoteLecture}
                       onRollback={rollbackLecture}
                       onDelete={(lectureId) => {
@@ -198,15 +209,12 @@ export default function CalendarPage() {
         />
       )}
 
-      {afterRecordTarget && (
-        <AfterRecordModal
-          lectureId={afterRecordTarget.id}
-          open={!!afterRecordTarget}
-          onOpenChange={(open) => {
-            if (!open) setAfterRecordTarget(null);
-          }}
-        />
-      )}
+      <LectureActionDrawer
+        lectureId={selectedLectureId}
+        mode={actionMode}
+        open={!!selectedLectureId && !!actionMode}
+        onOpenChange={closeLectureAction}
+      />
 
       <ImportModal
         open={importOpen}

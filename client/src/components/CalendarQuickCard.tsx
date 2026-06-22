@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { Lecture } from "@/types/lecture";
+import type { LectureActionMode } from "@/components/LectureActionDrawer";
 import { hasAfterRecord } from "@/utils/afterRecord";
 import { getPreviousWorkflowStage, statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { Building2, Car, ClipboardCheck, FileText, MapPin, MessageCircle, Phone, RotateCcw, Star, Trash2 } from "lucide-react";
@@ -11,8 +12,7 @@ import type React from "react";
 
 interface CalendarQuickCardProps {
   lecture: Lecture;
-  onNavigate: (path: string) => void;
-  returnTo?: string;
+  onAction: (lecture: Lecture, mode: LectureActionMode) => void;
   onSms?: (lecture: Lecture) => void;
   onPromote?: (lecture: Lecture) => void;
   onRollback?: (lecture: Lecture) => void;
@@ -22,8 +22,7 @@ interface CalendarQuickCardProps {
 
 export function CalendarQuickCard({
   lecture,
-  onNavigate,
-  returnTo,
+  onAction,
   onSms,
   onPromote,
   onRollback,
@@ -34,13 +33,11 @@ export function CalendarQuickCard({
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getCardAfterRecordLabel(lecture);
-  const withReturnTo = (path: string) =>
-    returnTo ? `${path}${path.includes("?") ? "&" : "?"}returnTo=${encodeURIComponent(returnTo)}` : path;
 
   return (
     <div className="rounded-lg border border-border p-3">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <button onClick={() => onNavigate(`/lectures/${lecture.id}`)} className="min-w-0 text-left">
+        <button onClick={() => onAction(lecture, "detail")} className="min-w-0 text-left">
           <p className="text-sm font-semibold leading-tight text-foreground transition-colors hover:text-primary">{lecture.title}</p>
         </button>
         <Badge variant="outline" className={`shrink-0 text-[10px] font-semibold ${statusBadgeClass[lecture.workflowStage]}`}>
@@ -87,14 +84,14 @@ export function CalendarQuickCard({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}`)}>상세보기</QuickAction>
+        <QuickAction onClick={() => onAction(lecture, "detail")}>상세보기</QuickAction>
         {lecture.workflowStage === "before" && (
           <>
-            <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/manage`)} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+            <QuickAction onClick={() => onAction(lecture, "tasks")} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
               업무관리
             </QuickAction>
             {onAfterRecord && (
-              <QuickAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+              <QuickAction onClick={() => onAction(lecture, "after-record")} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
                 {afterRecordLabel}
               </QuickAction>
             )}
@@ -102,18 +99,18 @@ export function CalendarQuickCard({
         )}
         {lecture.workflowStage === "after" && (
           <>
-            <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/manage`)} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+            <QuickAction onClick={() => onAction(lecture, "tasks")} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
               업무관리
             </QuickAction>
             {onAfterRecord && (
-              <QuickAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+              <QuickAction onClick={() => onAction(lecture, "after-record")} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
                 {afterRecordLabel}
               </QuickAction>
             )}
-            <QuickAction onClick={() => onNavigate(withReturnTo(`/lectures/${lecture.id}/report`))} icon={<FileText className="h-3.5 w-3.5" />}>
+            <QuickAction onClick={() => onAction(lecture, "report")} icon={<FileText className="h-3.5 w-3.5" />}>
               결과보고서
             </QuickAction>
-            <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/blog`)}>홍보 블로그 작성</QuickAction>
+            <QuickAction onClick={() => onAction(lecture, "blog")}>홍보 블로그 작성</QuickAction>
             {onPromote && (
               <QuickAction onClick={() => onPromote(lecture)} tone="green">
                 홍보 완료 처리
@@ -124,14 +121,14 @@ export function CalendarQuickCard({
         {lecture.workflowStage === "promoted" && (
           <>
             {onAfterRecord && (
-              <QuickAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
+              <QuickAction onClick={() => onAction(lecture, "after-record")} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
                 {afterRecordLabel}
               </QuickAction>
             )}
-            <QuickAction onClick={() => onNavigate(withReturnTo(`/lectures/${lecture.id}/report`))} icon={<FileText className="h-3.5 w-3.5" />}>
+            <QuickAction onClick={() => onAction(lecture, "report")} icon={<FileText className="h-3.5 w-3.5" />}>
               결과보고서
             </QuickAction>
-            <QuickAction onClick={() => onNavigate(`/lectures/${lecture.id}/blog`)}>블로그 보기</QuickAction>
+            <QuickAction onClick={() => onAction(lecture, "blog")}>블로그 보기</QuickAction>
             {previousStage && onRollback && (
               <QuickAction onClick={() => onRollback(lecture)} icon={<RotateCcw className="h-3.5 w-3.5" />}>
                 상태 되돌리기
