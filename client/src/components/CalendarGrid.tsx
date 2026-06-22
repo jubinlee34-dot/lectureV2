@@ -1,7 +1,14 @@
 import type { Lecture } from "@/types/lecture";
+import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+const stageOrder = ["before", "after", "promoted"] as const;
+const stageDotClass = {
+  before: "bg-blue-500",
+  after: "bg-amber-500",
+  promoted: "bg-green-500",
+};
 
 interface CalendarGridProps {
   viewYear: number;
@@ -32,7 +39,7 @@ export function CalendarGrid({
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+    <section className="h-fit rounded-xl border border-border bg-card p-4">
       <div className="mb-4 flex items-center justify-between">
         <button onClick={() => onMoveMonth(-1)} className="rounded-md p-1.5 hover:bg-muted" title="이전 달">
           <ChevronLeft className="h-4 w-4" />
@@ -58,12 +65,14 @@ export function CalendarGrid({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-0.5">
+      <div className="grid grid-cols-7 gap-1">
         {cells.map((day, index) => {
-          if (!day) return <div key={`empty-${index}`} className="aspect-square" />;
+          if (!day) return <div key={`empty-${index}`} className="min-h-12 sm:min-h-14" />;
 
           const dateStr = toDateStr(day);
-          const hasLecture = Boolean(lectureMap[dateStr]);
+          const stages = stageOrder.filter((stage) =>
+            lectureMap[dateStr]?.some((lecture) => lecture.workflowStage === stage)
+          );
           const selected = selectedDate === dateStr;
           const isToday = todayStr === dateStr;
 
@@ -71,13 +80,23 @@ export function CalendarGrid({
             <button
               key={dateStr}
               onClick={() => onSelectDate(selected ? null : dateStr)}
-              className={`flex aspect-square flex-col items-center justify-start rounded-lg pt-1 text-xs font-medium transition-colors ${
-                selected ? "bg-primary text-primary-foreground" : isToday ? "bg-primary/10 text-primary" : "hover:bg-muted"
-              }`}
+              className={cn(
+                "flex min-h-12 flex-col items-center justify-between rounded-lg border border-transparent px-1 py-1.5 text-xs font-medium transition-colors sm:min-h-14",
+                selected && "bg-primary text-primary-foreground",
+                !selected && isToday && "border-primary/60 bg-primary/10 text-primary",
+                !selected && !isToday && "hover:bg-muted"
+              )}
             >
               <span>{day}</span>
-              {hasLecture && (
-                <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${selected ? "bg-primary-foreground" : "bg-primary"}`} />
+              {stages.length > 0 && (
+                <span className="flex h-2 items-center justify-center gap-0.5">
+                  {stages.slice(0, 3).map((stage) => (
+                    <span
+                      key={stage}
+                      className={cn("h-1.5 w-1.5 rounded-full", stageDotClass[stage], selected && "ring-1 ring-primary-foreground/80")}
+                    />
+                  ))}
+                </span>
               )}
             </button>
           );

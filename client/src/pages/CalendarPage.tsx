@@ -49,7 +49,7 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
       <div className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
@@ -101,7 +101,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_320px]">
         <CalendarGrid
           viewYear={viewYear}
           viewMonth={viewMonth}
@@ -111,7 +111,7 @@ export default function CalendarPage() {
           onMoveMonth={moveMonth}
         />
 
-        <aside className="space-y-3">
+        <aside className="space-y-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
           {selectedDate && (
             <section className="rounded-xl border border-border bg-card p-4">
               <h3 className="mb-3 text-sm font-semibold text-foreground">{formatDate(selectedDate)} 강의</h3>
