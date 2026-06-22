@@ -1,4 +1,5 @@
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { SmsModal } from "@/components/SmsModal";
 import { TravelInfoCard } from "@/components/TravelInfoCard";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useLectures } from "@/hooks/useLectures";
-import type { WorkflowStage } from "@/types/lecture";
+import type { Lecture, WorkflowStage } from "@/types/lecture";
+import { getAfterRecordButtonLabel, hasAfterRecord } from "@/utils/afterRecord";
 import { recordSmsHistory } from "@/utils/storage";
 import { formatDate, formatKRW } from "@/utils/format";
 import {
@@ -52,6 +54,7 @@ export default function LectureDetail() {
   const { profile } = useSupabase();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
+  const [afterRecordOpen, setAfterRecordOpen] = useState(false);
   const [calculatingRoute, setCalculatingRoute] = useState(false);
   const lecture = getLectureById(id);
 
@@ -68,6 +71,8 @@ export default function LectureDetail() {
 
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
   const payment = paymentBadge[lecture.paymentStatus] ?? paymentBadge.unpaid;
+  const hasRecord = hasAfterRecord(lecture);
+  const afterRecordButtonLabel = getAfterRecordButtonLabel(lecture);
 
   const handleStageChange = (stageKey: WorkflowStage) => {
     updateLecture(lecture.id, { workflowStage: stageKey });
@@ -117,6 +122,10 @@ export default function LectureDetail() {
               <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />
               업무 관리
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setAfterRecordOpen(true)}>
+              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+              {afterRecordButtonLabel}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => navigate(`/lectures/${lecture.id}/edit`)}>
               <Pencil className="mr-1.5 h-3.5 w-3.5" />
               수정
@@ -146,6 +155,13 @@ export default function LectureDetail() {
         updatedAt={lecture.travelUpdatedAt}
         calculating={calculatingRoute}
         onCalculate={handleCalculateRoute}
+      />
+
+      <AfterRecordSummary
+        lecture={lecture}
+        hasRecord={hasRecord}
+        paymentLabel={payment.label}
+        onOpen={() => setAfterRecordOpen(true)}
       />
 
       <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
@@ -248,8 +264,100 @@ export default function LectureDetail() {
           toast.success("문자 발송 이력을 기록했습니다.");
         }}
       />
+      <AfterRecordModal
+        lectureId={lecture.id}
+        open={afterRecordOpen}
+        onOpenChange={setAfterRecordOpen}
+      />
     </div>
   );
+}
+
+function AfterRecordSummary({
+  lecture,
+  hasRecord,
+  paymentLabel,
+  onOpen,
+}: {
+  lecture: Lecture;
+  hasRecord: boolean;
+  paymentLabel: string;
+  onOpen: () => void;
+}) {
+  const buttonLabel = getAfterRecordButtonLabel(lecture);
+
+  return (
+    <section className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+          <CheckCircle2 className="h-4 w-4 text-primary" />
+          강의 후 기록
+        </h2>
+        <Button variant="outline" size="sm" onClick={onOpen}>
+          {buttonLabel}
+        </Button>
+      </div>
+
+      {!hasRecord ? (
+        <p className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+          아직 강의 후 기록이 없습니다.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <SummaryItem label="실참여인원" value={formatNumber(lecture.actualParticipants)} suffix="명" />
+            <SummaryItem label="입금 상태" value={paymentLabel} />
+            <SummaryItem label="입금 금액" value={formatKRW(lecture.paidAmount || 0)} />
+            <SummaryItem label="입금일" value={lecture.paymentDate || "미기록"} />
+            <SummaryItem label="결과보고서 제출 여부" value={lecture.reportSubmitted ? "제출 완료" : "미제출"} />
+            <SummaryItem label="결과보고서 제출일" value={lecture.reportSubmittedAt || "미기록"} />
+            <SummaryItem label="홍보 블로그 작성 여부" value={lecture.blogWritten ? "작성 완료" : "미작성"} />
+            <SummaryItem
+              label="블로그 URL"
+              value={lecture.blogUrl || "미기록"}
+              href={lecture.blogUrl?.trim() || undefined}
+            />
+          </div>
+          <MemoBlock title="만족도/성과 메모" text={lecture.satisfactionMemo} />
+          <MemoBlock title="개선점" text={lecture.improvementMemo} />
+          <MemoBlock title="강의 후 메모" text={lecture.afterMemo} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SummaryItem({ label, value, suffix, href }: { label: string; value: string; suffix?: string; href?: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+      <p className="mb-1 text-xs text-muted-foreground">{label}</p>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className="break-all text-sm font-medium text-primary hover:underline">
+          {value}
+        </a>
+      ) : (
+        <p className="text-sm font-medium text-foreground">
+          {value}
+          {value !== "미기록" && suffix ? suffix : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MemoBlock({ title, text }: { title: string; text?: string | null }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs text-muted-foreground">{title}</p>
+      <p className="whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/20 p-3 text-sm leading-relaxed text-foreground">
+        {text?.trim() || "미기록"}
+      </p>
+    </div>
+  );
+}
+
+function formatNumber(value?: number | null) {
+  return value && value > 0 ? value.toLocaleString("ko-KR") : "미기록";
 }
 
 function InfoItem({

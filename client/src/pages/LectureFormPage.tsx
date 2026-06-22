@@ -73,7 +73,7 @@ export default function LectureFormPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">{isEdit ? "강의 수정" : "강의 등록"}</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          강의 기본 정보와 담당자, 강의 전후 관리에 필요한 내용을 입력합니다.
+          기본정보, 일정/장소, 담당자, 준비 메모만 먼저 등록합니다.
         </p>
       </div>
       <LectureForm

@@ -1,6 +1,7 @@
 import { BulkEditModal } from "@/components/BulkEditModal";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { EmptyState } from "@/components/EmptyState";
+import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
 import { LectureCard } from "@/components/LectureCard";
 import { SmsModal } from "@/components/SmsModal";
@@ -35,6 +36,7 @@ export default function LectureList() {
   const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
+  const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -250,6 +252,7 @@ export default function LectureList() {
               onDelete={handleDelete}
               onManage={(id) => navigate(`/lectures/${id}/manage`)}
               onSms={(lec) => setSmsTarget(lec)}
+              onAfterRecord={(lec) => setAfterRecordTarget(lec)}
               selected={selectedIds.includes(lecture.id)}
               onSelect={handleSelect}
               onUpdateStage={updateLecture}
@@ -289,6 +292,16 @@ export default function LectureList() {
           onRecord={(type, recipient, content) => {
             recordSmsHistory(smsTarget.id, type, recipient, content);
             toast.success("문자 발송 내역을 기록했습니다.");
+          }}
+        />
+      )}
+
+      {afterRecordTarget && (
+        <AfterRecordModal
+          lectureId={afterRecordTarget.id}
+          open={!!afterRecordTarget}
+          onOpenChange={(open) => {
+            if (!open) setAfterRecordTarget(null);
           }}
         />
       )}

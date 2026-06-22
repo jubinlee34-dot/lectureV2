@@ -1,5 +1,6 @@
 import { CalendarGrid } from "@/components/CalendarGrid";
 import { CalendarQuickCard } from "@/components/CalendarQuickCard";
+import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
 import { MonthLectureList } from "@/components/MonthLectureList";
 import { SmsModal } from "@/components/SmsModal";
@@ -22,6 +23,7 @@ export default function CalendarPage() {
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
+  const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   const lectureMap = useMemo(() => {
@@ -125,6 +127,7 @@ export default function CalendarPage() {
                       lecture={lecture}
                       onNavigate={navigate}
                       onSms={setSmsTarget}
+                      onAfterRecord={setAfterRecordTarget}
                       onUpdateStage={updateLecture}
                       onDelete={(lectureId) => {
                         deleteLecture(lectureId);
@@ -150,6 +153,16 @@ export default function CalendarPage() {
           onRecord={(type, recipient, content) => {
             recordSmsHistory(smsTarget.id, type, recipient, content);
             toast.success("문자 발송 이력을 기록했습니다.");
+          }}
+        />
+      )}
+
+      {afterRecordTarget && (
+        <AfterRecordModal
+          lectureId={afterRecordTarget.id}
+          open={!!afterRecordTarget}
+          onOpenChange={(open) => {
+            if (!open) setAfterRecordTarget(null);
           }}
         />
       )}

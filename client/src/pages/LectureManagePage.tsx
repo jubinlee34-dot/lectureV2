@@ -1,7 +1,9 @@
+import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { SmsModal } from "@/components/SmsModal";
 import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
+import { getAfterRecordButtonLabel } from "@/utils/afterRecord";
 import { formatDate } from "@/utils/format";
 import {
   ArrowLeft,
@@ -73,6 +75,7 @@ export default function LectureManagePage() {
   const [addingStage, setAddingStage] = useState<WorkTaskStage | null>(null);
   const [smsOpen, setSmsOpen] = useState(false);
   const [smsType, setSmsType] = useState<SmsType>("reminder");
+  const [afterRecordOpen, setAfterRecordOpen] = useState(false);
 
   useEffect(() => {
     initTasks();
@@ -91,6 +94,7 @@ export default function LectureManagePage() {
 
   const currentTasks = activeTab === "before" ? beforeTasks : afterTasks;
   const currentProgress = activeTab === "before" ? beforeProgress : afterProgress;
+  const afterRecordButtonLabel = getAfterRecordButtonLabel(lecture);
 
   const handleAddTask = (stage: WorkTaskStage) => {
     if (!newTaskText.trim()) return;
@@ -161,6 +165,10 @@ export default function LectureManagePage() {
               </a>
             </div>
           )}
+          <Button variant="outline" size="sm" onClick={() => setAfterRecordOpen(true)}>
+            <ClipboardCheck className="mr-1 h-3.5 w-3.5" />
+            {afterRecordButtonLabel}
+          </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           담당자: {lecture.managerName || "미등록"} {lecture.managerPhone && `· ${lecture.managerPhone}`}
@@ -317,6 +325,11 @@ export default function LectureManagePage() {
           recordSms(type, recipient, content);
           toast.success("문자 발송 내역을 기록했습니다.");
         }}
+      />
+      <AfterRecordModal
+        lectureId={lecture.id}
+        open={afterRecordOpen}
+        onOpenChange={setAfterRecordOpen}
       />
     </div>
   );

@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { Lecture, WorkflowStage } from "@/types/lecture";
-import { Building2, Car, MapPin, MessageCircle, Phone, Star, Trash2 } from "lucide-react";
+import { getAfterRecordButtonLabel } from "@/utils/afterRecord";
+import { Building2, Car, ClipboardCheck, MapPin, MessageCircle, Phone, Star, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { toast } from "sonner";
 
@@ -20,6 +21,7 @@ interface CalendarQuickCardProps {
   onSms?: (lecture: Lecture) => void;
   onUpdateStage?: (id: string, data: Partial<Lecture>) => Promise<void> | void;
   onDelete?: (id: string) => void;
+  onAfterRecord?: (lecture: Lecture) => void;
 }
 
 export function CalendarQuickCard({
@@ -28,9 +30,11 @@ export function CalendarQuickCard({
   onSms,
   onUpdateStage,
   onDelete,
+  onAfterRecord,
 }: CalendarQuickCardProps) {
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
+  const afterRecordLabel = getAfterRecordButtonLabel(lecture);
 
   const handleStageClick = (event: MouseEvent) => {
     event.stopPropagation();
@@ -110,7 +114,29 @@ export function CalendarQuickCard({
         </div>
       )}
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => onNavigate(`/lectures/${lecture.id}`)}
+          className="inline-flex h-7 items-center justify-center rounded-md border border-border px-2 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary"
+        >
+          상세보기
+        </button>
+        <button
+          onClick={() => onNavigate(`/lectures/${lecture.id}/manage`)}
+          className="inline-flex h-7 items-center justify-center rounded-md border border-border px-2 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary"
+        >
+          <ClipboardCheck className="mr-1 h-3.5 w-3.5" />
+          업무관리
+        </button>
+        {onAfterRecord && (
+          <button
+            onClick={() => onAfterRecord(lecture)}
+            className="inline-flex h-7 items-center justify-center rounded-md border border-amber-200 px-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+          >
+            <ClipboardCheck className="mr-1 h-3.5 w-3.5" />
+            {afterRecordLabel}
+          </button>
+        )}
         {lecture.managerPhone && (
           <>
             <button
