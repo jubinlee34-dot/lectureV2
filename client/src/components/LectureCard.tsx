@@ -5,6 +5,7 @@ import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { Lecture, WorkflowStage } from "@/types/lecture";
+import { getAfterRecordButtonLabel } from "@/utils/afterRecord";
 import { formatDateShort, truncate } from "@/utils/format";
 import type { MouseEvent } from "react";
 import {
@@ -53,6 +54,7 @@ export function LectureCard({
   const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
+  const afterRecordLabel = getAfterRecordButtonLabel(lecture);
 
   const handleStageClick = (event: MouseEvent) => {
     event.stopPropagation();
@@ -212,7 +214,7 @@ export function LectureCard({
               className="flex items-center gap-1 rounded-md border border-amber-200 px-2 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-50"
             >
               <ClipboardCheck className="h-3 w-3" />
-              강의 후 기록 추가
+              {afterRecordLabel}
             </button>
           )}
           {lecture.managerName && (

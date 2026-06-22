@@ -3,6 +3,7 @@ import { SmsModal } from "@/components/SmsModal";
 import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
+import { getAfterRecordButtonLabel } from "@/utils/afterRecord";
 import { formatDate } from "@/utils/format";
 import {
   ArrowLeft,
@@ -93,6 +94,7 @@ export default function LectureManagePage() {
 
   const currentTasks = activeTab === "before" ? beforeTasks : afterTasks;
   const currentProgress = activeTab === "before" ? beforeProgress : afterProgress;
+  const afterRecordButtonLabel = getAfterRecordButtonLabel(lecture);
 
   const handleAddTask = (stage: WorkTaskStage) => {
     if (!newTaskText.trim()) return;
@@ -165,7 +167,7 @@ export default function LectureManagePage() {
           )}
           <Button variant="outline" size="sm" onClick={() => setAfterRecordOpen(true)}>
             <ClipboardCheck className="mr-1 h-3.5 w-3.5" />
-            강의 후 기록 추가
+            {afterRecordButtonLabel}
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">

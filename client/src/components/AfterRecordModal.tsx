@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture, PaymentStatus } from "@/types/lecture";
+import { hasAfterRecord } from "@/utils/afterRecord";
 import { Loader2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -49,6 +50,7 @@ export function AfterRecordModal({
 }: AfterRecordModalProps) {
   const { getLectureById, updateLecture } = useLectures();
   const lecture = getLectureById(lectureId);
+  const existingRecord = lecture ? hasAfterRecord(lecture) : false;
   const [formData, setFormData] = useState<AfterRecordFormState>(() => buildInitialState(lecture, initialData));
   const [saving, setSaving] = useState(false);
 
@@ -101,9 +103,9 @@ export function AfterRecordModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>강의 후 기록 추가</DialogTitle>
+          <DialogTitle>{existingRecord ? "강의 후 기록 보기/수정" : "강의 후 기록 추가"}</DialogTitle>
           <DialogDescription>
-            강의가 끝난 뒤 실제 참여, 입금, 보고서, 홍보 준비 기록을 남깁니다.
+            강의가 끝난 뒤 실제 참여, 입금, 보고서, 홍보 준비 기록을 확인하고 수정합니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -208,18 +210,19 @@ export function AfterRecordModal({
 
 function buildInitialState(lecture?: Lecture, initialData?: Partial<Lecture>): AfterRecordFormState {
   const data = { ...lecture, ...initialData };
+  const existingRecord = lecture ? hasAfterRecord({ ...lecture, ...initialData }) : false;
   return {
-    actualParticipants: String(data.actualParticipants ?? data.participants ?? ""),
+    actualParticipants: existingRecord ? String(data.actualParticipants ?? "") : "",
     paymentStatus: data.paymentStatus ?? "unpaid",
-    paidAmount: String(data.paidAmount ?? ""),
-    paymentDate: data.paymentDate ?? "",
-    reportSubmitted: data.reportSubmitted ?? false,
-    reportSubmittedAt: data.reportSubmittedAt ?? "",
-    satisfactionMemo: data.satisfactionMemo ?? data.participantReaction ?? "",
-    improvementMemo: data.improvementMemo ?? "",
-    blogWritten: data.blogWritten ?? false,
-    blogUrl: data.blogUrl ?? "",
-    afterMemo: data.afterMemo ?? data.reflection ?? "",
+    paidAmount: existingRecord ? String(data.paidAmount ?? "") : "",
+    paymentDate: existingRecord ? data.paymentDate ?? "" : "",
+    reportSubmitted: existingRecord ? data.reportSubmitted ?? false : false,
+    reportSubmittedAt: existingRecord ? data.reportSubmittedAt ?? "" : "",
+    satisfactionMemo: existingRecord ? data.satisfactionMemo ?? "" : "",
+    improvementMemo: existingRecord ? data.improvementMemo ?? "" : "",
+    blogWritten: existingRecord ? data.blogWritten ?? false : false,
+    blogUrl: existingRecord ? data.blogUrl ?? "" : "",
+    afterMemo: existingRecord ? data.afterMemo ?? "" : "",
   };
 }
 
