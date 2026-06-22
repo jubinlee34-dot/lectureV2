@@ -1,17 +1,19 @@
 import { CalendarGrid } from "@/components/CalendarGrid";
 import { CalendarQuickCard } from "@/components/CalendarQuickCard";
-import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
+import { LectureActionDrawer, type LectureActionMode } from "@/components/LectureActionDrawer";
 import { MonthLectureList } from "@/components/MonthLectureList";
 import { SmsModal } from "@/components/SmsModal";
+import { StatusNavigation } from "@/components/StatusNavigation";
 import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture } from "@/types/lecture";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { formatDate } from "@/utils/format";
+import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
 import { CalendarDays, Download, Plus, Sheet, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -19,35 +21,82 @@ export default function CalendarPage() {
   const [, navigate] = useLocation();
   const { lectures, bulkAddLectures, updateLecture, deleteLecture } = useLectures();
   const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const initialCalendarState = readCalendarQueryState(today);
+  const [viewYear, setViewYear] = useState(initialCalendarState.year);
+  const [viewMonth, setViewMonth] = useState(initialCalendarState.month);
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialCalendarState.date);
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
-  const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>(initialCalendarState.status);
+  const [selectedLectureId, setSelectedLectureId] = useState<string | null>(null);
+  const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
+
+  const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
+  const statusFilteredLectures = useMemo(
+    () => (statusFilter === "all" ? lectures : lectures.filter((lecture) => lecture.workflowStage === statusFilter)),
+    [lectures, statusFilter]
+  );
 
   const lectureMap = useMemo(() => {
-    return lectures.reduce<Record<string, Lecture[]>>((map, lecture) => {
+    return statusFilteredLectures.reduce<Record<string, Lecture[]>>((map, lecture) => {
       map[lecture.date] = [...(map[lecture.date] ?? []), lecture];
       return map;
     }, {});
-  }, [lectures]);
+  }, [statusFilteredLectures]);
 
   const selectedLectures = selectedDate ? lectureMap[selectedDate] ?? [] : [];
 
   const monthLectures = useMemo(() => {
-    return lectures
+    return statusFilteredLectures
       .filter((lecture) => {
         const date = new Date(lecture.date);
         return date.getFullYear() === viewYear && date.getMonth() === viewMonth;
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [lectures, viewYear, viewMonth]);
+  }, [statusFilteredLectures, viewYear, viewMonth]);
 
   const moveMonth = (diff: number) => {
     const next = new Date(viewYear, viewMonth + diff, 1);
     setViewYear(next.getFullYear());
     setViewMonth(next.getMonth());
+  };
+
+  const calendarReturnTo = useMemo(
+    () => buildCalendarReturnTo({ date: selectedDate, status: statusFilter, year: viewYear, month: viewMonth }),
+    [selectedDate, statusFilter, viewYear, viewMonth]
+  );
+
+  useEffect(() => {
+    window.history.replaceState(null, "", calendarReturnTo);
+  }, [calendarReturnTo]);
+
+  const promoteLecture = async (lecture: Lecture) => {
+    if (!lecture.blogUrl?.trim()) {
+      const confirmed = window.confirm("블로그 URL이 비어 있습니다. 그래도 홍보 완료로 처리할까요?");
+      if (!confirmed) return;
+    }
+    await updateLecture(lecture.id, { workflowStage: "promoted", blogWritten: lecture.blogWritten || Boolean(lecture.blogUrl?.trim()) });
+    toast.success("홍보 완료 상태로 변경했습니다.");
+  };
+
+  const rollbackLecture = async (lecture: Lecture) => {
+    const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+    if (!previousStage) return;
+    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} 상태를 ${statusLabels[previousStage]} 상태로 되돌릴까요?`);
+    if (!confirmed) return;
+    await updateLecture(lecture.id, { workflowStage: previousStage });
+    toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
+  };
+
+  const openLectureAction = (lecture: Lecture, mode: LectureActionMode) => {
+    setSelectedLectureId(lecture.id);
+    setActionMode(mode);
+  };
+
+  const closeLectureAction = (open: boolean) => {
+    if (open) return;
+    setSelectedLectureId(null);
+    setActionMode(null);
   };
 
   return (
@@ -103,6 +152,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      <StatusNavigation value={statusFilter} counts={statusCounts} onChange={setStatusFilter} className="mb-4" />
+
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_320px]">
         <CalendarGrid
           viewYear={viewYear}
@@ -125,10 +176,11 @@ export default function CalendarPage() {
                     <CalendarQuickCard
                       key={lecture.id}
                       lecture={lecture}
-                      onNavigate={navigate}
+                      onAction={openLectureAction}
                       onSms={setSmsTarget}
-                      onAfterRecord={setAfterRecordTarget}
-                      onUpdateStage={updateLecture}
+                      onAfterRecord={() => undefined}
+                      onPromote={promoteLecture}
+                      onRollback={rollbackLecture}
                       onDelete={(lectureId) => {
                         deleteLecture(lectureId);
                         toast.success("강의 일정을 삭제했습니다.");
@@ -157,15 +209,12 @@ export default function CalendarPage() {
         />
       )}
 
-      {afterRecordTarget && (
-        <AfterRecordModal
-          lectureId={afterRecordTarget.id}
-          open={!!afterRecordTarget}
-          onOpenChange={(open) => {
-            if (!open) setAfterRecordTarget(null);
-          }}
-        />
-      )}
+      <LectureActionDrawer
+        lectureId={selectedLectureId}
+        mode={actionMode}
+        open={!!selectedLectureId && !!actionMode}
+        onOpenChange={closeLectureAction}
+      />
 
       <ImportModal
         open={importOpen}
@@ -179,4 +228,54 @@ export default function CalendarPage() {
       />
     </div>
   );
+}
+
+function readCalendarQueryState(today: Date): {
+  date: string | null;
+  status: LectureStatusFilter;
+  year: number;
+  month: number;
+} {
+  const params = new URLSearchParams(window.location.search);
+  const date = params.get("date");
+  const statusParam = params.get("status");
+  const status: LectureStatusFilter =
+    statusParam === "before" || statusParam === "after" || statusParam === "promoted" || statusParam === "all"
+      ? statusParam
+      : "all";
+  const yearFromDate = date?.match(/^\d{4}-\d{2}-\d{2}$/) ? Number(date.slice(0, 4)) : null;
+  const monthFromDate = date?.match(/^\d{4}-\d{2}-\d{2}$/) ? Number(date.slice(5, 7)) - 1 : null;
+  const yearParam = Number(params.get("year"));
+  const monthParam = Number(params.get("month"));
+  const year = Number.isFinite(yearParam) && yearParam > 1900 ? yearParam : yearFromDate ?? today.getFullYear();
+  const month =
+    Number.isFinite(monthParam) && monthParam >= 1 && monthParam <= 12
+      ? monthParam - 1
+      : monthFromDate ?? today.getMonth();
+
+  return {
+    date: date?.match(/^\d{4}-\d{2}-\d{2}$/) ? date : null,
+    status,
+    year,
+    month,
+  };
+}
+
+function buildCalendarReturnTo({
+  date,
+  status,
+  year,
+  month,
+}: {
+  date: string | null;
+  status: LectureStatusFilter;
+  year: number;
+  month: number;
+}) {
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  params.set("status", status);
+  params.set("year", String(year));
+  params.set("month", String(month + 1));
+  return `/calendar?${params.toString()}`;
 }

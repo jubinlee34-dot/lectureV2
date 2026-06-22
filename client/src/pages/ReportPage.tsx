@@ -3,7 +3,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLectures } from "@/hooks/useLectures";
 import { generateReport } from "@/utils/templates";
 import { ArrowLeft, Check, Copy, FileText, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation, useParams } from "wouter";
 
@@ -14,12 +14,27 @@ export default function ReportPage() {
   const lecture = getLectureById(id);
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
+  const returnTo = useMemo(() => sanitizeReturnTo(new URLSearchParams(window.location.search).get("returnTo")), []);
 
   useEffect(() => {
     if (lecture) setText(generateReport(lecture));
   }, [lecture]);
 
-  if (!lecture) return <Missing onBack={() => navigate("/lectures")} />;
+  const goBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    navigate("/calendar");
+  };
+
+  if (!lecture) return <Missing onBack={goBack} />;
 
   const copy = async () => {
     await navigator.clipboard.writeText(text);
@@ -30,9 +45,9 @@ export default function ReportPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-6">
-      <button onClick={() => navigate(`/lectures/${id}`)} className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <button onClick={goBack} className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" />
-        강의 상세로 돌아가기
+        돌아가기
       </button>
       <div className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
@@ -56,11 +71,19 @@ export default function ReportPage() {
   );
 }
 
+function sanitizeReturnTo(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
 function Missing({ onBack }: { onBack: () => void }) {
   return (
     <div className="mx-auto max-w-3xl p-6 text-center">
       <p className="text-muted-foreground">강의를 찾을 수 없습니다.</p>
-      <button onClick={onBack} className="mt-4 text-sm text-primary hover:underline">강의 목록으로 돌아가기</button>
+      <button onClick={onBack} className="mt-4 text-sm text-primary hover:underline">
+        돌아가기
+      </button>
     </div>
   );
 }

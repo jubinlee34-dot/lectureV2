@@ -4,21 +4,24 @@ import { NaverRouteButton } from "@/components/NaverRouteButton";
 import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
-import type { Lecture, WorkflowStage } from "@/types/lecture";
-import { getAfterRecordButtonLabel } from "@/utils/afterRecord";
+import type { Lecture } from "@/types/lecture";
+import { hasAfterRecord } from "@/utils/afterRecord";
+import { getPreviousWorkflowStage, statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { formatDateShort, truncate } from "@/utils/format";
-import type { MouseEvent } from "react";
 import {
   Calendar,
   ClipboardCheck,
+  FileText,
   MapPin,
   MessageCircle,
   Pencil,
   Phone,
+  RotateCcw,
   Star,
   Trash2,
   Users,
 } from "lucide-react";
+import type React from "react";
 
 interface LectureCardProps {
   lecture: Lecture;
@@ -28,16 +31,13 @@ interface LectureCardProps {
   onManage?: (id: string) => void;
   onSms?: (lecture: Lecture) => void;
   onAfterRecord?: (lecture: Lecture) => void;
+  onReport?: (id: string) => void;
+  onBlog?: (id: string) => void;
+  onPromote?: (lecture: Lecture) => void;
+  onRollback?: (lecture: Lecture) => void;
   selected?: boolean;
   onSelect?: (id: string, checked: boolean) => void;
-  onUpdateStage?: (id: string, data: Partial<Lecture>) => void;
 }
-
-const stageBadge: Record<WorkflowStage, { label: string; className: string }> = {
-  before: { label: "강의 전", className: "bg-blue-100 text-blue-700 border-blue-200" },
-  after: { label: "강의 후", className: "bg-amber-100 text-amber-700 border-amber-200" },
-  promoted: { label: "홍보 완료", className: "bg-green-100 text-green-700 border-green-200" },
-};
 
 export function LectureCard({
   lecture,
@@ -47,28 +47,19 @@ export function LectureCard({
   onManage,
   onSms,
   onAfterRecord,
+  onReport,
+  onBlog,
+  onPromote,
+  onRollback,
   selected = false,
   onSelect,
-  onUpdateStage,
 }: LectureCardProps) {
-  const stage = stageBadge[lecture.workflowStage] ?? stageBadge.before;
   const { profile } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
-  const afterRecordLabel = getAfterRecordButtonLabel(lecture);
+  const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+  const afterRecordLabel = getCardAfterRecordLabel(lecture);
 
-  const handleStageClick = (event: MouseEvent) => {
-    event.stopPropagation();
-    if (!onUpdateStage) return;
-    const nextStageMap: Record<WorkflowStage, WorkflowStage> = {
-      before: "after",
-      after: "promoted",
-      promoted: "before",
-    };
-    onUpdateStage(lecture.id, { workflowStage: nextStageMap[lecture.workflowStage] });
-  };
-
-  const handleSms = (event: MouseEvent) => {
-    event.stopPropagation();
+  const handleSms = () => {
     if (onSms) {
       onSms(lecture);
       return;
@@ -125,16 +116,12 @@ export function LectureCard({
           <Badge variant="secondary" className="text-xs font-normal">
             {truncate(lecture.topic, 24)}
           </Badge>
-          {onUpdateStage ? (
-            <button
-              onClick={handleStageClick}
-              className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-all hover:opacity-85 ${stage.className}`}
-            >
-              {stage.label}
-            </button>
-          ) : (
-            <Badge variant="outline" className={`text-[10px] font-medium ${stage.className}`}>
-              {stage.label}
+          <Badge variant="outline" className={`text-[10px] font-semibold ${statusBadgeClass[lecture.workflowStage]}`}>
+            {statusLabels[lecture.workflowStage]}
+          </Badge>
+          {lecture.workflowStage === "promoted" && (
+            <Badge variant="outline" className="border-green-200 bg-green-50 text-[10px] font-semibold text-green-700">
+              완료 상태
             </Badge>
           )}
         </div>
@@ -171,24 +158,71 @@ export function LectureCard({
             className="mb-3 space-y-1.5 rounded-lg border border-border/50 bg-muted/50 p-2.5 text-[11px]"
             onClick={(event) => event.stopPropagation()}
           >
-            {starredBeforeTasks.length > 0 && (
-              <TaskSummary label="강의 전 필수" texts={starredBeforeTasks.map((task) => task.text)} />
-            )}
-            {starredAfterTasks.length > 0 && (
-              <TaskSummary label="강의 후 필수" texts={starredAfterTasks.map((task) => task.text)} />
-            )}
+            {starredBeforeTasks.length > 0 && <TaskSummary label="강의 전 필수" texts={starredBeforeTasks.map((task) => task.text)} />}
+            {starredAfterTasks.length > 0 && <TaskSummary label="강의 후 필수" texts={starredAfterTasks.map((task) => task.text)} />}
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 border-t border-border pt-2.5" onClick={(event) => event.stopPropagation()}>
-          {onManage && (
-            <button
-              onClick={() => onManage(lecture.id)}
-              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              <ClipboardCheck className="h-3 w-3" />
-              업무 관리
-            </button>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5" onClick={(event) => event.stopPropagation()}>
+          <CardAction onClick={() => onClick(lecture.id)}>상세보기</CardAction>
+          {lecture.workflowStage === "before" && (
+            <>
+              {onManage && (
+                <CardAction onClick={() => onManage(lecture.id)} icon={<ClipboardCheck className="h-3 w-3" />}>
+                  업무관리
+                </CardAction>
+              )}
+              {onAfterRecord && (
+                <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
+                  {afterRecordLabel}
+                </CardAction>
+              )}
+            </>
+          )}
+          {lecture.workflowStage === "after" && (
+            <>
+              {onManage && (
+                <CardAction onClick={() => onManage(lecture.id)} icon={<ClipboardCheck className="h-3 w-3" />}>
+                  업무관리
+                </CardAction>
+              )}
+              {onAfterRecord && (
+                <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
+                  {afterRecordLabel}
+                </CardAction>
+              )}
+              {onReport && (
+                <CardAction onClick={() => onReport(lecture.id)} icon={<FileText className="h-3 w-3" />}>
+                  결과보고서
+                </CardAction>
+              )}
+              {onBlog && <CardAction onClick={() => onBlog(lecture.id)}>홍보 블로그 작성</CardAction>}
+              {onPromote && (
+                <CardAction onClick={() => onPromote(lecture)} tone="green">
+                  홍보 완료 처리
+                </CardAction>
+              )}
+            </>
+          )}
+          {lecture.workflowStage === "promoted" && (
+            <>
+              {onAfterRecord && (
+                <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
+                  {afterRecordLabel}
+                </CardAction>
+              )}
+              {onReport && (
+                <CardAction onClick={() => onReport(lecture.id)} icon={<FileText className="h-3 w-3" />}>
+                  결과보고서
+                </CardAction>
+              )}
+              {onBlog && <CardAction onClick={() => onBlog(lecture.id)}>블로그 보기</CardAction>}
+              {previousStage && onRollback && (
+                <CardAction onClick={() => onRollback(lecture)} icon={<RotateCcw className="h-3 w-3" />}>
+                  상태 되돌리기
+                </CardAction>
+              )}
+            </>
           )}
           {lecture.managerPhone && (
             <>
@@ -208,21 +242,41 @@ export function LectureCard({
               </a>
             </>
           )}
-          {onAfterRecord && (
-            <button
-              onClick={() => onAfterRecord(lecture)}
-              className="flex items-center gap-1 rounded-md border border-amber-200 px-2 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-50"
-            >
-              <ClipboardCheck className="h-3 w-3" />
-              {afterRecordLabel}
-            </button>
-          )}
-          {lecture.managerName && (
-            <span className="ml-auto truncate text-[10px] text-muted-foreground">{lecture.managerName}</span>
-          )}
+          {lecture.managerName && <span className="ml-auto truncate text-[10px] text-muted-foreground">{lecture.managerName}</span>}
         </div>
       </div>
     </div>
+  );
+}
+
+function getCardAfterRecordLabel(lecture: Lecture): string {
+  if (lecture.workflowStage === "before") return "강의 후 기록 추가";
+  if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
+  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
+}
+
+function CardAction({
+  children,
+  icon,
+  tone = "default",
+  onClick,
+}: {
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+  tone?: "default" | "amber" | "green";
+  onClick: () => void;
+}) {
+  const toneClass = {
+    default: "border-border text-muted-foreground hover:border-primary/40 hover:text-primary",
+    amber: "border-amber-200 text-amber-700 hover:bg-amber-50",
+    green: "border-green-200 text-green-700 hover:bg-green-50",
+  }[tone];
+
+  return (
+    <button onClick={onClick} className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors ${toneClass}`}>
+      {icon}
+      {children}
+    </button>
   );
 }
 
