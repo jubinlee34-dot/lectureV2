@@ -10,7 +10,6 @@ import {
   Search,
   Settings,
   User,
-  Workflow,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -19,16 +18,15 @@ import { Link, useLocation } from "wouter";
 const navItems = [
   { path: "/", label: "대시보드", icon: LayoutDashboard, group: "main" },
   { path: "/calendar", label: "캘린더", icon: CalendarDays, group: "main" },
-  { path: "/workflow", label: "워크플로우", icon: Workflow, group: "main" },
+  { path: "/lectures", label: "강의목록", icon: BookOpen, group: "main" },
   { path: "/todos", label: "할 일", icon: CheckSquare, group: "main" },
-  { path: "/lectures", label: "강의 목록", icon: BookOpen, group: "sub" },
-  { path: "/search", label: "검색", icon: Search, group: "sub" },
   { path: "/lectures/new", label: "강의 등록", icon: PenLine, group: "sub" },
+  { path: "/search", label: "검색", icon: Search, group: "sub" },
   { path: "/profile", label: "강사 프로필", icon: User, group: "sub" },
   { path: "/setup", label: "설정 점검", icon: Settings, group: "sub" },
 ];
 
-const tabItems = navItems.slice(0, 4);
+const tabItems = navItems.filter((item) => item.group === "main");
 
 export function Sidebar({
   className,
@@ -42,7 +40,11 @@ export function Sidebar({
   const [location] = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const isActive = (path: string) => (path === "/" ? location === "/" : location.startsWith(path));
+  const isActive = (path: string) => {
+    if (path === "/") return location === "/";
+    if (path === "/lectures") return location === "/lectures" || location.startsWith("/lectures/");
+    return location.startsWith(path);
+  };
 
   const content = (
     <div className="flex h-full flex-col">
@@ -54,12 +56,12 @@ export function Sidebar({
             </div>
             <div>
               <p className="text-sm font-bold leading-none text-foreground">강의 아카이브</p>
-              <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">강의 전후 기록 관리</p>
+              <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">운영과 기록 관리</p>
             </div>
           </div>
           <button
             onClick={() => setIsOpen?.(false)}
-            className="hidden lg:flex rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-none outline-none cursor-pointer"
+            className="hidden cursor-pointer rounded-lg border-none p-1.5 text-muted-foreground outline-none hover:bg-muted hover:text-foreground lg:flex"
             title="메뉴 접기"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -101,11 +103,13 @@ export function Sidebar({
 
   return (
     <>
-      <aside className={cn(
-        "hidden h-screen w-60 shrink-0 border-r border-border bg-sidebar",
-        isOpen ? "lg:flex" : "lg:hidden",
-        className
-      )}>
+      <aside
+        className={cn(
+          "hidden h-screen w-60 shrink-0 border-r border-border bg-sidebar",
+          isOpen ? "lg:flex" : "lg:hidden",
+          className
+        )}
+      >
         {content}
       </aside>
       <header className="fixed left-0 right-0 top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm lg:hidden">
