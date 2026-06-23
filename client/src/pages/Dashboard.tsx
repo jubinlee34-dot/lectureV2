@@ -144,9 +144,9 @@ export default function Dashboard() {
             진행 단계
           </h2>
           <div className="space-y-2">
-            <WorkflowRow label="강의 전" count={beforeCount} total={lectures.length} color="bg-blue-500" onClick={() => navigate("/workflow?stage=before")} />
-            <WorkflowRow label="강의 후" count={afterCount} total={lectures.length} color="bg-amber-500" onClick={() => navigate("/workflow?stage=after")} />
-            <WorkflowRow label="홍보 완료" count={promotedCount} total={lectures.length} color="bg-green-500" onClick={() => navigate("/workflow?stage=promoted")} />
+            <WorkflowRow label="강의 전" count={beforeCount} total={lectures.length} color="bg-blue-500" onClick={() => navigate("/calendar?status=before")} />
+            <WorkflowRow label="강의 후" count={afterCount} total={lectures.length} color="bg-amber-500" onClick={() => navigate("/calendar?status=after")} />
+            <WorkflowRow label="홍보 완료" count={promotedCount} total={lectures.length} color="bg-green-500" onClick={() => navigate("/calendar?status=promoted")} />
           </div>
         </section>
       </div>

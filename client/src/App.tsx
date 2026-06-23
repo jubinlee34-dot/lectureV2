@@ -16,7 +16,7 @@ import { ChevronRight } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation, useSearch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -32,9 +32,29 @@ import ReportPage from "./pages/ReportPage";
 import SearchPage from "./pages/SearchPage";
 import SetupPage from "./pages/SetupPage";
 import TodoPage from "./pages/TodoPage";
-import WorkflowPage from "./pages/WorkflowPage";
 import LectureManagePage from "./pages/LectureManagePage";
 import InstructorProfilePage from "./pages/InstructorProfilePage";
+
+function WorkflowRedirect() {
+  const [, navigate] = useLocation();
+  const search = useSearch();
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const stage = params.get("stage");
+    const target =
+      stage === "before" || stage === "after" || stage === "promoted"
+        ? `/calendar?status=${stage}`
+        : "/calendar";
+    navigate(target, { replace: true });
+  }, [navigate, search]);
+
+  return (
+    <div className="mx-auto max-w-xl px-4 py-10 text-center">
+      <p className="text-sm text-muted-foreground">워크플로우 화면은 캘린더 운영 화면으로 통합되었습니다.</p>
+    </div>
+  );
+}
 
 function Router() {
   return (
@@ -45,7 +65,7 @@ function Router() {
       {/* V2 신규 */}
       <Route path="/calendar" component={CalendarPage} />
       <Route path="/todos" component={TodoPage} />
-      <Route path="/workflow" component={WorkflowPage} />
+      <Route path="/workflow" component={WorkflowRedirect} />
       <Route path="/profile" component={InstructorProfilePage} />
       <Route path="/setup" component={SetupPage} />
 
