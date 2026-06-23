@@ -3,8 +3,8 @@ import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useStarredTasks } from "@/hooks/useStarredTasks";
-import type { Lecture } from "@/types/lecture";
 import type { LectureActionMode } from "@/components/LectureActionDrawer";
+import type { Lecture } from "@/types/lecture";
 import { hasAfterRecord } from "@/utils/afterRecord";
 import { getPreviousWorkflowStage, statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { Building2, Car, ClipboardCheck, FileText, MapPin, MessageCircle, Phone, RotateCcw, Star, Trash2 } from "lucide-react";
@@ -175,16 +175,18 @@ export function CalendarQuickCard({
             </a>
           </>
         )}
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete?.(lecture.id);
-          }}
-          className="ml-auto inline-flex h-7 items-center justify-center rounded-md border border-red-200 px-2.5 text-xs text-red-700 hover:bg-red-50"
-        >
-          <Trash2 className="mr-1 h-3.5 w-3.5" />
-          삭제
-        </button>
+        {lecture.workflowStage !== "promoted" && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete?.(lecture.id);
+            }}
+            className="ml-auto inline-flex h-7 items-center justify-center rounded-md border border-red-200 px-2.5 text-xs text-red-700 hover:bg-red-50"
+          >
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
+            삭제
+          </button>
+        )}
       </div>
     </div>
   );

@@ -87,20 +87,20 @@ export default function CalendarPage() {
 
   const promoteLecture = async (lecture: Lecture) => {
     if (!lecture.blogUrl?.trim()) {
-      const confirmed = window.confirm("釉붾줈洹?URL??鍮꾩뼱 ?덉뒿?덈떎. 洹몃옒???띾낫 ?꾨즺濡?泥섎━?좉퉴??");
+      const confirmed = window.confirm("블로그 URL이 비어 있습니다. 그래도 홍보 완료로 처리할까요?");
       if (!confirmed) return;
     }
     await updateLecture(lecture.id, { workflowStage: "promoted", blogWritten: lecture.blogWritten || Boolean(lecture.blogUrl?.trim()) });
-    toast.success("?띾낫 ?꾨즺 ?곹깭濡?蹂寃쏀뻽?듬땲??");
+    toast.success("홍보 완료 상태로 변경했습니다.");
   };
 
   const rollbackLecture = async (lecture: Lecture) => {
     const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
     if (!previousStage) return;
-    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} ?곹깭瑜?${statusLabels[previousStage]} ?곹깭濡??섎룎由닿퉴??`);
+    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} 상태를 ${statusLabels[previousStage]} 상태로 되돌릴까요?`);
     if (!confirmed) return;
     await updateLecture(lecture.id, { workflowStage: previousStage });
-    toast.success(`${statusLabels[previousStage]} ?곹깭濡??섎룎?몄뒿?덈떎.`);
+    toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
   };
 
   const openLectureAction = (lecture: Lecture, mode: LectureActionMode) => {
@@ -117,26 +117,26 @@ export default function CalendarPage() {
   const handleDeleteLecture = (lectureId: string) => {
     deleteLecture(lectureId);
     if (selectedLectureId === lectureId) setSelectedLectureId(null);
-    toast.success("揶쏅벡????깆젟???????됰뮸??덈뼄.");
+    toast.success("강의 일정을 삭제했습니다.");
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6">
       <div className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <CalendarDays className="h-6 w-6 text-primary" />
-            媛뺤쓽 罹섎┛??
+            강의 캘린더
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            罹섎┛?붿뿉???쇱젙怨??대떦???곕씫 踰꾪듉??諛붾줈 ?뺤씤?⑸땲??
+            캘린더에서 일정과 담당자 연락 버튼을 바로 확인합니다.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
-            媛?몄삤湲?
+            가져오기
           </Button>
           {lectures.length > 0 && (
             <>
@@ -144,8 +144,8 @@ export default function CalendarPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  downloadCSV(lectures, "媛뺤쓽紐⑸줉.csv");
-                  toast.success("CSV ?뚯씪???ㅼ슫濡쒕뱶?덉뒿?덈떎.");
+                  downloadCSV(lectures, "강의목록.csv");
+                  toast.success("CSV 파일을 다운로드했습니다.");
                 }}
                 className="hidden lg:inline-flex"
               >
@@ -156,8 +156,8 @@ export default function CalendarPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  downloadICS(lectures, "媛뺤쓽?쇱젙.ics");
-                  toast.success("ICS ?뚯씪???ㅼ슫濡쒕뱶?덉뒿?덈떎.");
+                  downloadICS(lectures, "강의일정.ics");
+                  toast.success("ICS 파일을 다운로드했습니다.");
                 }}
                 className="hidden lg:inline-flex"
               >
@@ -168,41 +168,20 @@ export default function CalendarPage() {
           )}
           <Button size="sm" onClick={() => navigate(selectedDate ? `/lectures/new?date=${selectedDate}` : "/lectures/new")}>
             <Plus className="mr-1.5 h-4 w-4" />
-            媛뺤쓽 ?깅줉
+            강의 등록
           </Button>
         </div>
       </div>
 
       <StatusNavigation value={statusFilter} counts={statusCounts} onChange={setStatusFilter} className="mb-4" />
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_320px]">
-        <CalendarGrid
-          viewYear={viewYear}
-          viewMonth={viewMonth}
-          lectureMap={lectureMap}
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
-          onMoveMonth={moveMonth}
-        />
-
-        <aside className="space-y-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
-          {selectedLecture && (
-            <CalendarLectureDetailPanel
-              lecture={selectedLecture}
-              onClose={() => setSelectedLectureId(null)}
-              onAction={openLectureAction}
-              onSms={setSmsTarget}
-              onPromote={promoteLecture}
-              onRollback={rollbackLecture}
-              onDelete={handleDeleteLecture}
-            />
-          )}
-
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_340px] xl:grid-cols-[280px_minmax(520px,1fr)_340px]">
+        <aside className="order-3 space-y-3 lg:col-span-2 xl:order-1 xl:col-span-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-9rem)] xl:overflow-y-auto xl:pr-1">
           {selectedDate && (
             <section className="rounded-xl border border-border bg-card p-4">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">{formatDate(selectedDate)} 媛뺤쓽</h3>
+              <h3 className="mb-3 text-sm font-semibold text-foreground">{formatDate(selectedDate)} 강의</h3>
               {selectedLectures.length === 0 ? (
-                <p className="text-xs text-muted-foreground">?좏깮???좎쭨??媛뺤쓽媛 ?놁뒿?덈떎.</p>
+                <p className="text-xs text-muted-foreground">선택한 날짜에 강의가 없습니다.</p>
               ) : (
                 <div className="space-y-3">
                   {selectedLectures.map((lecture) => (
@@ -230,6 +209,33 @@ export default function CalendarPage() {
             onSelect={(lecture) => setSelectedLectureId(lecture.id)}
           />
         </aside>
+
+        <section className="order-1 xl:order-2">
+          <CalendarGrid
+            viewYear={viewYear}
+            viewMonth={viewMonth}
+            lectureMap={lectureMap}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            onMoveMonth={moveMonth}
+          />
+        </section>
+
+        <aside className="order-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto xl:order-3">
+          {selectedLecture ? (
+            <CalendarLectureDetailPanel
+              lecture={selectedLecture}
+              onClose={() => setSelectedLectureId(null)}
+              onAction={openLectureAction}
+              onSms={setSmsTarget}
+              onPromote={promoteLecture}
+              onRollback={rollbackLecture}
+              onDelete={handleDeleteLecture}
+            />
+          ) : (
+            <CalendarLectureEmptyPanel />
+          )}
+        </aside>
       </div>
 
       {smsTarget && (
@@ -240,7 +246,7 @@ export default function CalendarPage() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={(type, recipient, content) => {
             recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("臾몄옄 諛쒖넚 ?대젰??湲곕줉?덉뒿?덈떎.");
+            toast.success("문자 발송 이력을 기록했습니다.");
           }}
         />
       )}
@@ -259,7 +265,7 @@ export default function CalendarPage() {
         existingLectures={lectures}
         onImport={async (items, policy) => {
           const count = await bulkAddLectures(items, policy);
-          toast.success(`${count}媛쒖쓽 媛뺤쓽瑜?媛?몄솕?듬땲??`);
+          toast.success(`${count}개의 강의를 가져왔습니다.`);
         }}
       />
     </div>
@@ -305,6 +311,18 @@ function CalendarLectureDetailPanel({
           onDelete={onDelete}
         />
       </div>
+    </section>
+  );
+}
+
+function CalendarLectureEmptyPanel() {
+  return (
+    <section className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
+      <CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted-foreground/60" />
+      <h3 className="text-sm font-semibold text-foreground">강의를 선택해 주세요.</h3>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        왼쪽 월 강의목록이나 선택 날짜의 강의 카드를 클릭하면 이곳에 상세와 업무 액션이 표시됩니다.
+      </p>
     </section>
   );
 }
