@@ -1,4 +1,4 @@
-import { CalendarGrid } from "@/components/CalendarGrid";
+﻿import { CalendarGrid } from "@/components/CalendarGrid";
 import { CalendarQuickCard } from "@/components/CalendarQuickCard";
 import { ImportModal } from "@/components/ImportModal";
 import { LectureActionDrawer, type LectureActionMode } from "@/components/LectureActionDrawer";
@@ -12,7 +12,7 @@ import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { formatDate } from "@/utils/format";
 import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
-import { CalendarDays, Download, Plus, Sheet, Upload } from "lucide-react";
+import { CalendarDays, Download, Plus, Sheet, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -29,6 +29,7 @@ export default function CalendarPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>(initialCalendarState.status);
   const [selectedLectureId, setSelectedLectureId] = useState<string | null>(null);
+  const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
 
   const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
@@ -45,6 +46,7 @@ export default function CalendarPage() {
   }, [statusFilteredLectures]);
 
   const selectedLectures = selectedDate ? lectureMap[selectedDate] ?? [] : [];
+  const selectedLecture = selectedLectureId ? lectures.find((lecture) => lecture.id === selectedLectureId) : undefined;
 
   const monthLectures = useMemo(() => {
     return statusFilteredLectures
@@ -70,33 +72,52 @@ export default function CalendarPage() {
     window.history.replaceState(null, "", calendarReturnTo);
   }, [calendarReturnTo]);
 
+  useEffect(() => {
+    if (!selectedLectureId) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedLectureId(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedLectureId]);
+
+  useEffect(() => {
+    if (selectedLectureId && !selectedLecture) setSelectedLectureId(null);
+  }, [selectedLectureId, selectedLecture]);
+
   const promoteLecture = async (lecture: Lecture) => {
     if (!lecture.blogUrl?.trim()) {
-      const confirmed = window.confirm("블로그 URL이 비어 있습니다. 그래도 홍보 완료로 처리할까요?");
+      const confirmed = window.confirm("釉붾줈洹?URL??鍮꾩뼱 ?덉뒿?덈떎. 洹몃옒???띾낫 ?꾨즺濡?泥섎━?좉퉴??");
       if (!confirmed) return;
     }
     await updateLecture(lecture.id, { workflowStage: "promoted", blogWritten: lecture.blogWritten || Boolean(lecture.blogUrl?.trim()) });
-    toast.success("홍보 완료 상태로 변경했습니다.");
+    toast.success("?띾낫 ?꾨즺 ?곹깭濡?蹂寃쏀뻽?듬땲??");
   };
 
   const rollbackLecture = async (lecture: Lecture) => {
     const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
     if (!previousStage) return;
-    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} 상태를 ${statusLabels[previousStage]} 상태로 되돌릴까요?`);
+    const confirmed = window.confirm(`${statusLabels[lecture.workflowStage]} ?곹깭瑜?${statusLabels[previousStage]} ?곹깭濡??섎룎由닿퉴??`);
     if (!confirmed) return;
     await updateLecture(lecture.id, { workflowStage: previousStage });
-    toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
+    toast.success(`${statusLabels[previousStage]} ?곹깭濡??섎룎?몄뒿?덈떎.`);
   };
 
   const openLectureAction = (lecture: Lecture, mode: LectureActionMode) => {
-    setSelectedLectureId(lecture.id);
+    setActionLectureId(lecture.id);
     setActionMode(mode);
   };
 
   const closeLectureAction = (open: boolean) => {
     if (open) return;
-    setSelectedLectureId(null);
+    setActionLectureId(null);
     setActionMode(null);
+  };
+
+  const handleDeleteLecture = (lectureId: string) => {
+    deleteLecture(lectureId);
+    if (selectedLectureId === lectureId) setSelectedLectureId(null);
+    toast.success("揶쏅벡????깆젟???????됰뮸??덈뼄.");
   };
 
   return (
@@ -105,17 +126,17 @@ export default function CalendarPage() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <CalendarDays className="h-6 w-6 text-primary" />
-            강의 캘린더
+            媛뺤쓽 罹섎┛??
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            캘린더에서 일정과 담당자 연락 버튼을 바로 확인합니다.
+            罹섎┛?붿뿉???쇱젙怨??대떦???곕씫 踰꾪듉??諛붾줈 ?뺤씤?⑸땲??
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
-            가져오기
+            媛?몄삤湲?
           </Button>
           {lectures.length > 0 && (
             <>
@@ -123,8 +144,8 @@ export default function CalendarPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  downloadCSV(lectures, "강의목록.csv");
-                  toast.success("CSV 파일을 다운로드했습니다.");
+                  downloadCSV(lectures, "媛뺤쓽紐⑸줉.csv");
+                  toast.success("CSV ?뚯씪???ㅼ슫濡쒕뱶?덉뒿?덈떎.");
                 }}
                 className="hidden lg:inline-flex"
               >
@@ -135,8 +156,8 @@ export default function CalendarPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  downloadICS(lectures, "강의일정.ics");
-                  toast.success("ICS 파일을 다운로드했습니다.");
+                  downloadICS(lectures, "媛뺤쓽?쇱젙.ics");
+                  toast.success("ICS ?뚯씪???ㅼ슫濡쒕뱶?덉뒿?덈떎.");
                 }}
                 className="hidden lg:inline-flex"
               >
@@ -147,7 +168,7 @@ export default function CalendarPage() {
           )}
           <Button size="sm" onClick={() => navigate(selectedDate ? `/lectures/new?date=${selectedDate}` : "/lectures/new")}>
             <Plus className="mr-1.5 h-4 w-4" />
-            강의 등록
+            媛뺤쓽 ?깅줉
           </Button>
         </div>
       </div>
@@ -165,26 +186,36 @@ export default function CalendarPage() {
         />
 
         <aside className="space-y-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
+          {selectedLecture && (
+            <CalendarLectureDetailPanel
+              lecture={selectedLecture}
+              onClose={() => setSelectedLectureId(null)}
+              onAction={openLectureAction}
+              onSms={setSmsTarget}
+              onPromote={promoteLecture}
+              onRollback={rollbackLecture}
+              onDelete={handleDeleteLecture}
+            />
+          )}
+
           {selectedDate && (
             <section className="rounded-xl border border-border bg-card p-4">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">{formatDate(selectedDate)} 강의</h3>
+              <h3 className="mb-3 text-sm font-semibold text-foreground">{formatDate(selectedDate)} 媛뺤쓽</h3>
               {selectedLectures.length === 0 ? (
-                <p className="text-xs text-muted-foreground">선택한 날짜에 강의가 없습니다.</p>
+                <p className="text-xs text-muted-foreground">?좏깮???좎쭨??媛뺤쓽媛 ?놁뒿?덈떎.</p>
               ) : (
                 <div className="space-y-3">
                   {selectedLectures.map((lecture) => (
                     <CalendarQuickCard
                       key={lecture.id}
                       lecture={lecture}
+                      onSelect={(lecture) => setSelectedLectureId(lecture.id)}
                       onAction={openLectureAction}
                       onSms={setSmsTarget}
                       onAfterRecord={() => undefined}
                       onPromote={promoteLecture}
                       onRollback={rollbackLecture}
-                      onDelete={(lectureId) => {
-                        deleteLecture(lectureId);
-                        toast.success("강의 일정을 삭제했습니다.");
-                      }}
+                      onDelete={handleDeleteLecture}
                     />
                   ))}
                 </div>
@@ -192,7 +223,12 @@ export default function CalendarPage() {
             </section>
           )}
 
-          <MonthLectureList viewMonth={viewMonth} monthLectures={monthLectures} onNavigate={navigate} />
+          <MonthLectureList
+            viewMonth={viewMonth}
+            monthLectures={monthLectures}
+            selectedLectureId={selectedLectureId}
+            onSelect={(lecture) => setSelectedLectureId(lecture.id)}
+          />
         </aside>
       </div>
 
@@ -204,15 +240,15 @@ export default function CalendarPage() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={(type, recipient, content) => {
             recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("문자 발송 이력을 기록했습니다.");
+            toast.success("臾몄옄 諛쒖넚 ?대젰??湲곕줉?덉뒿?덈떎.");
           }}
         />
       )}
 
       <LectureActionDrawer
-        lectureId={selectedLectureId}
+        lectureId={actionLectureId}
         mode={actionMode}
-        open={!!selectedLectureId && !!actionMode}
+        open={!!actionLectureId && !!actionMode}
         onOpenChange={closeLectureAction}
       />
 
@@ -223,10 +259,53 @@ export default function CalendarPage() {
         existingLectures={lectures}
         onImport={async (items, policy) => {
           const count = await bulkAddLectures(items, policy);
-          toast.success(`${count}개의 강의를 가져왔습니다.`);
+          toast.success(`${count}媛쒖쓽 媛뺤쓽瑜?媛?몄솕?듬땲??`);
         }}
       />
     </div>
+  );
+}
+
+function CalendarLectureDetailPanel({
+  lecture,
+  onClose,
+  onAction,
+  onSms,
+  onPromote,
+  onRollback,
+  onDelete,
+}: {
+  lecture: Lecture;
+  onClose: () => void;
+  onAction: (lecture: Lecture, mode: LectureActionMode) => void;
+  onSms: (lecture: Lecture) => void;
+  onPromote: (lecture: Lecture) => void;
+  onRollback: (lecture: Lecture) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <section onClick={onClose} className="rounded-xl border border-primary/30 bg-primary/5 p-2">
+      <div onClick={(event) => event.stopPropagation()} className="rounded-lg bg-card p-3 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-primary">선택 강의</p>
+            <h3 className="truncate text-sm font-semibold text-foreground">{lecture.title}</h3>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} title="닫기">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <CalendarQuickCard
+          lecture={lecture}
+          onAction={onAction}
+          onSms={onSms}
+          onAfterRecord={() => undefined}
+          onPromote={onPromote}
+          onRollback={onRollback}
+          onDelete={onDelete}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -279,3 +358,4 @@ function buildCalendarReturnTo({
   params.set("month", String(month + 1));
   return `/calendar?${params.toString()}`;
 }
+

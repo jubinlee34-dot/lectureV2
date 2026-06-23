@@ -13,6 +13,7 @@ import type React from "react";
 interface CalendarQuickCardProps {
   lecture: Lecture;
   onAction: (lecture: Lecture, mode: LectureActionMode) => void;
+  onSelect?: (lecture: Lecture) => void;
   onSms?: (lecture: Lecture) => void;
   onPromote?: (lecture: Lecture) => void;
   onRollback?: (lecture: Lecture) => void;
@@ -23,6 +24,7 @@ interface CalendarQuickCardProps {
 export function CalendarQuickCard({
   lecture,
   onAction,
+  onSelect,
   onSms,
   onPromote,
   onRollback,
@@ -34,12 +36,28 @@ export function CalendarQuickCard({
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getCardAfterRecordLabel(lecture);
 
+  const handleCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, [data-card-action='true']")) return;
+    onSelect?.(lecture);
+  };
+
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    onSelect(lecture);
+  };
+
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      className={`rounded-lg border border-border p-3 ${onSelect ? "cursor-pointer transition-colors hover:border-primary/40 hover:bg-muted/20" : ""}`}
+    >
       <div className="mb-2 flex items-start justify-between gap-2">
-        <button onClick={() => onAction(lecture, "detail")} className="min-w-0 text-left">
-          <p className="text-sm font-semibold leading-tight text-foreground transition-colors hover:text-primary">{lecture.title}</p>
-        </button>
+        <p className="min-w-0 text-sm font-semibold leading-tight text-foreground">{lecture.title}</p>
         <Badge variant="outline" className={`shrink-0 text-[10px] font-semibold ${statusBadgeClass[lecture.workflowStage]}`}>
           {statusLabels[lecture.workflowStage]}
         </Badge>
@@ -139,7 +157,10 @@ export function CalendarQuickCard({
         {lecture.managerPhone && (
           <>
             <button
-              onClick={() => onSms?.(lecture)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSms?.(lecture);
+              }}
               className="inline-flex h-7 items-center justify-center rounded-md border border-green-200 px-2 text-xs text-green-700 hover:bg-green-50"
             >
               <MessageCircle className="mr-1 h-3.5 w-3.5" />
@@ -147,6 +168,7 @@ export function CalendarQuickCard({
             </button>
             <a
               href={`tel:${lecture.managerPhone}`}
+              onClick={(event) => event.stopPropagation()}
               className="inline-flex h-7 items-center justify-center rounded-md border border-blue-200 px-2 text-xs text-blue-700 hover:bg-blue-50"
             >
               <Phone className="h-3.5 w-3.5" />
@@ -154,7 +176,10 @@ export function CalendarQuickCard({
           </>
         )}
         <button
-          onClick={() => onDelete?.(lecture.id)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete?.(lecture.id);
+          }}
           className="ml-auto inline-flex h-7 items-center justify-center rounded-md border border-red-200 px-2.5 text-xs text-red-700 hover:bg-red-50"
         >
           <Trash2 className="mr-1 h-3.5 w-3.5" />
@@ -189,7 +214,14 @@ function QuickAction({
   }[tone];
 
   return (
-    <button onClick={onClick} className={`inline-flex h-7 items-center justify-center gap-1 rounded-md border px-2 text-xs ${toneClass}`}>
+    <button
+      data-card-action="true"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className={`inline-flex h-7 items-center justify-center gap-1 rounded-md border px-2 text-xs ${toneClass}`}
+    >
       {icon}
       {children}
     </button>

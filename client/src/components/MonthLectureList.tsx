@@ -5,10 +5,11 @@ import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 interface MonthLectureListProps {
   viewMonth: number;
   monthLectures: Lecture[];
-  onNavigate: (path: string) => void;
+  selectedLectureId?: string | null;
+  onSelect: (lecture: Lecture) => void;
 }
 
-export function MonthLectureList({ viewMonth, monthLectures, onNavigate }: MonthLectureListProps) {
+export function MonthLectureList({ viewMonth, monthLectures, selectedLectureId, onSelect }: MonthLectureListProps) {
   return (
     <section className="rounded-xl border border-border bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-foreground">
@@ -22,8 +23,10 @@ export function MonthLectureList({ viewMonth, monthLectures, onNavigate }: Month
           monthLectures.map((lecture) => (
             <button
               key={lecture.id}
-              onClick={() => onNavigate(`/lectures/${lecture.id}`)}
-              className="w-full rounded-lg border border-border/60 p-2.5 text-left hover:border-primary/40"
+              onClick={() => onSelect(lecture)}
+              className={`w-full rounded-lg border p-2.5 text-left transition-colors hover:border-primary/40 ${
+                selectedLectureId === lecture.id ? "border-primary bg-primary/5" : "border-border/60"
+              }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="min-w-0 truncate text-xs font-medium text-foreground">{lecture.title}</p>
