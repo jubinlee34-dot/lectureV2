@@ -1,14 +1,17 @@
-import { CalendarQuickCard } from "@/components/CalendarQuickCard";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { ImportModal } from "@/components/ImportModal";
 import { LectureActionDrawer, type LectureActionMode } from "@/components/LectureActionDrawer";
+import { NaverRouteButton } from "@/components/NaverRouteButton";
 import { SmsModal } from "@/components/SmsModal";
 import { StatusNavigation } from "@/components/StatusNavigation";
+import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { Button } from "@/components/ui/button";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture } from "@/types/lecture";
+import { hasAfterRecord } from "@/utils/afterRecord";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
-import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
+import { getPreviousWorkflowStage, getStatusCounts, statusBadgeClass, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
 import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -136,22 +139,7 @@ export default function LectureList() {
           <p className="mt-0.5 text-sm text-muted-foreground">월별 강의 기록과 통계를 확인합니다.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={selectedYear}
-            onChange={(event) => setSelectedYear(event.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
-            disabled={availableYears.length === 0}
-          >
-            {availableYears.length === 0 ? (
-              <option value={selectedYear}>{selectedYear}년</option>
-            ) : (
-              availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}년
-                </option>
-              ))
-            )}
-          </select>
+          <YearSelect selectedYear={selectedYear} availableYears={availableYears} onChange={setSelectedYear} />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
             가져오기
@@ -196,33 +184,8 @@ export default function LectureList() {
       {!showMonthlyDashboard && (
         <section className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
           <span className="text-xs font-semibold text-muted-foreground">필터</span>
-          <select
-            value={selectedYear}
-            onChange={(event) => setSelectedYear(event.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
-            disabled={availableYears.length === 0}
-          >
-            {availableYears.length === 0 ? (
-              <option value={selectedYear}>{selectedYear}년</option>
-            ) : (
-              availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}년
-                </option>
-              ))
-            )}
-          </select>
-          <select
-            value={String(selectedMonth)}
-            onChange={(event) => setSelectedMonth(Number(event.target.value))}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
-          >
-            {monthNames.map((monthName, index) => (
-              <option key={monthName} value={String(index + 1)}>
-                {monthName}
-              </option>
-            ))}
-          </select>
+          <YearSelect selectedYear={selectedYear} availableYears={availableYears} onChange={setSelectedYear} />
+          <MonthSelect selectedMonth={selectedMonth} onChange={setSelectedMonth} />
         </section>
       )}
 
@@ -268,24 +231,18 @@ export default function LectureList() {
                 이 달에는 등록된 강의가 없습니다.
               </div>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className="grid gap-2.5 lg:grid-cols-2">
                 {selectedMonthLectures.map((lecture) => (
-                  <div key={lecture.id} className="space-y-2">
-                    {isPastBeforeLecture(lecture, todayStr) && (
-                      <span className="inline-flex rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">
-                        날짜 지남
-                      </span>
-                    )}
-                    <CalendarQuickCard
-                      lecture={lecture}
-                      onAction={openLectureAction}
-                      onSms={setSmsTarget}
-                      onAfterRecord={() => undefined}
-                      onPromote={promoteLecture}
-                      onRollback={rollbackLecture}
-                      onDelete={handleDelete}
-                    />
-                  </div>
+                  <CompactLectureCard
+                    key={lecture.id}
+                    lecture={lecture}
+                    isPastBefore={isPastBeforeLecture(lecture, todayStr)}
+                    onAction={openLectureAction}
+                    onSms={setSmsTarget}
+                    onPromote={promoteLecture}
+                    onRollback={rollbackLecture}
+                    onDelete={handleDelete}
+                  />
                 ))}
               </div>
             )}
@@ -335,6 +292,172 @@ export default function LectureList() {
         onOpenChange={closeLectureAction}
       />
     </div>
+  );
+}
+
+function CompactLectureCard({
+  lecture,
+  isPastBefore,
+  onAction,
+  onSms,
+  onPromote,
+  onRollback,
+  onDelete,
+}: {
+  lecture: Lecture;
+  isPastBefore: boolean;
+  onAction: (lecture: Lecture, mode: LectureActionMode) => void;
+  onSms: (lecture: Lecture) => void;
+  onPromote: (lecture: Lecture) => void;
+  onRollback: (lecture: Lecture) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { profile } = useSupabase();
+  const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
+  const afterRecordLabel = getAfterRecordLabel(lecture);
+  const subtitle = [formatDateDots(lecture.date), lecture.organization || lecture.target].filter(Boolean).join(" / ");
+  const managerText =
+    lecture.managerName || lecture.managerPhone
+      ? `담당자 ${lecture.managerName || "미등록"}${lecture.managerPhone ? ` (${lecture.managerPhone})` : ""}`
+      : "담당자 미등록";
+
+  return (
+    <article className="rounded-lg border border-border bg-card p-3 text-sm shadow-sm">
+      <div className="mb-1.5 flex items-start justify-between gap-2">
+        <h3 className="min-w-0 truncate font-semibold leading-5 text-foreground">{lecture.title}</h3>
+        <div className="flex shrink-0 items-center gap-1">
+          <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass[lecture.workflowStage]}`}>
+            {statusLabels[lecture.workflowStage]}
+          </span>
+          {isPastBefore && (
+            <span className="rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+              날짜 지남
+            </span>
+          )}
+        </div>
+      </div>
+
+      <p className="mb-1 truncate text-xs text-muted-foreground">{subtitle || "날짜 / 기관 미입력"}</p>
+
+      <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+        <span className="min-w-0 max-w-full truncate">{lecture.location || "장소 미입력"}</span>
+        <span className="text-muted-foreground/60">·</span>
+        <TravelRouteSummary lecture={lecture} compact />
+        <span className="text-muted-foreground/60">·</span>
+        <NaverRouteButton
+          startAddress={profile?.homeAddress}
+          endAddress={lecture.location}
+          label="네이버 길찾기"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 hover:underline dark:text-green-400"
+        />
+      </div>
+
+      <p className="mb-2 truncate text-xs text-muted-foreground">{managerText}</p>
+
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+        <CompactAction onClick={() => onAction(lecture, "detail")}>상세보기</CompactAction>
+        {lecture.workflowStage !== "promoted" && (
+          <CompactAction onClick={() => onAction(lecture, "tasks")}>업무관리</CompactAction>
+        )}
+        <CompactAction onClick={() => onAction(lecture, "after-record")} tone="amber">
+          {afterRecordLabel}
+        </CompactAction>
+        {lecture.workflowStage === "after" && (
+          <>
+            <CompactAction onClick={() => onAction(lecture, "report")}>결과보고서</CompactAction>
+            <CompactAction onClick={() => onAction(lecture, "blog")}>홍보 블로그 작성</CompactAction>
+            <CompactAction onClick={() => onPromote(lecture)} tone="green">홍보 완료 처리</CompactAction>
+          </>
+        )}
+        {lecture.workflowStage === "promoted" && (
+          <>
+            <CompactAction onClick={() => onAction(lecture, "report")}>결과보고서</CompactAction>
+            <CompactAction onClick={() => onAction(lecture, "blog")}>블로그 보기</CompactAction>
+            {previousStage && <CompactAction onClick={() => onRollback(lecture)}>상태 되돌리기</CompactAction>}
+          </>
+        )}
+        {lecture.managerPhone && (
+          <>
+            <CompactAction onClick={() => onSms(lecture)} tone="green">문자</CompactAction>
+            <a
+              href={`tel:${lecture.managerPhone}`}
+              className="inline-flex h-7 items-center rounded-md border border-blue-200 px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+            >
+              전화
+            </a>
+          </>
+        )}
+        <CompactAction onClick={() => onDelete(lecture.id)} tone="red">삭제</CompactAction>
+      </div>
+    </article>
+  );
+}
+
+function CompactAction({
+  children,
+  tone = "default",
+  onClick,
+}: {
+  children: ReactNode;
+  tone?: "default" | "amber" | "green" | "red";
+  onClick: () => void;
+}) {
+  const toneClass = {
+    default: "border-border text-muted-foreground hover:border-primary/40 hover:text-primary",
+    amber: "border-amber-200 text-amber-700 hover:bg-amber-50",
+    green: "border-green-200 text-green-700 hover:bg-green-50",
+    red: "border-red-200 text-red-700 hover:bg-red-50",
+  }[tone];
+
+  return (
+    <button onClick={onClick} className={`inline-flex h-7 items-center rounded-md border px-2 text-[11px] font-semibold ${toneClass}`}>
+      {children}
+    </button>
+  );
+}
+
+function YearSelect({
+  selectedYear,
+  availableYears,
+  onChange,
+}: {
+  selectedYear: string;
+  availableYears: string[];
+  onChange: (year: string) => void;
+}) {
+  return (
+    <select
+      value={selectedYear}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+      disabled={availableYears.length === 0}
+    >
+      {availableYears.length === 0 ? (
+        <option value={selectedYear}>{selectedYear}년</option>
+      ) : (
+        availableYears.map((year) => (
+          <option key={year} value={year}>
+            {year}년
+          </option>
+        ))
+      )}
+    </select>
+  );
+}
+
+function MonthSelect({ selectedMonth, onChange }: { selectedMonth: number; onChange: (month: number) => void }) {
+  return (
+    <select
+      value={String(selectedMonth)}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+    >
+      {monthNames.map((monthName, index) => (
+        <option key={monthName} value={String(index + 1)}>
+          {monthName}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -483,6 +606,12 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function formatDateDots(date: string): string {
+  const [year, month, day] = date.split("-");
+  if (!year || !month || !day) return date;
+  return `${year}.${month}.${day}`;
+}
+
 function classifyAudience(lecture: Lecture): { kind: AudienceKind; estimated: boolean } {
   const text = [lecture.target, lecture.topic, lecture.organization, lecture.title].filter(Boolean).join(" ");
   if (!text.trim()) return { kind: "unknown", estimated: false };
@@ -494,6 +623,12 @@ function classifyAudience(lecture: Lecture): { kind: AudienceKind; estimated: bo
     return { kind: "youth", estimated: true };
   }
   return { kind: "unknown", estimated: false };
+}
+
+function getAfterRecordLabel(lecture: Lecture): string {
+  if (lecture.workflowStage === "before") return "강의 후 기록 추가";
+  if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
+  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
 }
 
 function formatHours(hours: number): string {
