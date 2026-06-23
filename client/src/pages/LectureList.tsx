@@ -1,130 +1,102 @@
-import { BulkEditModal } from "@/components/BulkEditModal";
+import { CalendarQuickCard } from "@/components/CalendarQuickCard";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
-import { EmptyState } from "@/components/EmptyState";
-import { AfterRecordModal } from "@/components/AfterRecordModal";
 import { ImportModal } from "@/components/ImportModal";
-import { LectureCard } from "@/components/LectureCard";
+import { LectureActionDrawer, type LectureActionMode } from "@/components/LectureActionDrawer";
 import { SmsModal } from "@/components/SmsModal";
 import { StatusNavigation } from "@/components/StatusNavigation";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useLectures } from "@/hooks/useLectures";
+import type { Lecture } from "@/types/lecture";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
+import { formatDate } from "@/utils/format";
 import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
-import { Calendar, Edit, PenLine, Sheet, Trash2, Upload } from "lucide-react";
+import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import type { Lecture, SortOption, PaymentStatus, WorkflowStage } from "@/types/lecture";
+
+type AudienceKind = "adult" | "youth" | "unknown";
+
+interface MonthStats {
+  month: number;
+  lectures: Lecture[];
+  totalHours: number;
+  totalParticipants: number;
+  adultParticipants: number;
+  youthParticipants: number;
+  unknownParticipants: number;
+  hasEstimatedAudience: boolean;
+  counts: ReturnType<typeof getStatusCounts>;
+}
+
+const monthNames = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 
 export default function LectureList() {
   const [, navigate] = useLocation();
-  const {
-    lectures,
-    deleteLecture,
-    bulkAddLectures,
-    bulkDeleteLectures,
-    bulkUpdateLectures,
-    updateLecture,
-  } = useLectures();
-  const [importOpen, setImportOpen] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>("date-desc");
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
-  const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
-  const [afterRecordTarget, setAfterRecordTarget] = useState<Lecture | null>(null);
-  const [selectedYear, setSelectedYear] = useState<string>("all");
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const { lectures, deleteLecture, bulkAddLectures, updateLecture } = useLectures();
+  const currentYear = String(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>("all");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkEditOpen, setBulkEditOpen] = useState(false);
-
-  // 필터 변경 시 선택 항목 초기화
-  useEffect(() => {
-    setSelectedIds([]);
-  }, [selectedYear, selectedMonth, statusFilter]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [actionLectureId, setActionLectureId] = useState<string | null>(null);
+  const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
     lectures.forEach((lecture) => {
-      if (lecture.date) {
-        const year = lecture.date.split("-")[0];
-        if (year && year.length === 4) years.add(year);
-      }
+      const year = lecture.date?.slice(0, 4);
+      if (year?.match(/^\d{4}$/)) years.add(year);
     });
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [lectures]);
 
-  const filteredLectures = useMemo(() => {
-    return lectures.filter((lecture) => {
-      if (!lecture.date) return false;
-      const dateParts = lecture.date.split("-");
-      const yearMatch = selectedYear === "all" || dateParts[0] === selectedYear;
-      const monthMatch = selectedMonth === "all" || Number(dateParts[1]).toString() === selectedMonth;
-      return yearMatch && monthMatch;
+  useEffect(() => {
+    if (availableYears.length === 0) return;
+    if (!availableYears.includes(selectedYear)) setSelectedYear(availableYears[0]);
+  }, [availableYears, selectedYear]);
+
+  const yearLectures = useMemo(
+    () => lectures.filter((lecture) => lecture.date?.slice(0, 4) === selectedYear),
+    [lectures, selectedYear]
+  );
+
+  const yearStatusCounts = useMemo(() => getStatusCounts(yearLectures), [yearLectures]);
+
+  const monthStats = useMemo(() => {
+    return monthNames.map((_, index) => {
+      const month = index + 1;
+      const monthLectures = yearLectures.filter((lecture) => Number(lecture.date?.slice(5, 7)) === month);
+      return buildMonthStats(month, monthLectures);
     });
-  }, [lectures, selectedYear, selectedMonth]);
+  }, [yearLectures]);
 
-  const statusCounts = useMemo(() => getStatusCounts(filteredLectures), [filteredLectures]);
+  const selectedMonthStats = monthStats[selectedMonth - 1];
 
-  const statusFilteredLectures = useMemo(() => {
-    return statusFilter === "all"
-      ? filteredLectures
-      : filteredLectures.filter((lecture) => lecture.workflowStage === statusFilter);
-  }, [filteredLectures, statusFilter]);
+  const selectedMonthLectures = useMemo(() => {
+    const base =
+      statusFilter === "all"
+        ? selectedMonthStats.lectures
+        : selectedMonthStats.lectures.filter((lecture) => lecture.workflowStage === statusFilter);
 
-  const sortedLectures = useMemo(() => {
-    return [...statusFilteredLectures].sort((a, b) => {
-      if (statusFilter === "before") return new Date(a.date).getTime() - new Date(b.date).getTime();
-      if (statusFilter === "after" || statusFilter === "promoted") return new Date(b.date).getTime() - new Date(a.date).getTime();
-      if (sortBy === "date-desc") return new Date(b.date).getTime() - new Date(a.date).getTime();
-      if (sortBy === "date-asc") return new Date(a.date).getTime() - new Date(b.date).getTime();
-      if (sortBy === "title") return a.title.localeCompare(b.title, "ko");
-      return a.organization.localeCompare(b.organization, "ko");
+    return [...base].sort((a, b) => {
+      if (statusFilter === "before") return a.date.localeCompare(b.date);
+      return b.date.localeCompare(a.date);
     });
-  }, [statusFilteredLectures, sortBy, statusFilter]);
+  }, [selectedMonthStats, statusFilter]);
 
-  const isAllSelected = sortedLectures.length > 0 && selectedIds.length === sortedLectures.length;
-
-  const handleToggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(sortedLectures.map((l) => l.id));
-    }
+  const openLectureAction = (lecture: Lecture, mode: LectureActionMode) => {
+    setActionLectureId(lecture.id);
+    setActionMode(mode);
   };
 
-  const handleSelect = (id: string, checked: boolean) => {
-    setSelectedIds((prev) =>
-      checked ? [...prev, id] : prev.filter((item) => item !== id)
-    );
-  };
-
-  const handleBulkDelete = () => {
-    if (selectedIds.length === 0) return;
-    const confirmed = window.confirm(`선택한 ${selectedIds.length}개의 강의를 모두 삭제하시겠습니까?`);
-    if (confirmed) {
-      bulkDeleteLectures(selectedIds);
-      setSelectedIds([]);
-      toast.success(`${selectedIds.length}개의 강의를 일괄 삭제했습니다.`);
-    }
-  };
-
-  const handleBulkEditConfirm = (data: { workflowStage?: WorkflowStage; paymentStatus?: PaymentStatus }) => {
-    bulkUpdateLectures(selectedIds, data);
-    setSelectedIds([]);
-    toast.success(`${selectedIds.length}개의 강의를 일괄 수정했습니다.`);
-  };
-
-  const handleDelete = (id: string) => {
-    const lecture = lectures.find((item) => item.id === id);
-    if (lecture) setDeleteTarget({ id, title: lecture.title });
+  const closeLectureAction = (open: boolean) => {
+    if (open) return;
+    setActionLectureId(null);
+    setActionMode(null);
   };
 
   const promoteLecture = async (lecture: Lecture) => {
@@ -145,43 +117,67 @@ export default function LectureList() {
     toast.success(`${statusLabels[previousStage]} 상태로 되돌렸습니다.`);
   };
 
+  const handleDelete = (id: string) => {
+    const lecture = lectures.find((item) => item.id === id);
+    if (lecture) setDeleteTarget({ id, title: lecture.title });
+  };
+
+  const exportLectures = statusFilter === "all" ? yearLectures : yearLectures.filter((lecture) => lecture.workflowStage === statusFilter);
+  const hasAnyLecture = lectures.length > 0;
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-6 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">강의 목록</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">총 {lectures.length}개의 강의가 등록되어 있습니다.</p>
+          <h1 className="text-2xl font-bold text-foreground">강의목록</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">월별 강의 기록과 통계를 확인합니다.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={selectedYear}
+            onChange={(event) => setSelectedYear(event.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+            disabled={availableYears.length === 0}
+          >
+            {availableYears.length === 0 ? (
+              <option value={selectedYear}>{selectedYear}년</option>
+            ) : (
+              availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}년
+                </option>
+              ))
+            )}
+          </select>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="hidden lg:inline-flex">
             <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
             가져오기
           </Button>
-          {lectures.length > 0 && (
+          {yearLectures.length > 0 && (
             <>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  downloadCSV(sortedLectures, "강의목록.csv");
-                  toast.success("구글 스프레드시트용 CSV 파일을 다운로드했습니다.");
+                  downloadCSV(exportLectures, `강의목록-${selectedYear}.csv`);
+                  toast.success("CSV 파일을 다운로드했습니다.");
                 }}
                 className="hidden lg:inline-flex"
               >
                 <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
-                구글 시트(CSV)
+                CSV
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  downloadICS(sortedLectures, "강의일정.ics");
-                  toast.success("구글 캘린더용 ICS 파일을 다운로드했습니다.");
+                  downloadICS(exportLectures, `강의일정-${selectedYear}.ics`);
+                  toast.success("ICS 파일을 다운로드했습니다.");
                 }}
                 className="hidden lg:inline-flex"
               >
-                <Calendar className="mr-1.5 h-4 w-4 text-blue-600" />
-                구글 캘린더(ICS)
+                <Download className="mr-1.5 h-4 w-4 text-blue-600" />
+                ICS
               </Button>
             </>
           )}
@@ -192,117 +188,71 @@ export default function LectureList() {
         </div>
       </div>
 
-      {lectures.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 bg-muted/20 p-3 rounded-lg border border-border/60">
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="all">전체 연도</option>
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}년
-                </option>
-              ))}
-            </select>
+      <StatusNavigation value={statusFilter} counts={yearStatusCounts} onChange={setStatusFilter} className="mb-5" />
 
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="all">전체 월</option>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                <option key={month} value={month.toString()}>
-                  {month}월
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-            <SelectTrigger className="h-8 w-36 text-xs font-semibold">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date-desc">날짜 최신순</SelectItem>
-              <SelectItem value="date-asc">날짜 오래된순</SelectItem>
-              <SelectItem value="title">강의명순</SelectItem>
-              <SelectItem value="organization">기관명순</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      <StatusNavigation value={statusFilter} counts={statusCounts} onChange={setStatusFilter} className="mb-4" />
-
-      {sortedLectures.length > 0 && (
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isAllSelected}
-              onChange={handleToggleSelectAll}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-            />
-            <span className="font-semibold text-foreground/80">
-              전체 선택 ({sortedLectures.length}개 중 {selectedIds.length}개 선택됨)
-            </span>
-          </div>
-          {selectedIds.length > 0 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setBulkEditOpen(true)}
-                className="flex items-center gap-1 rounded border border-primary/20 bg-background px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/5 cursor-pointer transition-colors"
-              >
-                <Edit className="h-3 w-3" />
-                선택 수정
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                className="flex items-center gap-1 rounded border border-destructive/20 bg-background px-2.5 py-1 text-[11px] font-semibold text-destructive hover:bg-destructive/5 cursor-pointer transition-colors"
-              >
-                <Trash2 className="h-3 w-3" />
-                선택 삭제
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {sortedLectures.length === 0 ? (
-        <EmptyState type="no-lectures" onAddLecture={() => navigate("/lectures/new")} />
+      {!hasAnyLecture ? (
+        <section className="rounded-xl border border-dashed border-border bg-card px-4 py-14 text-center">
+          <Calendar className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
+          <h2 className="text-base font-semibold text-foreground">등록된 강의가 없습니다.</h2>
+          <p className="mt-1 text-sm text-muted-foreground">강의를 먼저 등록해 주세요.</p>
+          <Button className="mt-4" onClick={() => navigate("/lectures/new")}>
+            강의 등록
+          </Button>
+        </section>
       ) : (
-        <div className="space-y-3">
-          {sortedLectures.map((lecture) => (
-            <LectureCard
-              key={lecture.id}
-              lecture={lecture}
-              onClick={(id) => navigate(`/lectures/${id}`)}
-              onEdit={(id) => navigate(`/lectures/${id}/edit`)}
-              onDelete={handleDelete}
-              onManage={(id) => navigate(`/lectures/${id}/manage`)}
-              onSms={(lec) => setSmsTarget(lec)}
-              onAfterRecord={(lec) => setAfterRecordTarget(lec)}
-              onReport={(id) => navigate(`/lectures/${id}/report`)}
-              onBlog={(id) => navigate(`/lectures/${id}/blog`)}
-              onPromote={promoteLecture}
-              onRollback={rollbackLecture}
-              selected={selectedIds.includes(lecture.id)}
-              onSelect={handleSelect}
-            />
-          ))}
-        </div>
+        <>
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {monthStats.map((stats) => (
+              <MonthArchiveCard
+                key={stats.month}
+                stats={stats}
+                selected={selectedMonth === stats.month}
+                onClick={() => setSelectedMonth(stats.month)}
+              />
+            ))}
+          </section>
+
+          <section className="mt-6 rounded-xl border border-border bg-card p-4">
+            <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">{selectedYear}년 {selectedMonth}월 강의 목록</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {statusFilter === "all" ? "전체 상태" : statusLabels[statusFilter]} 기준으로 {selectedMonthLectures.length}건을 표시합니다.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">{getSortDescription(statusFilter)}</p>
+            </div>
+
+            {selectedMonthLectures.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 py-10 text-center text-sm text-muted-foreground">
+                이 달에는 등록된 강의가 없습니다.
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {selectedMonthLectures.map((lecture) => (
+                  <CalendarQuickCard
+                    key={lecture.id}
+                    lecture={lecture}
+                    onAction={openLectureAction}
+                    onSms={setSmsTarget}
+                    onAfterRecord={() => undefined}
+                    onPromote={promoteLecture}
+                    onRollback={rollbackLecture}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       )}
 
       <ImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
         existingLectures={lectures}
-        onImport={(items, policy) => {
-          const count = bulkAddLectures(items, policy);
+        onImport={async (items, policy) => {
+          const count = await bulkAddLectures(items, policy);
           toast.success(`${count}개의 강의를 가져왔습니다.`);
         }}
       />
@@ -327,30 +277,172 @@ export default function LectureList() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={(type, recipient, content) => {
             recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("문자 발송 내역을 기록했습니다.");
+            toast.success("문자 발송 이력을 기록했습니다.");
           }}
         />
       )}
 
-      {afterRecordTarget && (
-        <AfterRecordModal
-          lectureId={afterRecordTarget.id}
-          open={!!afterRecordTarget}
-          onOpenChange={(open) => {
-            if (!open) setAfterRecordTarget(null);
-          }}
-        />
-      )}
-
-      {bulkEditOpen && (
-        <BulkEditModal
-          open={bulkEditOpen}
-          onClose={() => setBulkEditOpen(false)}
-          onConfirm={handleBulkEditConfirm}
-          selectedCount={selectedIds.length}
-        />
-      )}
+      <LectureActionDrawer
+        lectureId={actionLectureId}
+        mode={actionMode}
+        open={!!actionLectureId && !!actionMode}
+        onOpenChange={closeLectureAction}
+      />
     </div>
   );
 }
 
+function MonthArchiveCard({ stats, selected, onClick }: { stats: MonthStats; selected: boolean; onClick: () => void }) {
+  const audienceRatio =
+    stats.adultParticipants > 0 && stats.youthParticipants > 0
+      ? `${stats.adultParticipants}:${stats.youthParticipants}`
+      : "분류 미입력";
+
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-xl border p-4 text-left transition-all hover:border-primary/50 hover:shadow-sm ${
+        selected ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card"
+      }`}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-lg font-bold text-foreground">{monthNames[stats.month - 1]}</h3>
+        <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">{stats.lectures.length}회</span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <Metric icon={<BarChart3 className="h-3.5 w-3.5" />} label="강의횟수" value={`${stats.lectures.length}`} />
+        <Metric icon={<Clock className="h-3.5 w-3.5" />} label="강의시간" value={formatHours(stats.totalHours)} />
+        <Metric icon={<Users className="h-3.5 w-3.5" />} label="참여인원" value={`${stats.totalParticipants}명`} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-1.5 text-[11px]">
+        <StatusPill label="강의 전" value={stats.counts.before} className="bg-blue-50 text-blue-700" />
+        <StatusPill label="강의 후" value={stats.counts.after} className="bg-amber-50 text-amber-700" />
+        <StatusPill label="홍보 완료" value={stats.counts.promoted} className="bg-green-50 text-green-700" />
+      </div>
+
+      <div className="mt-3 rounded-lg bg-muted/40 p-2 text-[11px] text-muted-foreground">
+        <div className="flex justify-between gap-2">
+          <span>성인</span>
+          <span className="font-semibold text-foreground">{stats.adultParticipants > 0 ? `${stats.adultParticipants}명` : "분류 미입력"}</span>
+        </div>
+        <div className="mt-1 flex justify-between gap-2">
+          <span>청소년</span>
+          <span className="font-semibold text-foreground">{stats.youthParticipants > 0 ? `${stats.youthParticipants}명` : "분류 미입력"}</span>
+        </div>
+        <div className="mt-1 flex justify-between gap-2">
+          <span>성인:청소년</span>
+          <span className="font-semibold text-foreground">
+            {audienceRatio}
+            {stats.hasEstimatedAudience && audienceRatio !== "분류 미입력" ? " 추정" : ""}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-background p-2">
+      <div className="mx-auto mb-1 flex justify-center text-primary">{icon}</div>
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-xs font-bold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function StatusPill({ label, value, className }: { label: string; value: number; className: string }) {
+  return (
+    <div className={`rounded-md px-1.5 py-1 text-center font-semibold ${className}`}>
+      {label} {value}
+    </div>
+  );
+}
+
+function buildMonthStats(month: number, lectures: Lecture[]): MonthStats {
+  return lectures.reduce<MonthStats>(
+    (stats, lecture) => {
+      const participants = getParticipantCount(lecture);
+      const audience = classifyAudience(lecture);
+      stats.totalHours += getLectureHours(lecture);
+      stats.totalParticipants += participants;
+      stats.hasEstimatedAudience ||= audience.estimated;
+
+      if (audience.kind === "adult") stats.adultParticipants += participants;
+      if (audience.kind === "youth") stats.youthParticipants += participants;
+      if (audience.kind === "unknown") stats.unknownParticipants += participants;
+
+      return stats;
+    },
+    {
+      month,
+      lectures,
+      totalHours: 0,
+      totalParticipants: 0,
+      adultParticipants: 0,
+      youthParticipants: 0,
+      unknownParticipants: 0,
+      hasEstimatedAudience: false,
+      counts: getStatusCounts(lectures),
+    }
+  );
+}
+
+function getLectureHours(lecture: Lecture): number {
+  if (lecture.startTime && lecture.endTime) {
+    const start = parseTimeToMinutes(lecture.startTime);
+    const end = parseTimeToMinutes(lecture.endTime);
+    if (start !== null && end !== null && end > start) return (end - start) / 60;
+  }
+
+  const durationText = String(lecture.duration ?? "");
+  const hourMatch = durationText.match(/(\d+(?:\.\d+)?)\s*(시간|h|hr|hour)/i);
+  if (hourMatch) return Number(hourMatch[1]);
+
+  const minuteMatch = durationText.match(/(\d+)\s*(분|m|min)/i);
+  if (minuteMatch) return Number(minuteMatch[1]) / 60;
+
+  const numeric = Number(durationText.replace(/[^\d.]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function parseTimeToMinutes(value: string): number | null {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function getParticipantCount(lecture: Lecture): number {
+  return Number(lecture.actualParticipants ?? lecture.participants ?? 0) || 0;
+}
+
+function classifyAudience(lecture: Lecture): { kind: AudienceKind; estimated: boolean } {
+  const text = [lecture.target, lecture.topic, lecture.organization, lecture.title].filter(Boolean).join(" ");
+  if (!text.trim()) return { kind: "unknown", estimated: false };
+
+  if (/(성인|시니어|노인|어르신|복지관|직장인|공무원|부모|학부모|교직원|기업|기관)/.test(text)) {
+    return { kind: "adult", estimated: true };
+  }
+  if (/(초등|중등|고등|청소년|학생|아동|어린이|학교|중학교|고등학교|초등학교)/.test(text)) {
+    return { kind: "youth", estimated: true };
+  }
+  return { kind: "unknown", estimated: false };
+}
+
+function formatHours(hours: number): string {
+  if (hours <= 0) return "미입력";
+  if (Number.isInteger(hours)) return `${hours}시간`;
+  return `${hours.toFixed(1)}시간`;
+}
+
+function getSortDescription(statusFilter: LectureStatusFilter): string {
+  if (statusFilter === "before") return "강의 전: 오래된 날짜 순";
+  if (statusFilter === "after") return "강의 후: 최신 날짜 순";
+  if (statusFilter === "promoted") return "홍보 완료: 최신 날짜 순";
+  return "전체: 최신 날짜 순";
+}
