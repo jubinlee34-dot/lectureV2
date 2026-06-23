@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture } from "@/types/lecture";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
-import { formatDate } from "@/utils/format";
 import { getPreviousWorkflowStage, getStatusCounts, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
 import { recordSmsHistory } from "@/utils/storage";
 import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -44,6 +44,7 @@ export default function LectureList() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
+  const todayStr = useMemo(() => formatLocalDate(new Date()), []);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -83,10 +84,15 @@ export default function LectureList() {
         : selectedMonthStats.lectures.filter((lecture) => lecture.workflowStage === statusFilter);
 
     return [...base].sort((a, b) => {
-      if (statusFilter === "before") return a.date.localeCompare(b.date);
+      if (statusFilter === "before") return compareBeforeLectures(a, b, todayStr);
       return b.date.localeCompare(a.date);
     });
-  }, [selectedMonthStats, statusFilter]);
+  }, [selectedMonthStats, statusFilter, todayStr]);
+
+  const exportLectures = statusFilter === "all" ? yearLectures : yearLectures.filter((lecture) => lecture.workflowStage === statusFilter);
+  const hasAnyLecture = lectures.length > 0;
+  const showMonthlyDashboard = statusFilter === "all";
+  const selectedStatusLabel = statusFilter === "all" ? "전체 상태" : statusLabels[statusFilter];
 
   const openLectureAction = (lecture: Lecture, mode: LectureActionMode) => {
     setActionLectureId(lecture.id);
@@ -121,9 +127,6 @@ export default function LectureList() {
     const lecture = lectures.find((item) => item.id === id);
     if (lecture) setDeleteTarget({ id, title: lecture.title });
   };
-
-  const exportLectures = statusFilter === "all" ? yearLectures : yearLectures.filter((lecture) => lecture.workflowStage === statusFilter);
-  const hasAnyLecture = lectures.length > 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6">
@@ -190,6 +193,39 @@ export default function LectureList() {
 
       <StatusNavigation value={statusFilter} counts={yearStatusCounts} onChange={setStatusFilter} className="mb-5" />
 
+      {!showMonthlyDashboard && (
+        <section className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+          <span className="text-xs font-semibold text-muted-foreground">필터</span>
+          <select
+            value={selectedYear}
+            onChange={(event) => setSelectedYear(event.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+            disabled={availableYears.length === 0}
+          >
+            {availableYears.length === 0 ? (
+              <option value={selectedYear}>{selectedYear}년</option>
+            ) : (
+              availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}년
+                </option>
+              ))
+            )}
+          </select>
+          <select
+            value={String(selectedMonth)}
+            onChange={(event) => setSelectedMonth(Number(event.target.value))}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+          >
+            {monthNames.map((monthName, index) => (
+              <option key={monthName} value={String(index + 1)}>
+                {monthName}
+              </option>
+            ))}
+          </select>
+        </section>
+      )}
+
       {!hasAnyLecture ? (
         <section className="rounded-xl border border-dashed border-border bg-card px-4 py-14 text-center">
           <Calendar className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
@@ -201,23 +237,27 @@ export default function LectureList() {
         </section>
       ) : (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {monthStats.map((stats) => (
-              <MonthArchiveCard
-                key={stats.month}
-                stats={stats}
-                selected={selectedMonth === stats.month}
-                onClick={() => setSelectedMonth(stats.month)}
-              />
-            ))}
-          </section>
+          {showMonthlyDashboard && (
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {monthStats.map((stats) => (
+                <MonthArchiveCard
+                  key={stats.month}
+                  stats={stats}
+                  selected={selectedMonth === stats.month}
+                  onClick={() => setSelectedMonth(stats.month)}
+                />
+              ))}
+            </section>
+          )}
 
-          <section className="mt-6 rounded-xl border border-border bg-card p-4">
+          <section className={showMonthlyDashboard ? "mt-6 rounded-xl border border-border bg-card p-4" : "rounded-xl border border-border bg-card p-4"}>
             <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
               <div>
-                <h2 className="text-lg font-bold text-foreground">{selectedYear}년 {selectedMonth}월 강의 목록</h2>
+                <h2 className="text-lg font-bold text-foreground">
+                  {selectedYear}년 {selectedMonth}월 강의 목록
+                </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  {statusFilter === "all" ? "전체 상태" : statusLabels[statusFilter]} 기준으로 {selectedMonthLectures.length}건을 표시합니다.
+                  {selectedStatusLabel} 기준으로 {selectedMonthLectures.length}건을 표시합니다.
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">{getSortDescription(statusFilter)}</p>
@@ -230,16 +270,22 @@ export default function LectureList() {
             ) : (
               <div className="grid gap-3 lg:grid-cols-2">
                 {selectedMonthLectures.map((lecture) => (
-                  <CalendarQuickCard
-                    key={lecture.id}
-                    lecture={lecture}
-                    onAction={openLectureAction}
-                    onSms={setSmsTarget}
-                    onAfterRecord={() => undefined}
-                    onPromote={promoteLecture}
-                    onRollback={rollbackLecture}
-                    onDelete={handleDelete}
-                  />
+                  <div key={lecture.id} className="space-y-2">
+                    {isPastBeforeLecture(lecture, todayStr) && (
+                      <span className="inline-flex rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">
+                        날짜 지남
+                      </span>
+                    )}
+                    <CalendarQuickCard
+                      lecture={lecture}
+                      onAction={openLectureAction}
+                      onSms={setSmsTarget}
+                      onAfterRecord={() => undefined}
+                      onPromote={promoteLecture}
+                      onRollback={rollbackLecture}
+                      onDelete={handleDelete}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -323,27 +369,18 @@ function MonthArchiveCard({ stats, selected, onClick }: { stats: MonthStats; sel
       </div>
 
       <div className="mt-3 rounded-lg bg-muted/40 p-2 text-[11px] text-muted-foreground">
-        <div className="flex justify-between gap-2">
-          <span>성인</span>
-          <span className="font-semibold text-foreground">{stats.adultParticipants > 0 ? `${stats.adultParticipants}명` : "분류 미입력"}</span>
-        </div>
-        <div className="mt-1 flex justify-between gap-2">
-          <span>청소년</span>
-          <span className="font-semibold text-foreground">{stats.youthParticipants > 0 ? `${stats.youthParticipants}명` : "분류 미입력"}</span>
-        </div>
-        <div className="mt-1 flex justify-between gap-2">
-          <span>성인:청소년</span>
-          <span className="font-semibold text-foreground">
-            {audienceRatio}
-            {stats.hasEstimatedAudience && audienceRatio !== "분류 미입력" ? " 추정" : ""}
-          </span>
-        </div>
+        <AudienceLine label="성인" value={stats.adultParticipants > 0 ? `${stats.adultParticipants}명` : "분류 미입력"} />
+        <AudienceLine label="청소년" value={stats.youthParticipants > 0 ? `${stats.youthParticipants}명` : "분류 미입력"} />
+        <AudienceLine
+          label="성인:청소년"
+          value={`${audienceRatio}${stats.hasEstimatedAudience && audienceRatio !== "분류 미입력" ? " 추정" : ""}`}
+        />
       </div>
     </button>
   );
 }
 
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border/60 bg-background p-2">
       <div className="mx-auto mb-1 flex justify-center text-primary">{icon}</div>
@@ -354,9 +391,14 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
 }
 
 function StatusPill({ label, value, className }: { label: string; value: number; className: string }) {
+  return <div className={`rounded-md px-1.5 py-1 text-center font-semibold ${className}`}>{label} {value}</div>;
+}
+
+function AudienceLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className={`rounded-md px-1.5 py-1 text-center font-semibold ${className}`}>
-      {label} {value}
+    <div className="mt-1 flex justify-between gap-2 first:mt-0">
+      <span>{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
 }
@@ -421,6 +463,26 @@ function getParticipantCount(lecture: Lecture): number {
   return Number(lecture.actualParticipants ?? lecture.participants ?? 0) || 0;
 }
 
+function compareBeforeLectures(a: Lecture, b: Lecture, todayStr: string): number {
+  const aPast = isPastBeforeLecture(a, todayStr);
+  const bPast = isPastBeforeLecture(b, todayStr);
+
+  if (aPast !== bPast) return aPast ? -1 : 1;
+  if (aPast && bPast) return b.date.localeCompare(a.date);
+  return a.date.localeCompare(b.date);
+}
+
+function isPastBeforeLecture(lecture: Lecture, todayStr: string): boolean {
+  return lecture.workflowStage === "before" && Boolean(lecture.date) && lecture.date < todayStr;
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function classifyAudience(lecture: Lecture): { kind: AudienceKind; estimated: boolean } {
   const text = [lecture.target, lecture.topic, lecture.organization, lecture.title].filter(Boolean).join(" ");
   if (!text.trim()) return { kind: "unknown", estimated: false };
@@ -441,7 +503,7 @@ function formatHours(hours: number): string {
 }
 
 function getSortDescription(statusFilter: LectureStatusFilter): string {
-  if (statusFilter === "before") return "강의 전: 오래된 날짜 순";
+  if (statusFilter === "before") return "강의 전: 날짜 지남 먼저, 이후 가까운 예정일 순";
   if (statusFilter === "after") return "강의 후: 최신 날짜 순";
   if (statusFilter === "promoted") return "홍보 완료: 최신 날짜 순";
   return "전체: 최신 날짜 순";
