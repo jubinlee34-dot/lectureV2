@@ -6,6 +6,7 @@ import { Loader2, Search, X } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { parseLectureTextToForm, type ParsedLectureFields } from "@/lib/lecture-parser";
 import { searchKakaoPlaces, type KakaoPlaceCandidate } from "../services/kakaoPlaceService";
 import type { Lecture, LectureFormData } from "../types/lecture";
 
@@ -58,6 +59,35 @@ const emptyForm: LectureFormData = {
   memorableQuestion: "",
   updatedAt: null,
 };
+
+const parserFieldLabels: Partial<Record<keyof LectureFormData, string>> = {
+  title: "강의명",
+  organization: "기관명",
+  topic: "교육 주제",
+  target: "대상",
+  date: "강의일",
+  startTime: "시작 시간",
+  endTime: "종료 시간",
+  participants: "예상 인원",
+  location: "장소/주소",
+  locationName: "장소명",
+  managerName: "담당자명",
+  managerPhone: "담당자 연락처",
+  fee: "금액",
+};
+
+const parserPreviewFields: Array<keyof LectureFormData> = [
+  "date",
+  "startTime",
+  "endTime",
+  "organization",
+  "location",
+  "participants",
+  "managerName",
+  "managerPhone",
+  "topic",
+  "fee",
+];
 
 export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSubmitting = false }: LectureFormProps) {
   const [formData, setFormData] = useState<LectureFormData>(() => {
@@ -119,6 +149,8 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
   const [isRecurring, setIsRecurring] = useState(false);
   const [additionalDates, setAdditionalDates] = useState<string[]>([]);
   const [newDateInput, setNewDateInput] = useState("");
+  const [aiInput, setAiInput] = useState("");
+  const [parserPreview, setParserPreview] = useState<ParsedLectureFields | null>(null);
 
   const setField = (field: keyof LectureFormData, value: string | number | boolean | null) => {
     setFormData((prev) => {
@@ -134,6 +166,41 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
     });
     setErrors((prev) => ({ ...prev, [field]: undefined }));
     if (field === "location") setPlaceResults([]);
+  };
+
+  const applyParsedLectureText = () => {
+    const parsed = parseLectureTextToForm(aiInput);
+    const entries = Object.entries(parsed) as Array<[keyof LectureFormData, LectureFormData[keyof LectureFormData]]>;
+
+    if (entries.length === 0) {
+      setParserPreview({});
+      toast.info("자동 추출할 수 있는 항목을 찾지 못했습니다.");
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      ...parsed,
+      roadAddress: parsed.location ? "" : prev.roadAddress,
+      jibunAddress: parsed.location ? "" : prev.jibunAddress,
+      locationX: parsed.location ? "" : prev.locationX,
+      locationY: parsed.location ? "" : prev.locationY,
+    }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      entries.forEach(([field]) => {
+        next[field] = undefined;
+      });
+      return next;
+    });
+    if (parsed.location) setPlaceResults([]);
+    setParserPreview(parsed);
+    toast.success("자동 추출 결과를 폼에 반영했습니다. 저장 전 내용을 확인해 주세요.");
+  };
+
+  const resetAiParser = () => {
+    setAiInput("");
+    setParserPreview(null);
   };
 
   const handleSearchPlace = async () => {
@@ -233,6 +300,15 @@ export function LectureForm({ initialData, defaultDate, onSubmit, onCancel, isSu
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
+      {!initialData && (
+        <AiLectureParserPanel
+          value={aiInput}
+          preview={parserPreview}
+          onChange={setAiInput}
+          onApply={applyParsedLectureText}
+          onReset={resetAiParser}
+        />
+      )}
       <Section title="기본정보">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="강의명" required error={errors.title}>
@@ -439,4 +515,93 @@ function Field({
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
+}
+
+function AiLectureParserPanel({
+  value,
+  preview,
+  onChange,
+  onApply,
+  onReset,
+}: {
+  value: string;
+  preview: ParsedLectureFields | null;
+  onChange: (value: string) => void;
+  onApply: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+      <div className="mb-3">
+        <h2 className="text-sm font-bold text-foreground">AI로 강의정보 채우기</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          강의 안내문, 문자, 메모를 붙여넣으면 등록 항목에 맞게 자동으로 정리합니다.
+        </p>
+      </div>
+      <Textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={5}
+        placeholder="예: 6월 23일 전사협에서 미입력 교육 진행. 담당자는 미등록. 장소는 상비원. 오전 10시부터 12시까지. 참여자는 20명 예상."
+        className="bg-background"
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" onClick={onApply} disabled={!value.trim()}>
+          항목 자동 채우기
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onReset}>
+          초기화
+        </Button>
+        <span className="text-xs text-muted-foreground">자동 추출 결과입니다. 저장 전 내용을 확인해 주세요.</span>
+      </div>
+      {preview && <ParserPreview parsed={preview} />}
+    </section>
+  );
+}
+
+function ParserPreview({ parsed }: { parsed: ParsedLectureFields }) {
+  const extracted = parserPreviewFields
+    .filter((field) => parsed[field] !== undefined && parsed[field] !== "" && parsed[field] !== null)
+    .map((field) => ({ field, label: parserFieldLabels[field] ?? String(field), value: formatParserValue(field, parsed[field]) }));
+
+  const missing = parserPreviewFields
+    .filter((field) => parsed[field] === undefined || parsed[field] === "" || parsed[field] === null)
+    .map((field) => parserFieldLabels[field] ?? String(field));
+
+  return (
+    <div className="mt-3 grid gap-3 rounded-lg border border-border bg-background p-3 text-xs sm:grid-cols-2">
+      <div>
+        <p className="mb-2 font-semibold text-foreground">추출된 항목</p>
+        {extracted.length === 0 ? (
+          <p className="text-muted-foreground">추출된 항목이 없습니다.</p>
+        ) : (
+          <dl className="space-y-1">
+            {extracted.map((item) => (
+              <div key={item.field} className="flex justify-between gap-2">
+                <dt className="shrink-0 text-muted-foreground">{item.label}</dt>
+                <dd className="min-w-0 truncate font-semibold text-foreground">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+      <div>
+        <p className="mb-2 font-semibold text-foreground">추출하지 못한 항목</p>
+        <div className="flex flex-wrap gap-1.5">
+          {missing.map((label) => (
+            <span key={label} className="rounded-md border border-border bg-muted px-2 py-1 text-muted-foreground">
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatParserValue(field: keyof LectureFormData, value: LectureFormData[keyof LectureFormData] | undefined): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (field === "participants") return `${value}명`;
+  if (field === "fee") return `${Number(value).toLocaleString("ko-KR")}원`;
+  return String(value);
 }
