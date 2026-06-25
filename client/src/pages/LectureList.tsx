@@ -17,7 +17,7 @@ import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } f
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 type AudienceKind = "adult" | "youth" | "unknown";
 
@@ -37,6 +37,7 @@ const monthNames = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 
 export default function LectureList() {
   const [, navigate] = useLocation();
+  const search = useSearch();
   const { lectures, deleteLecture, bulkAddLectures, updateLecture } = useLectures();
   const currentYear = String(new Date().getFullYear());
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -48,6 +49,11 @@ export default function LectureList() {
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
   const todayStr = useMemo(() => formatLocalDate(new Date()), []);
+  const querySelectedLectureId = useMemo(() => new URLSearchParams(search).get("selectedLectureId"), [search]);
+  const queryActionMode = useMemo(() => {
+    const mode = new URLSearchParams(search).get("action");
+    return mode === "edit" ? "edit" : "detail";
+  }, [search]);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -55,11 +61,11 @@ export default function LectureList() {
       const year = lecture.date?.slice(0, 4);
       if (year?.match(/^\d{4}$/)) years.add(year);
     });
+    if (years.size === 0) years.add(currentYear);
     return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [lectures]);
+  }, [lectures, currentYear]);
 
   useEffect(() => {
-    if (availableYears.length === 0) return;
     if (!availableYears.includes(selectedYear)) setSelectedYear(availableYears[0]);
   }, [availableYears, selectedYear]);
 
@@ -67,18 +73,31 @@ export default function LectureList() {
     () => lectures.filter((lecture) => lecture.date?.slice(0, 4) === selectedYear),
     [lectures, selectedYear]
   );
-
   const yearStatusCounts = useMemo(() => getStatusCounts(yearLectures), [yearLectures]);
-
-  const monthStats = useMemo(() => {
-    return monthNames.map((_, index) => {
-      const month = index + 1;
-      const monthLectures = yearLectures.filter((lecture) => Number(lecture.date?.slice(5, 7)) === month);
-      return buildMonthStats(month, monthLectures);
-    });
-  }, [yearLectures]);
+  const monthStats = useMemo(
+    () =>
+      monthNames.map((_, index) => {
+        const month = index + 1;
+        const monthLectures = yearLectures.filter((lecture) => Number(lecture.date?.slice(5, 7)) === month);
+        return buildMonthStats(month, monthLectures);
+      }),
+    [yearLectures]
+  );
 
   const selectedMonthStats = monthStats[selectedMonth - 1];
+
+  useEffect(() => {
+    if (!querySelectedLectureId) return;
+    const lecture = lectures.find((item) => item.id === querySelectedLectureId);
+    if (!lecture) return;
+
+    const year = lecture.date?.slice(0, 4);
+    const month = Number(lecture.date?.slice(5, 7));
+    if (year?.match(/^\d{4}$/)) setSelectedYear(year);
+    if (month >= 1 && month <= 12) setSelectedMonth(month);
+    setActionLectureId(lecture.id);
+    setActionMode(queryActionMode);
+  }, [lectures, queryActionMode, querySelectedLectureId]);
 
   const selectedMonthLectures = useMemo(() => {
     const base =
@@ -93,7 +112,6 @@ export default function LectureList() {
   }, [selectedMonthStats, statusFilter, todayStr]);
 
   const exportLectures = statusFilter === "all" ? yearLectures : yearLectures.filter((lecture) => lecture.workflowStage === statusFilter);
-  const hasAnyLecture = lectures.length > 0;
   const showMonthlyDashboard = statusFilter === "all";
   const selectedStatusLabel = statusFilter === "all" ? "전체 상태" : statusLabels[statusFilter];
 
@@ -106,6 +124,7 @@ export default function LectureList() {
     if (open) return;
     setActionLectureId(null);
     setActionMode(null);
+    if (querySelectedLectureId) navigate("/lectures", { replace: true });
   };
 
   const promoteLecture = async (lecture: Lecture) => {
@@ -189,7 +208,7 @@ export default function LectureList() {
         </section>
       )}
 
-      {!hasAnyLecture ? (
+      {lectures.length === 0 ? (
         <section className="rounded-xl border border-dashed border-border bg-card px-4 py-14 text-center">
           <Calendar className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
           <h2 className="text-base font-semibold text-foreground">등록된 강의가 없습니다.</h2>
@@ -318,11 +337,19 @@ function CompactLectureCard({
   const subtitle = [formatDateDots(lecture.date), lecture.organization || lecture.target].filter(Boolean).join(" / ");
   const managerText =
     lecture.managerName || lecture.managerPhone
-      ? `담당자 ${lecture.managerName || "미등록"}${lecture.managerPhone ? ` (${lecture.managerPhone})` : ""}`
-      : "담당자 미등록";
+      ? `담당자 ${lecture.managerName || "미정"}${lecture.managerPhone ? ` (${lecture.managerPhone})` : ""}`
+      : "담당자 미정";
 
   return (
-    <article className="rounded-lg border border-border bg-card p-3 text-sm shadow-sm">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={() => onAction(lecture, "detail")}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onAction(lecture, "detail");
+      }}
+      className="rounded-lg border border-border bg-card p-3 text-sm shadow-sm transition-colors hover:border-primary/40"
+    >
       <div className="mb-1.5 flex items-start justify-between gap-2">
         <h3 className="min-w-0 truncate font-semibold leading-5 text-foreground">{lecture.title}</h3>
         <div className="flex shrink-0 items-center gap-1">
@@ -344,21 +371,15 @@ function CompactLectureCard({
         <span className="text-muted-foreground/60">·</span>
         <TravelRouteSummary lecture={lecture} compact />
         <span className="text-muted-foreground/60">·</span>
-        <NaverRouteButton
-          startAddress={profile?.homeAddress}
-          endAddress={lecture.location}
-          label="네이버 길찾기"
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 hover:underline dark:text-green-400"
-        />
+        <NaverRouteButton startAddress={profile?.homeAddress} endAddress={lecture.location} />
       </div>
 
       <p className="mb-2 truncate text-xs text-muted-foreground">{managerText}</p>
 
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2" onClick={(event) => event.stopPropagation()}>
         <CompactAction onClick={() => onAction(lecture, "detail")}>상세보기</CompactAction>
-        {lecture.workflowStage !== "promoted" && (
-          <CompactAction onClick={() => onAction(lecture, "tasks")}>업무관리</CompactAction>
-        )}
+        <CompactAction onClick={() => onAction(lecture, "edit")}>정보 수정</CompactAction>
+        {lecture.workflowStage !== "promoted" && <CompactAction onClick={() => onAction(lecture, "tasks")}>업무관리</CompactAction>}
         <CompactAction onClick={() => onAction(lecture, "after-record")} tone="amber">
           {afterRecordLabel}
         </CompactAction>
@@ -410,7 +431,7 @@ function CompactAction({
   }[tone];
 
   return (
-    <button onClick={onClick} className={`inline-flex h-7 items-center rounded-md border px-2 text-[11px] font-semibold ${toneClass}`}>
+    <button type="button" onClick={onClick} className={`inline-flex h-7 items-center rounded-md border px-2 text-[11px] font-semibold ${toneClass}`}>
       {children}
     </button>
   );
@@ -430,17 +451,12 @@ function YearSelect({
       value={selectedYear}
       onChange={(event) => onChange(event.target.value)}
       className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
-      disabled={availableYears.length === 0}
     >
-      {availableYears.length === 0 ? (
-        <option value={selectedYear}>{selectedYear}년</option>
-      ) : (
-        availableYears.map((year) => (
-          <option key={year} value={year}>
-            {year}년
-          </option>
-        ))
-      )}
+      {availableYears.map((year) => (
+        <option key={year} value={year}>
+          {year}년
+        </option>
+      ))}
     </select>
   );
 }
@@ -469,6 +485,7 @@ function MonthArchiveCard({ stats, selected, onClick }: { stats: MonthStats; sel
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`rounded-xl border p-4 text-left transition-all hover:border-primary/50 hover:shadow-sm ${
         selected ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card"
@@ -476,7 +493,7 @@ function MonthArchiveCard({ stats, selected, onClick }: { stats: MonthStats; sel
     >
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-lg font-bold text-foreground">{monthNames[stats.month - 1]}</h3>
-        <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">{stats.lectures.length}회</span>
+        <span className="rounded-md bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">{stats.lectures.length}건</span>
       </div>
 
       <div className="grid grid-cols-3 gap-2 text-center">

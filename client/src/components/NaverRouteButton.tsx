@@ -14,7 +14,7 @@ export function NaverRouteButton({
   startAddress,
   endAddress,
   className = "inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 hover:underline dark:text-green-400",
-  label = "길찾기",
+  label = "네이버 길찾기",
   icon = <Car className="h-3 w-3" />,
 }: NaverRouteButtonProps) {
   if (!startAddress || !endAddress) return null;
