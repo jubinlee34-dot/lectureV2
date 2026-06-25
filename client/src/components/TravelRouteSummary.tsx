@@ -42,7 +42,7 @@ export function TravelRouteSummary({ lecture, compact = false }: TravelRouteSumm
     return (
       <span className="inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
         <span>
-          🚗 {durationText} · {distanceText}
+          {distanceText} · {durationText}
         </span>
         {needsRecalculation && (
           <>
@@ -76,7 +76,7 @@ export function TravelRouteSummary({ lecture, compact = false }: TravelRouteSumm
       disabled={calculating || !canCalculate}
     >
       {calculating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCcw className="mr-1 h-3 w-3" />}
-      거리 계산
+      거리계산
     </Button>
   );
 }

@@ -1,4 +1,5 @@
 import { AfterRecordModal } from "@/components/AfterRecordModal";
+import { LectureForm } from "@/components/LectureForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +12,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
-import type { Lecture, WorkTaskCategory, WorkTaskStage } from "@/types/lecture";
+import type { Lecture, LectureFormData, WorkTaskCategory, WorkTaskStage } from "@/types/lecture";
 import { formatDate } from "@/utils/format";
 import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { generateBlogDraft, generateReport } from "@/utils/templates";
@@ -22,9 +23,11 @@ import {
   Circle,
   ClipboardCheck,
   Copy,
+  FilePenLine,
   FileText,
   MapPin,
   MessageSquare,
+  Pencil,
   Plus,
   RefreshCw,
   Trash2,
@@ -34,7 +37,8 @@ import { useEffect, useState } from "react";
 import type React from "react";
 import { toast } from "sonner";
 
-export type LectureActionMode = "detail" | "tasks" | "after-record" | "report" | "blog";
+export type LectureActionMode = "detail" | "edit" | "tasks" | "after-record" | "report" | "blog";
+type DrawerMode = Exclude<LectureActionMode, "after-record">;
 
 interface LectureActionDrawerProps {
   lectureId: string | null;
@@ -43,35 +47,59 @@ interface LectureActionDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const modeTitle: Record<Exclude<LectureActionMode, "after-record">, string> = {
+const modeTitle: Record<DrawerMode, string> = {
   detail: "강의 상세",
+  edit: "강의 정보 수정",
   tasks: "업무관리",
   report: "결과보고서",
   blog: "홍보 블로그",
 };
 
-const modeDescription: Record<Exclude<LectureActionMode, "after-record">, string> = {
-  detail: "캘린더 맥락을 유지한 채 강의 정보를 확인합니다.",
+const modeDescription: Record<DrawerMode, string> = {
+  detail: "강의 등록 정보와 후속 기록을 확인합니다.",
+  edit: "강의 등록 폼과 같은 구조로 정보를 수정합니다.",
   tasks: "강의 전후 업무를 확인하고 바로 수정합니다.",
   report: "강의 기록을 바탕으로 결과보고서 초안을 작성합니다.",
   blog: "홍보 블로그 초안을 작성하고 복사합니다.",
 };
 
 export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: LectureActionDrawerProps) {
-  const { getLectureById } = useLectures();
+  const { getLectureById, updateLecture } = useLectures();
   const lecture = lectureId ? getLectureById(lectureId) : undefined;
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>("detail");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  useEffect(() => {
+    if (mode && mode !== "after-record") setDrawerMode(mode);
+    if (!mode) setDrawerMode("detail");
+  }, [lectureId, mode, open]);
 
   if (mode === "after-record" && lectureId) {
     return <AfterRecordModal lectureId={lectureId} open={open} onOpenChange={onOpenChange} />;
   }
 
-  const drawerMode = mode && mode !== "after-record" ? mode : "detail";
+  const handleEditSubmit = async (data: LectureFormData) => {
+    if (!lecture) return;
+    setSavingEdit(true);
+    try {
+      await updateLecture(lecture.id, data);
+      toast.success("강의 정보를 수정했습니다.");
+      setDrawerMode("detail");
+    } catch (error) {
+      console.error("Failed to update lecture from drawer", error);
+      toast.error("강의 정보 수정에 실패했습니다.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="inset-0 h-dvh w-screen max-w-none overflow-y-auto p-0 sm:inset-y-0 sm:left-auto sm:w-[min(720px,92vw)] sm:max-w-none">
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2 text-base">
+            {drawerMode === "detail" && <FileText className="h-4 w-4 text-primary" />}
+            {drawerMode === "edit" && <FilePenLine className="h-4 w-4 text-primary" />}
             {drawerMode === "tasks" && <ClipboardCheck className="h-4 w-4 text-primary" />}
             {drawerMode === "report" && <FileText className="h-4 w-4 text-primary" />}
             {drawerMode === "blog" && <MessageSquare className="h-4 w-4 text-primary" />}
@@ -86,7 +114,17 @@ export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: Lec
           ) : (
             <>
               <DrawerLectureHeader lecture={lecture} />
-              {drawerMode === "detail" && <DetailPanel lecture={lecture} />}
+              {drawerMode === "detail" && <DetailPanel lecture={lecture} onEdit={() => setDrawerMode("edit")} />}
+              {drawerMode === "edit" && (
+                <LectureForm
+                  initialData={lecture}
+                  onSubmit={handleEditSubmit}
+                  onCancel={() => setDrawerMode("detail")}
+                  isSubmitting={savingEdit}
+                  showAiParser={false}
+                  submitLabel="정보 저장"
+                />
+              )}
               {drawerMode === "tasks" && <TasksPanel lecture={lecture} />}
               {drawerMode === "report" && <TextDraftPanel lecture={lecture} type="report" />}
               {drawerMode === "blog" && <TextDraftPanel lecture={lecture} type="blog" />}
@@ -104,7 +142,7 @@ function DrawerLectureHeader({ lecture }: { lecture: Lecture }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{lecture.title}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{lecture.organization}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{lecture.organization || "기관 미입력"}</p>
         </div>
         <Badge variant="outline" className={`shrink-0 text-[10px] font-semibold ${statusBadgeClass[lecture.workflowStage]}`}>
           {statusLabels[lecture.workflowStage]}
@@ -114,22 +152,46 @@ function DrawerLectureHeader({ lecture }: { lecture: Lecture }) {
   );
 }
 
-function DetailPanel({ lecture }: { lecture: Lecture }) {
+function DetailPanel({ lecture, onEdit }: { lecture: Lecture; onEdit: () => void }) {
   return (
-    <div className="grid gap-3 text-sm sm:grid-cols-2">
-      <InfoItem icon={<Building2 className="h-4 w-4" />} label="기관" value={lecture.organization} />
-      <InfoItem label="주제" value={lecture.topic || "-"} />
-      <InfoItem label="일자" value={formatDate(lecture.date)} />
-      <InfoItem label="시간" value={lecture.duration || "-"} />
-      <InfoItem icon={<Users className="h-4 w-4" />} label="인원" value={`${lecture.participants || 0}명`} />
-      <InfoItem icon={<MapPin className="h-4 w-4" />} label="장소" value={lecture.location || "-"} />
-      <InfoItem label="담당자" value={lecture.managerName || "미등록"} />
-      <InfoItem label="연락처" value={lecture.managerPhone || "-"} />
-      <div className="sm:col-span-2">
-        <InfoItem label="교육 내용" value={lecture.content || "-"} />
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={onEdit}>
+          <Pencil className="mr-1.5 h-4 w-4" />
+          정보 수정
+        </Button>
       </div>
-      <div className="sm:col-span-2">
-        <InfoItem label="강의 후 메모" value={lecture.afterMemo || lecture.reflection || "-"} />
+
+      <div className="grid gap-3 text-sm sm:grid-cols-2">
+        <InfoItem label="강의명" value={lecture.title || "-"} />
+        <InfoItem label="교육주제" value={lecture.topic || "-"} />
+        <InfoItem icon={<Building2 className="h-4 w-4" />} label="기관명" value={lecture.organization || "-"} />
+        <InfoItem label="대상" value={lecture.target || "-"} />
+        <InfoItem label="강의일자" value={formatDate(lecture.date)} />
+        <InfoItem label="강의시간" value={lecture.duration || [lecture.startTime, lecture.endTime].filter(Boolean).join(" ~ ") || "-"} />
+        <InfoItem icon={<Users className="h-4 w-4" />} label="수강생 인원수" value={`${lecture.participants || 0}명`} />
+        <InfoItem label="장소명" value={lecture.locationName || "-"} />
+        <InfoItem icon={<MapPin className="h-4 w-4" />} label="상세주소" value={lecture.location || lecture.roadAddress || "-"} />
+        <InfoItem label="담당자" value={lecture.managerName || "미정"} />
+        <InfoItem label="담당자 연락처" value={lecture.managerPhone || "-"} />
+        <div className="sm:col-span-2">
+          <InfoItem label="교육 내용" value={lecture.content || "-"} />
+        </div>
+        <div className="sm:col-span-2">
+          <InfoItem
+            label="준비물/요청사항/내부 메모"
+            value={[
+              lecture.preparationItems && `준비물: ${lecture.preparationItems}`,
+              lecture.requestMemo && `요청사항: ${lecture.requestMemo}`,
+              lecture.instructorMemo && `내부 메모: ${lecture.instructorMemo}`,
+            ]
+              .filter(Boolean)
+              .join("\n") || "-"}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <InfoItem label="강의 후 메모" value={lecture.afterMemo || lecture.reflection || "-"} />
+        </div>
       </div>
     </div>
   );

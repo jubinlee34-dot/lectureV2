@@ -26,6 +26,9 @@ export const localLectureTextParser: LectureTextParser = {
     const managerName = parseManagerName(text);
     const topic = parseTopic(text);
     const target = parseTarget(text);
+    const preparationItems = parseMemoField(text, ["준비물", "준비"]);
+    const requestMemo = parseMemoField(text, ["요청사항", "요청"]);
+    const instructorMemo = parseMemoField(text, ["내부 메모", "메모"]);
 
     if (date) parsed.date = date;
     if (timeRange) {
@@ -47,6 +50,9 @@ export const localLectureTextParser: LectureTextParser = {
       parsed.title = organization ? `[${organization}] ${topic}` : topic;
     }
     if (target) parsed.target = target;
+    if (preparationItems) parsed.preparationItems = preparationItems;
+    if (requestMemo) parsed.requestMemo = requestMemo;
+    if (instructorMemo) parsed.instructorMemo = instructorMemo;
 
     return parsed;
   },
@@ -57,8 +63,7 @@ function normalizeText(input: string): string {
 }
 
 function parseDate(text: string): string | null {
-  const now = new Date();
-  const currentYear = now.getFullYear();
+  const currentYear = new Date().getFullYear();
   const fullDate = text.match(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
   if (fullDate) return toDateString(Number(fullDate[1]), Number(fullDate[2]), Number(fullDate[3]));
 
@@ -77,29 +82,26 @@ function toDateString(year: number, month: number, day: number): string | null {
 }
 
 function parseTimeRange(text: string): { startTime: string; endTime: string } | null {
-  const patterns = [
-    /(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시?\s*(?:부터|~|-|–|—|에서)\s*(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시?(?:까지)?/,
-    /(\d{1,2}):(\d{2})\s*(?:~|-|–|—)\s*(\d{1,2}):(\d{2})/,
-  ];
-
-  const korean = text.match(patterns[0]);
-  if (korean) {
-    const startMeridiem = korean[1] || "";
-    const endHour = Number(korean[5]);
-    const endMeridiem = korean[4] || (startMeridiem === "오전" && endHour === 12 ? "" : startMeridiem);
-    const startTime = normalizeTime(Number(korean[2]), Number(korean[3] || 0), startMeridiem);
-    const endTime = normalizeTime(endHour, Number(korean[6] || 0), endMeridiem);
-    if (startTime && endTime) return { startTime, endTime };
-  }
-
-  const numeric = text.match(patterns[1]);
+  const numeric = text.match(/(\d{1,2}):(\d{2})\s*(?:~|-|부터|에서)\s*(\d{1,2}):(\d{2})/);
   if (numeric) {
     const startTime = normalizeTime(Number(numeric[1]), Number(numeric[2]), "");
     const endTime = normalizeTime(Number(numeric[3]), Number(numeric[4]), "");
     if (startTime && endTime) return { startTime, endTime };
   }
 
-  return null;
+  const korean = text.match(/(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시?\s*(?:부터|에서|~|-)\s*(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시?(?:까지)?/);
+  if (!korean) return null;
+
+  const startMeridiem = korean[1] || "";
+  const endMeridiem = korean[4] || inferEndMeridiem(startMeridiem, Number(korean[5]));
+  const startTime = normalizeTime(Number(korean[2]), Number(korean[3] || 0), startMeridiem);
+  const endTime = normalizeTime(Number(korean[5]), Number(korean[6] || 0), endMeridiem);
+  return startTime && endTime ? { startTime, endTime } : null;
+}
+
+function inferEndMeridiem(startMeridiem: string, endHour: number): string {
+  if (startMeridiem === "오전" && endHour === 12) return "";
+  return startMeridiem;
 }
 
 function normalizeTime(hour: number, minute: number, meridiem: string): string | null {
@@ -112,7 +114,7 @@ function normalizeTime(hour: number, minute: number, meridiem: string): string |
 }
 
 function parseParticipants(text: string): number | null {
-  const match = text.match(/(?:참여자|참석자|대상|인원)?\s*(\d{1,4})\s*명/);
+  const match = text.match(/(?:참여자|참석자|대상|인원|수강생)?\s*(\d{1,4})\s*명/);
   return match ? Number(match[1]) : null;
 }
 
@@ -137,28 +139,27 @@ function parseFee(text: string): number | null {
 function parseOrganization(text: string): string | null {
   if (text.includes("전사협")) return "전사협";
 
-  const explicit = text.match(/(?:기관|주최|의뢰처|교육처|주관)(?:은|는|:)?\s*([가-힣A-Za-z0-9·()\[\]\s]{2,30}?)(?:에서|이고|이며|,|\.|$)/);
+  const explicit = text.match(/(?:기관|기관명|주최|교육처|의뢰처)(?:은|는|:)?\s*([가-힣A-Za-z0-9·()\[\]\s]{2,30}?)(?:에서|이고|이며|,|\.|$)/);
   if (explicit) return cleanValue(explicit[1]);
 
   const atOrg = text.match(/(?:^|[.]\s*)([가-힣A-Za-z0-9·()\[\]\s]{2,30}?(?:복지관|센터|협회|상담소|학교|도서관|재단|기관))에서/);
-  if (atOrg) return cleanValue(atOrg[1]);
-  return null;
+  return atOrg ? cleanValue(atOrg[1]) : null;
 }
 
 function parseLocation(text: string): string | null {
-  const explicit = text.match(/(?:장소|위치|교육장|강의실)(?:는|은|:)?\s*([가-힣A-Za-z0-9·()\[\]\s-]{2,40}?)(?:에서|이고|이며|,|\.|$)/);
+  const explicit = text.match(/(?:장소|위치|교육장|강의실)(?:은|는|:)?\s*([가-힣A-Za-z0-9·()\[\]\s-]{2,50}?)(?:에서|이고|이며|,|\.|$)/);
   if (explicit) return cleanValue(explicit[1]);
 
   const room = text.match(/([가-힣A-Za-z0-9·()\[\]\s-]{2,30}?(?:교육실|강의실|상비원|회의실|강당))/);
   if (room) return cleanValue(room[1]);
 
-  const address = text.match(/([가-힣]+(?:시|군|구)\s+[가-힣A-Za-z0-9·\s-]+(?:길|로)\s*\d+(?:-\d+)?)/);
+  const address = text.match(/([가-힣]+(?:시|도)\s+[가-힣]+(?:시|군|구)\s+[가-힣A-Za-z0-9·\s-]+(?:길|로)\s*\d+(?:-\d+)?)/);
   return address ? cleanValue(address[1]) : null;
 }
 
 function parseManagerName(text: string): string | null {
-  if (/담당자(?:는|가)?\s*미등록/.test(text)) return null;
-  const match = text.match(/담당자(?:는|가|명은|명)?\s*([가-힣]{2,5})/);
+  if (/담당자(?:는|가)?\s*(?:미등록|미정|없음)/.test(text)) return null;
+  const match = text.match(/담당자(?:는|가|명| 이름)?\s*([가-힣]{2,5})/);
   return match ? match[1] : null;
 }
 
@@ -176,6 +177,12 @@ function parseTopic(text: string): string | null {
 
 function parseTarget(text: string): string | null {
   const match = text.match(/(?:대상|교육대상)(?:은|는|:)?\s*([가-힣A-Za-z0-9·()\[\]\s-]{2,30}?)(?:,|\.|$)/);
+  return match ? cleanValue(match[1]) : null;
+}
+
+function parseMemoField(text: string, labels: string[]): string | null {
+  const escaped = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const match = text.match(new RegExp(`(?:${escaped})(?:은|는|:)?\\s*([^\\.]+)(?:\\.|$)`));
   return match ? cleanValue(match[1]) : null;
 }
 
