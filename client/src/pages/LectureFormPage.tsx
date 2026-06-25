@@ -19,6 +19,9 @@ export default function LectureFormPage() {
   const isEdit = Boolean(params.id);
   const lecture = isEdit && params.id ? getLectureById(params.id) : undefined;
 
+  const lectureDrawerPath = (id: string, action: "detail" | "edit" = "detail") =>
+    `/lectures?selectedLectureId=${encodeURIComponent(id)}${action === "edit" ? "&action=edit" : ""}`;
+
   const handleSubmit = async (data: LectureFormData, recurringList?: LectureFormData[]) => {
     setIsSubmitting(true);
     setLastCreatedLecture(null);
@@ -27,6 +30,7 @@ export default function LectureFormPage() {
       if (isEdit && params.id) {
         await updateLecture(params.id, data);
         toast.success("강의 정보를 수정했습니다.");
+        navigate(lectureDrawerPath(params.id), { replace: true });
         return;
       }
 
@@ -75,11 +79,11 @@ export default function LectureFormPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-6">
       <button
-        onClick={() => navigate(isEdit && params.id ? `/lectures/${params.id}` : "/lectures")}
+        onClick={() => navigate(isEdit && params.id ? lectureDrawerPath(params.id) : "/lectures")}
         className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        {isEdit ? "상세보기로 돌아가기" : "강의 목록으로 돌아가기"}
+        {isEdit ? "상세 패널로 돌아가기" : "강의 목록으로 돌아가기"}
       </button>
 
       <div className="mb-8">
@@ -92,13 +96,15 @@ export default function LectureFormPage() {
       {!isEdit && lastCreatedLecture && (
         <section className="mb-5 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
           <p className="font-semibold">강의가 등록되었습니다.</p>
-          <p className="mt-1 text-green-800">자동으로 업무관리나 강의목록으로 이동하지 않습니다. 다음 작업을 선택해 주세요.</p>
+          <p className="mt-1 text-green-800">
+            자동으로 업무관리나 강의목록으로 이동하지 않습니다. 다음 작업을 선택해 주세요.
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={resetForNextLecture}>
               <Plus className="mr-1.5 h-4 w-4" />
               새 강의 계속 등록
             </Button>
-            <Button type="button" size="sm" onClick={() => navigate(`/lectures/${lastCreatedLecture.id}`)}>
+            <Button type="button" size="sm" onClick={() => navigate(lectureDrawerPath(lastCreatedLecture.id))}>
               <Eye className="mr-1.5 h-4 w-4" />
               방금 등록한 강의 보기
             </Button>
@@ -106,7 +112,7 @@ export default function LectureFormPage() {
               type="button"
               size="sm"
               variant="secondary"
-              onClick={() => navigate(`/calendar?date=${lastCreatedLecture.date}&status=before`)}
+              onClick={() => navigate(`/calendar?date=${lastCreatedLecture.date}&status=before&selectedLectureId=${lastCreatedLecture.id}`)}
             >
               <CalendarDays className="mr-1.5 h-4 w-4" />
               캘린더에서 보기
@@ -120,7 +126,7 @@ export default function LectureFormPage() {
         initialData={lecture}
         defaultDate={queryDate}
         onSubmit={handleSubmit}
-        onCancel={() => navigate(isEdit && params.id ? `/lectures/${params.id}` : "/lectures")}
+        onCancel={() => navigate(isEdit && params.id ? lectureDrawerPath(params.id) : "/lectures")}
         isSubmitting={isSubmitting}
         submitLabel={isEdit ? "정보 저장" : "강의 등록"}
       />

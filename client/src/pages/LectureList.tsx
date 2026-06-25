@@ -17,7 +17,7 @@ import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } f
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 type AudienceKind = "adult" | "youth" | "unknown";
 
@@ -37,6 +37,7 @@ const monthNames = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 
 export default function LectureList() {
   const [, navigate] = useLocation();
+  const search = useSearch();
   const { lectures, deleteLecture, bulkAddLectures, updateLecture } = useLectures();
   const currentYear = String(new Date().getFullYear());
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -48,6 +49,11 @@ export default function LectureList() {
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
   const todayStr = useMemo(() => formatLocalDate(new Date()), []);
+  const querySelectedLectureId = useMemo(() => new URLSearchParams(search).get("selectedLectureId"), [search]);
+  const queryActionMode = useMemo(() => {
+    const mode = new URLSearchParams(search).get("action");
+    return mode === "edit" ? "edit" : "detail";
+  }, [search]);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -79,6 +85,20 @@ export default function LectureList() {
   );
 
   const selectedMonthStats = monthStats[selectedMonth - 1];
+
+  useEffect(() => {
+    if (!querySelectedLectureId) return;
+    const lecture = lectures.find((item) => item.id === querySelectedLectureId);
+    if (!lecture) return;
+
+    const year = lecture.date?.slice(0, 4);
+    const month = Number(lecture.date?.slice(5, 7));
+    if (year?.match(/^\d{4}$/)) setSelectedYear(year);
+    if (month >= 1 && month <= 12) setSelectedMonth(month);
+    setActionLectureId(lecture.id);
+    setActionMode(queryActionMode);
+  }, [lectures, queryActionMode, querySelectedLectureId]);
+
   const selectedMonthLectures = useMemo(() => {
     const base =
       statusFilter === "all"
@@ -104,6 +124,7 @@ export default function LectureList() {
     if (open) return;
     setActionLectureId(null);
     setActionMode(null);
+    if (querySelectedLectureId) navigate("/lectures", { replace: true });
   };
 
   const promoteLecture = async (lecture: Lecture) => {

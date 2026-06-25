@@ -28,7 +28,7 @@ export default function CalendarPage() {
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<LectureStatusFilter>(initialCalendarState.status);
-  const [selectedLectureId, setSelectedLectureId] = useState<string | null>(null);
+  const [selectedLectureId, setSelectedLectureId] = useState<string | null>(initialCalendarState.selectedLectureId);
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
 
@@ -84,6 +84,16 @@ export default function CalendarPage() {
   useEffect(() => {
     if (selectedLectureId && !selectedLecture) setSelectedLectureId(null);
   }, [selectedLectureId, selectedLecture]);
+
+  useEffect(() => {
+    if (!selectedLecture) return;
+    setSelectedDate(selectedLecture.date);
+    const date = new Date(selectedLecture.date);
+    if (!Number.isNaN(date.getTime())) {
+      setViewYear(date.getFullYear());
+      setViewMonth(date.getMonth());
+    }
+  }, [selectedLecture]);
 
   const promoteLecture = async (lecture: Lecture) => {
     if (!lecture.blogUrl?.trim()) {
@@ -332,6 +342,7 @@ function readCalendarQueryState(today: Date): {
   status: LectureStatusFilter;
   year: number;
   month: number;
+  selectedLectureId: string | null;
 } {
   const params = new URLSearchParams(window.location.search);
   const date = params.get("date");
@@ -355,6 +366,7 @@ function readCalendarQueryState(today: Date): {
     status,
     year,
     month,
+    selectedLectureId: params.get("selectedLectureId"),
   };
 }
 
