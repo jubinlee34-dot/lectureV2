@@ -247,7 +247,7 @@ export function LectureForm({
       managerName: formData.managerName.trim() || "미정",
       managerPhone: formData.managerPhone.trim(),
       workflowStage: initialData?.workflowStage ?? "before",
-      content: formData.requestMemo || formData.preparationItems || formData.content,
+      content: formData.content || "",
       updatedAt: new Date().toISOString(),
     };
 
