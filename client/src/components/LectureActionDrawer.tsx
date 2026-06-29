@@ -177,17 +177,10 @@ function DetailPanel({ lecture, onEdit }: { lecture: Lecture; onEdit: () => void
         <div className="sm:col-span-2">
           <InfoItem label="교육 내용" value={lecture.content || "-"} />
         </div>
+        <InfoItem label="준비물" value={lecture.preparationItems || "-"} />
+        <InfoItem label="요청사항" value={lecture.requestMemo || "-"} />
         <div className="sm:col-span-2">
-          <InfoItem
-            label="준비물/요청사항/내부 메모"
-            value={[
-              lecture.preparationItems && `준비물: ${lecture.preparationItems}`,
-              lecture.requestMemo && `요청사항: ${lecture.requestMemo}`,
-              lecture.instructorMemo && `내부 메모: ${lecture.instructorMemo}`,
-            ]
-              .filter(Boolean)
-              .join("\n") || "-"}
-          />
+          <InfoItem label="내부 메모" value={lecture.instructorMemo || "-"} />
         </div>
         <div className="sm:col-span-2">
           <InfoItem label="강의 후 메모" value={lecture.afterMemo || lecture.reflection || "-"} />
