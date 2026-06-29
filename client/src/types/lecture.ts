@@ -95,3 +95,28 @@ export interface SmsHistory {
   content: string;
   sentAt: string;
 }
+export type ContactLogChannel = "sms" | "phone" | "kakao" | "email" | "onsite" | "other";
+
+export type ContactLogTopic =
+  | "general"
+  | "topic_change"
+  | "time_change"
+  | "location_change"
+  | "audience_change"
+  | "preparation_change"
+  | "request_change";
+
+export interface LectureContactLog {
+  id: string;
+  lectureId: string;
+  channel: ContactLogChannel;
+  topic: ContactLogTopic;
+  title?: string;
+  content: string;
+  contactName?: string;
+  contactValue?: string;
+  important: boolean;
+  occurredAt: string;
+  createdAt: string;
+  updatedAt?: string | null;
+}
