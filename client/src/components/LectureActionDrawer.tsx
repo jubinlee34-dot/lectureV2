@@ -1,4 +1,5 @@
 import { AfterRecordModal } from "@/components/AfterRecordModal";
+import { ContactLogsPanel, contactLogChannelLabels, contactLogTopicLabels } from "@/components/ContactLogsPanel";
 import { LectureForm } from "@/components/LectureForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { useSupabase } from "@/contexts/SupabaseContext";
 import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
-import type { Lecture, LectureFormData, WorkTaskCategory, WorkTaskStage } from "@/types/lecture";
+import type { Lecture, LectureContactLog, LectureFormData, WorkTaskCategory, WorkTaskStage } from "@/types/lecture";
 import { formatDate } from "@/utils/format";
 import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { generateBlogDraft, generateReport } from "@/utils/templates";
@@ -37,7 +39,7 @@ import { useEffect, useState } from "react";
 import type React from "react";
 import { toast } from "sonner";
 
-export type LectureActionMode = "detail" | "edit" | "tasks" | "after-record" | "report" | "blog";
+export type LectureActionMode = "detail" | "edit" | "tasks" | "contact-logs" | "after-record" | "report" | "blog";
 type DrawerMode = Exclude<LectureActionMode, "after-record">;
 
 interface LectureActionDrawerProps {
@@ -51,6 +53,7 @@ const modeTitle: Record<DrawerMode, string> = {
   detail: "강의 상세",
   edit: "강의 정보 수정",
   tasks: "업무관리",
+  "contact-logs": "사전 소통 기록",
   report: "결과보고서",
   blog: "홍보 블로그",
 };
@@ -59,12 +62,14 @@ const modeDescription: Record<DrawerMode, string> = {
   detail: "강의 등록 정보와 후속 기록을 확인합니다.",
   edit: "강의 등록 폼과 같은 구조로 정보를 수정합니다.",
   tasks: "강의 전후 업무를 확인하고 바로 수정합니다.",
+  "contact-logs": "담당자와의 사전 소통 기록을 관리합니다.",
   report: "강의 기록을 바탕으로 결과보고서 초안을 작성합니다.",
   blog: "홍보 블로그 초안을 작성하고 복사합니다.",
 };
 
 export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: LectureActionDrawerProps) {
   const { getLectureById, updateLecture } = useLectures();
+  const { contactLogs } = useSupabase();
   const lecture = lectureId ? getLectureById(lectureId) : undefined;
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("detail");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -101,6 +106,7 @@ export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: Lec
             {drawerMode === "detail" && <FileText className="h-4 w-4 text-primary" />}
             {drawerMode === "edit" && <FilePenLine className="h-4 w-4 text-primary" />}
             {drawerMode === "tasks" && <ClipboardCheck className="h-4 w-4 text-primary" />}
+            {drawerMode === "contact-logs" && <MessageSquare className="h-4 w-4 text-primary" />}
             {drawerMode === "report" && <FileText className="h-4 w-4 text-primary" />}
             {drawerMode === "blog" && <MessageSquare className="h-4 w-4 text-primary" />}
             {modeTitle[drawerMode]}
@@ -114,7 +120,14 @@ export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: Lec
           ) : (
             <>
               <DrawerLectureHeader lecture={lecture} />
-              {drawerMode === "detail" && <DetailPanel lecture={lecture} onEdit={() => setDrawerMode("edit")} />}
+              {drawerMode === "detail" && (
+                <DetailPanel
+                  lecture={lecture}
+                  contactLogs={contactLogs}
+                  onEdit={() => setDrawerMode("edit")}
+                  onContactLogs={() => setDrawerMode("contact-logs")}
+                />
+              )}
               {drawerMode === "edit" && (
                 <LectureForm
                   initialData={lecture}
@@ -126,6 +139,7 @@ export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: Lec
                 />
               )}
               {drawerMode === "tasks" && <TasksPanel lecture={lecture} />}
+              {drawerMode === "contact-logs" && <ContactLogsPanel lecture={lecture} onBack={() => setDrawerMode("detail")} />}
               {drawerMode === "report" && <TextDraftPanel lecture={lecture} type="report" />}
               {drawerMode === "blog" && <TextDraftPanel lecture={lecture} type="blog" />}
             </>
@@ -152,10 +166,29 @@ function DrawerLectureHeader({ lecture }: { lecture: Lecture }) {
   );
 }
 
-function DetailPanel({ lecture, onEdit }: { lecture: Lecture; onEdit: () => void }) {
+function DetailPanel({
+  lecture,
+  contactLogs,
+  onEdit,
+  onContactLogs,
+}: {
+  lecture: Lecture;
+  contactLogs: LectureContactLog[];
+  onEdit: () => void;
+  onContactLogs: () => void;
+}) {
+  const recentLogs = contactLogs
+    .filter((log) => log.lectureId === lecture.id)
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, 3);
+
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onContactLogs}>
+          <MessageSquare className="mr-1.5 h-4 w-4" />
+          사전 소통 기록
+        </Button>
         <Button type="button" size="sm" onClick={onEdit}>
           <Pencil className="mr-1.5 h-4 w-4" />
           정보 수정
@@ -186,8 +219,40 @@ function DetailPanel({ lecture, onEdit }: { lecture: Lecture; onEdit: () => void
           <InfoItem label="강의 후 메모" value={lecture.afterMemo || lecture.reflection || "-"} />
         </div>
       </div>
+
+      <section className="rounded-lg border border-border bg-card p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-xs font-semibold text-muted-foreground">최근 사전 소통 기록</h3>
+          <Button type="button" variant="ghost" size="sm" onClick={onContactLogs} className="h-7 px-2 text-xs">
+            전체 보기
+          </Button>
+        </div>
+        {recentLogs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">아직 사전 소통 기록이 없습니다.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentLogs.map((log) => (
+              <div key={log.id} className="rounded-md bg-muted/30 p-2 text-xs">
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  {log.important && <span className="font-semibold text-amber-600">중요</span>}
+                  <span className="font-semibold text-primary">{contactLogChannelLabels[log.channel]}</span>
+                  <span className="text-muted-foreground">{contactLogTopicLabels[log.topic]}</span>
+                  <span className="text-muted-foreground">{formatContactLogDate(log.occurredAt)}</span>
+                </div>
+                <p className="line-clamp-2 text-sm leading-relaxed text-foreground">{log.title || log.content}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
+}
+
+function formatContactLogDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
 function InfoItem({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {

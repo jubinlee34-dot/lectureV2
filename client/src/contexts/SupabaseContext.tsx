@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { supabase } from "../lib/supabase";
 import { nanoid } from "nanoid";
 import { dummyLectures, dummyTodos } from "../data/dummyData";
-import type { Lecture, LectureFormData, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
+import type { Lecture, LectureContactLog, LectureFormData, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
 import type { InstructorProfile } from "../types/instructor";
 import { toast } from "sonner";
 import { getRouteInfo } from "../services/naverRouteService";
@@ -13,6 +13,7 @@ interface SupabaseContextType {
   todos: Todo[];
   workTasks: WorkTask[];
   smsHistory: SmsHistory[];
+  contactLogs: LectureContactLog[];
   profile: InstructorProfile | null;
   loading: boolean;
   error: string | null;
@@ -45,6 +46,11 @@ interface SupabaseContextType {
   recordSms: (lectureId: string, type: SmsType, recipient: string, content: string) => Promise<SmsHistory | undefined>;
   deleteSmsRecord: (smsId: string) => Promise<void>;
 
+  // Contact Log Actions
+  addContactLog: (data: Omit<LectureContactLog, "id" | "createdAt" | "updatedAt">) => Promise<LectureContactLog>;
+  updateContactLog: (id: string, data: Partial<Omit<LectureContactLog, "id" | "lectureId" | "createdAt">>) => Promise<void>;
+  deleteContactLog: (id: string) => Promise<void>;
+
   // Profile Actions
   updateProfile: (data: Partial<InstructorProfile>) => Promise<void>;
   uploadLocalDataToSupabase: () => Promise<void>;
@@ -74,8 +80,6 @@ const DEFAULT_BEFORE_TASKS: Array<{ category: WorkTaskCategory; text: string }> 
 
 const DEFAULT_AFTER_TASKS: Array<{ category: WorkTaskCategory; text: string }> = [
   { category: "report", text: "결과 보고서 작성 및 제출 확인" },
-  { category: "contact", text: "담당자에게 감사 문자 발송" },
-  { category: "invoice", text: "강사료 청구서 발송" },
   { category: "invoice", text: "강사료 입금 확인" },
   { category: "blog", text: "블로그/SNS 홍보 초안 작성" },
 ];
@@ -241,11 +245,28 @@ function normalizeLecture(row: any): Lecture {
   };
 }
 
+function normalizeContactLog(row: any): LectureContactLog {
+  return {
+    id: row.id,
+    lectureId: row.lectureId ?? "",
+    channel: row.channel ?? "other",
+    topic: row.topic ?? "general",
+    title: row.title ?? "",
+    content: row.content ?? "",
+    contactName: row.contactName ?? "",
+    contactValue: row.contactValue ?? "",
+    important: row.important ?? false,
+    occurredAt: row.occurredAt ?? new Date().toISOString(),
+    createdAt: row.createdAt ?? new Date().toISOString(),
+    updatedAt: row.updatedAt ?? null,
+  };
+}
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [workTasks, setWorkTasks] = useState<WorkTask[]>([]);
   const [smsHistory, setSmsHistory] = useState<SmsHistory[]>([]);
+  const [contactLogs, setContactLogs] = useState<LectureContactLog[]>([]);
   const [profile, setProfile] = useState<InstructorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -270,6 +291,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         let loadedTodos: Todo[] = [];
         let loadedWorkTasks: WorkTask[] = [];
         let loadedSmsHistory: SmsHistory[] = [];
+        let loadedContactLogs: LectureContactLog[] = [];
         let loadedProfile: InstructorProfile | null = null;
 
         // 2. If lectures table is empty, check for migration or seeding
@@ -382,6 +404,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           if (smsErr) throw smsErr;
           loadedSmsHistory = dbSms || [];
 
+          // Fetch Contact Logs
+          const { data: dbContactLogs, error: contactLogsErr } = await supabase.from("lecture_contact_logs").select("*").order("occurredAt", { ascending: false });
+          if (contactLogsErr) throw contactLogsErr;
+          loadedContactLogs = (dbContactLogs || []).map(normalizeContactLog);
+
           // Fetch Profile
           const { data: dbProfile, error: profileErr } = await supabase.from("instructor_profile").select("*").eq("id", "default").maybeSingle();
           if (profileErr) throw profileErr;
@@ -429,6 +456,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setTodos(loadedTodos);
         setWorkTasks(loadedWorkTasks);
         setSmsHistory(loadedSmsHistory);
+        setContactLogs(loadedContactLogs);
         setProfile(loadedProfile);
       } catch (err: any) {
         console.error("Supabase 초기 로드 에러:", err);
@@ -912,6 +940,62 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     toast.success("SMS 발송 이력이 삭제되었습니다.");
   }, []);
 
+
+  // ==================== CONTACT LOG CRUD ====================
+
+  const sortContactLogs = (items: LectureContactLog[]) =>
+    [...items].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+
+  const addContactLog = useCallback(async (data: Omit<LectureContactLog, "id" | "createdAt" | "updatedAt">): Promise<LectureContactLog> => {
+    const now = new Date().toISOString();
+    const record: LectureContactLog = {
+      ...data,
+      id: nanoid(),
+      title: data.title ?? "",
+      contactName: data.contactName ?? "",
+      contactValue: data.contactValue ?? "",
+      important: data.important ?? false,
+      createdAt: now,
+      updatedAt: null,
+    };
+
+    const { error } = await supabase.from("lecture_contact_logs").insert(record);
+    if (error) {
+      toast.error(`사전 소통 기록 저장 실패: ${error.message}`);
+      throw error;
+    }
+
+    setContactLogs((prev) => sortContactLogs([record, ...prev]));
+    toast.success("사전 소통 기록을 추가했습니다.");
+    return record;
+  }, []);
+
+  const updateContactLog = useCallback(async (id: string, data: Partial<Omit<LectureContactLog, "id" | "lectureId" | "createdAt">>): Promise<void> => {
+    const updateData = {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    const { error } = await supabase.from("lecture_contact_logs").update(updateData).eq("id", id);
+    if (error) {
+      toast.error(`사전 소통 기록 수정 실패: ${error.message}`);
+      throw error;
+    }
+
+    setContactLogs((prev) => sortContactLogs(prev.map((log) => (log.id === id ? { ...log, ...updateData } : log))));
+    toast.success("사전 소통 기록을 수정했습니다.");
+  }, []);
+
+  const deleteContactLog = useCallback(async (id: string): Promise<void> => {
+    const { error } = await supabase.from("lecture_contact_logs").delete().eq("id", id);
+    if (error) {
+      toast.error(`사전 소통 기록 삭제 실패: ${error.message}`);
+      throw error;
+    }
+
+    setContactLogs((prev) => prev.filter((log) => log.id !== id));
+    toast.success("사전 소통 기록을 삭제했습니다.");
+  }, []);
+
   // ==================== PROFILE CRUD ====================
 
   const updateProfile = useCallback(async (data: Partial<InstructorProfile>): Promise<void> => {
@@ -1016,12 +1100,14 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       const { data: dbTodos } = await supabase.from("todos").select("*").order("createdAt", { ascending: false });
       const { data: dbTasks } = await supabase.from("work_tasks").select("*").order("createdAt", { ascending: true });
       const { data: dbSms } = await supabase.from("sms_history").select("*").order("sentAt", { ascending: false });
+      const { data: dbContactLogs } = await supabase.from("lecture_contact_logs").select("*").order("occurredAt", { ascending: false });
       const { data: dbProfile } = await supabase.from("instructor_profile").select("*").eq("id", "default").maybeSingle();
 
           if (dbLectures) setLectures(dbLectures.map(normalizeLecture));
       if (dbTodos) setTodos(dbTodos);
       if (dbTasks) setWorkTasks(dbTasks);
       if (dbSms) setSmsHistory(dbSms);
+      if (dbContactLogs) setContactLogs(dbContactLogs.map(normalizeContactLog));
       if (dbProfile) setProfile(dbProfile as InstructorProfile);
 
       toast.dismiss();
@@ -1041,6 +1127,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         todos,
         workTasks,
         smsHistory,
+        contactLogs,
         profile,
         loading,
         error,
@@ -1068,6 +1155,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         
         recordSms,
         deleteSmsRecord,
+
+        addContactLog,
+        updateContactLog,
+        deleteContactLog,
         
         updateProfile,
         uploadLocalDataToSupabase,

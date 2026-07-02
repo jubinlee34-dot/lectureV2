@@ -102,7 +102,7 @@ export function CalendarQuickCard({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <QuickAction onClick={() => onAction(lecture, "detail")}>상세보기</QuickAction>
+        {lecture.workflowStage !== "after" && <QuickAction onClick={() => onAction(lecture, "detail")}>상세보기</QuickAction>}
         {lecture.workflowStage === "before" && (
           <>
             <QuickAction onClick={() => onAction(lecture, "tasks")} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
@@ -117,9 +117,6 @@ export function CalendarQuickCard({
         )}
         {lecture.workflowStage === "after" && (
           <>
-            <QuickAction onClick={() => onAction(lecture, "tasks")} icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
-              업무관리
-            </QuickAction>
             {onAfterRecord && (
               <QuickAction onClick={() => onAction(lecture, "after-record")} tone="amber" icon={<ClipboardCheck className="h-3.5 w-3.5" />}>
                 {afterRecordLabel}
@@ -193,9 +190,10 @@ export function CalendarQuickCard({
 }
 
 function getCardAfterRecordLabel(lecture: Lecture): string {
-  if (lecture.workflowStage === "before") return "강의 후 기록 추가";
+  if (lecture.workflowStage === "before") return "강의 후 정리";
+  if (lecture.workflowStage === "after") return "강의 후 기록 보완";
   if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
-  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
+  return "강의 후 기록 보기/수정";
 }
 
 function QuickAction({

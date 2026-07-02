@@ -18,8 +18,6 @@ export const DEFAULT_BEFORE_TASKS: Array<{ category: WorkTaskCategory; text: str
 
 export const DEFAULT_AFTER_TASKS: Array<{ category: WorkTaskCategory; text: string }> = [
   { category: "report", text: "결과 보고서 작성 및 제출 확인" },
-  { category: "contact", text: "담당자에게 감사 문자 발송" },
-  { category: "invoice", text: "강사료 청구서 발송" },
   { category: "invoice", text: "강사료 입금 확인" },
   { category: "blog", text: "블로그/SNS 홍보 초안 작성" },
 ];
