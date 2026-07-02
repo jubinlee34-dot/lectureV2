@@ -164,7 +164,7 @@ export function LectureCard({
         )}
 
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5" onClick={(event) => event.stopPropagation()}>
-          <CardAction onClick={() => onClick(lecture.id)}>상세보기</CardAction>
+          {lecture.workflowStage !== "after" && <CardAction onClick={() => onClick(lecture.id)}>상세보기</CardAction>}
           {lecture.workflowStage === "before" && (
             <>
               {onManage && (
@@ -181,11 +181,6 @@ export function LectureCard({
           )}
           {lecture.workflowStage === "after" && (
             <>
-              {onManage && (
-                <CardAction onClick={() => onManage(lecture.id)} icon={<ClipboardCheck className="h-3 w-3" />}>
-                  업무관리
-                </CardAction>
-              )}
               {onAfterRecord && (
                 <CardAction onClick={() => onAfterRecord(lecture)} tone="amber" icon={<ClipboardCheck className="h-3 w-3" />}>
                   {afterRecordLabel}
@@ -251,8 +246,9 @@ export function LectureCard({
 
 function getCardAfterRecordLabel(lecture: Lecture): string {
   if (lecture.workflowStage === "before") return "강의 후 정리";
+  if (lecture.workflowStage === "after") return "강의 후 기록 보완";
   if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
-  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
+  return "강의 후 기록 보기/수정";
 }
 
 function CardAction({

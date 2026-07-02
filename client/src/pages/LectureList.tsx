@@ -377,8 +377,8 @@ function CompactLectureCard({
       <p className="mb-2 truncate text-xs text-muted-foreground">{managerText}</p>
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2" onClick={(event) => event.stopPropagation()}>
-        <CompactAction onClick={() => onAction(lecture, "detail")}>상세보기</CompactAction>
-        {lecture.workflowStage !== "promoted" && <CompactAction onClick={() => onAction(lecture, "tasks")}>업무관리</CompactAction>}
+        {lecture.workflowStage !== "after" && <CompactAction onClick={() => onAction(lecture, "detail")}>상세보기</CompactAction>}
+        {lecture.workflowStage === "before" && <CompactAction onClick={() => onAction(lecture, "tasks")}>업무관리</CompactAction>}
         <CompactAction onClick={() => onAction(lecture, "after-record")} tone="amber">
           {afterRecordLabel}
         </CompactAction>
@@ -643,8 +643,9 @@ function classifyAudience(lecture: Lecture): { kind: AudienceKind; estimated: bo
 
 function getAfterRecordLabel(lecture: Lecture): string {
   if (lecture.workflowStage === "before") return "강의 후 정리";
+  if (lecture.workflowStage === "after") return "강의 후 기록 보완";
   if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
-  return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
+  return "강의 후 기록 보기/수정";
 }
 
 function formatHours(hours: number): string {

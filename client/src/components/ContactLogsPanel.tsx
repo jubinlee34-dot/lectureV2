@@ -158,10 +158,6 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
             <h3 className="text-sm font-semibold text-foreground">전체 기록</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">최신순 {logs.length}건</p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={openAddForm}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            사전 소통 기록 추가
-          </Button>
         </div>
 
         {logs.length === 0 ? (
@@ -205,12 +201,14 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
         )}
       </section>
 
-      {!formOpen ? (
+      {logs.length > 0 && !formOpen && (
         <Button type="button" variant="outline" size="sm" onClick={openAddForm}>
           <Plus className="mr-1.5 h-4 w-4" />
           사전 소통 기록 추가
         </Button>
-      ) : (
+      )}
+
+      {formOpen && (
         <section className="rounded-lg border border-border bg-card p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-foreground">{editingId ? "사전 소통 기록 수정" : "사전 소통 기록 추가"}</h3>
