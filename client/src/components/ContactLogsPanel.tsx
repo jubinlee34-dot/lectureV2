@@ -62,6 +62,7 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
   const { contactLogs, addContactLog, updateContactLog, deleteContactLog } = useSupabase();
   const [form, setForm] = useState<ContactLogFormState>(() => buildInitialForm(lecture));
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const logs = useMemo(
@@ -76,6 +77,16 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
   const resetForm = () => {
     setEditingId(null);
     setForm(buildInitialForm(lecture));
+  };
+
+  const openAddForm = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
   };
 
   const handleSubmit = async () => {
@@ -103,6 +114,7 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
         await addContactLog({ lectureId: lecture.id, ...payload });
       }
       resetForm();
+      setFormOpen(false);
     } finally {
       setSaving(false);
     }
@@ -110,6 +122,7 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
 
   const handleEdit = (log: LectureContactLog) => {
     setEditingId(log.id);
+    setFormOpen(true);
     setForm({
       channel: log.channel,
       topic: log.topic,
@@ -126,107 +139,38 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
     const confirmed = window.confirm("이 사전 소통 기록을 삭제할까요?");
     if (!confirmed) return;
     await deleteContactLog(log.id);
-    if (editingId === log.id) resetForm();
+    if (editingId === log.id) closeForm();
   };
 
   return (
     <div className="space-y-4">
       {onBack && (
-        <Button type="button" variant="ghost" size="sm" onClick={onBack} className="px-0">
-          상세로 돌아가기
-        </Button>
-      )}
-
-      <section className="rounded-lg border border-border bg-card p-3">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">{editingId ? "사전 소통 기록 수정" : "사전 소통 기록 추가"}</h3>
-          {editingId && (
-            <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-              <X className="mr-1 h-3.5 w-3.5" />
-              취소
-            </Button>
-          )}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
-            채널
-            <select
-              value={form.channel}
-              onChange={(event) => setField("channel", event.target.value as ContactLogChannel)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
-            >
-              {channels.map((channel) => (
-                <option key={channel} value={channel}>{channelLabels[channel]}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
-            주제
-            <select
-              value={form.topic}
-              onChange={(event) => setField("topic", event.target.value as ContactLogTopic)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
-            >
-              {topics.map((topic) => (
-                <option key={topic} value={topic}>{topicLabels[topic]}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
-            담당자명
-            <Input value={form.contactName} onChange={(event) => setField("contactName", event.target.value)} placeholder="예: 김담당" />
-          </label>
-
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
-            연락처
-            <Input value={form.contactValue} onChange={(event) => setField("contactValue", event.target.value)} placeholder="전화번호, 이메일 등" />
-          </label>
-
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
-            제목
-            <Input value={form.title} onChange={(event) => setField("title", event.target.value)} placeholder="예: 장소 장비 확인" />
-          </label>
-
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
-            일시
-            <Input type="datetime-local" value={form.occurredAt} onChange={(event) => setField("occurredAt", event.target.value)} />
-          </label>
-
-          <label className="space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
-            내용
-            <Textarea value={form.content} onChange={(event) => setField("content", event.target.value)} rows={4} placeholder="담당자와 확인한 내용을 기록하세요." />
-          </label>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={form.important}
-              onChange={(event) => setField("important", event.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-            />
-            중요 표시
-          </label>
-          <Button type="button" size="sm" onClick={handleSubmit} disabled={saving}>
-            {editingId ? <Check className="mr-1.5 h-4 w-4" /> : <Plus className="mr-1.5 h-4 w-4" />}
-            {editingId ? "수정" : "추가"}
+        <div className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 pb-2 backdrop-blur">
+          <Button type="button" variant="outline" size="sm" onClick={onBack}>
+            ← 강의 상세로 돌아가기
           </Button>
         </div>
-      </section>
+      )}
 
       <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">전체 기록</h3>
-          <span className="text-xs text-muted-foreground">최신순 {logs.length}건</span>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">전체 기록</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">최신순 {logs.length}건</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={openAddForm}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            사전 소통 기록 추가
+          </Button>
         </div>
 
         {logs.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 py-10 text-center text-sm text-muted-foreground">
-            아직 사전 소통 기록이 없습니다.
+          <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+            <p className="text-sm text-muted-foreground">아직 사전 소통 기록이 없습니다.</p>
+            <Button type="button" variant="outline" size="sm" onClick={openAddForm} className="mt-3">
+              <Plus className="mr-1.5 h-4 w-4" />
+              첫 기록 추가
+            </Button>
           </div>
         ) : (
           logs.map((log) => (
@@ -260,6 +204,92 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
           ))
         )}
       </section>
+
+      {!formOpen ? (
+        <Button type="button" variant="outline" size="sm" onClick={openAddForm}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          사전 소통 기록 추가
+        </Button>
+      ) : (
+        <section className="rounded-lg border border-border bg-card p-3">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-foreground">{editingId ? "사전 소통 기록 수정" : "사전 소통 기록 추가"}</h3>
+            <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
+              <X className="mr-1 h-3.5 w-3.5" />
+              취소
+            </Button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+              채널
+              <select
+                value={form.channel}
+                onChange={(event) => setField("channel", event.target.value as ContactLogChannel)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              >
+                {channels.map((channel) => (
+                  <option key={channel} value={channel}>{channelLabels[channel]}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+              주제
+              <select
+                value={form.topic}
+                onChange={(event) => setField("topic", event.target.value as ContactLogTopic)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              >
+                {topics.map((topic) => (
+                  <option key={topic} value={topic}>{topicLabels[topic]}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+              담당자명
+              <Input value={form.contactName} onChange={(event) => setField("contactName", event.target.value)} placeholder="예: 김담당" />
+            </label>
+
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+              연락처
+              <Input value={form.contactValue} onChange={(event) => setField("contactValue", event.target.value)} placeholder="전화번호, 이메일 등" />
+            </label>
+
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
+              제목
+              <Input value={form.title} onChange={(event) => setField("title", event.target.value)} placeholder="예: 장소 장비 확인" />
+            </label>
+
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
+              일시
+              <Input type="datetime-local" value={form.occurredAt} onChange={(event) => setField("occurredAt", event.target.value)} />
+            </label>
+
+            <label className="space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
+              내용
+              <Textarea value={form.content} onChange={(event) => setField("content", event.target.value)} rows={4} placeholder="담당자와 확인한 내용을 기록하세요." />
+            </label>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={form.important}
+                onChange={(event) => setField("important", event.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              중요 표시
+            </label>
+            <Button type="button" size="sm" onClick={handleSubmit} disabled={saving}>
+              {editingId ? <Check className="mr-1.5 h-4 w-4" /> : <Plus className="mr-1.5 h-4 w-4" />}
+              {editingId ? "수정" : "추가"}
+            </Button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

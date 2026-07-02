@@ -193,7 +193,7 @@ export function CalendarQuickCard({
 }
 
 function getCardAfterRecordLabel(lecture: Lecture): string {
-  if (lecture.workflowStage === "before") return "강의 후 기록 추가";
+  if (lecture.workflowStage === "before") return "강의 후 정리";
   if (hasAfterRecord(lecture)) return "강의 후 기록 보기/수정";
   return lecture.workflowStage === "after" ? "강의 후 기록 보완" : "강의 후 기록 보기/수정";
 }
