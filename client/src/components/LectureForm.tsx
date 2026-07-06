@@ -230,7 +230,7 @@ export function LectureForm({
   };
 
   const handleSelectPlace = (place: KakaoPlaceCandidate) => {
-    const selectedAddress = place.roadAddress || place.jibunAddress || place.placeName;
+    const selectedAddress = place.address || place.roadAddress || place.jibunAddress;
     setFormData((prev) => ({
       ...prev,
       location: selectedAddress,
@@ -335,7 +335,7 @@ export function LectureForm({
           <Field label="장소명" error={errors.locationName}>
             <Input value={formData.locationName || ""} onChange={(e) => setField("locationName", e.target.value)} placeholder="예: 상비원 교육실" />
           </Field>
-          <Field label="상세주소" error={errors.location} description="카카오에서 선택한 주소가 기존 네이버 거리계산/길찾기의 목적지로 사용됩니다.">
+          <Field label="상세주소" error={errors.location} description="기존 네이버 거리계산/길찾기의 목적지로 사용됩니다.">
             <div className="flex gap-2">
               <Input
                 value={formData.location}
@@ -380,8 +380,8 @@ export function LectureForm({
 
         {(formData.roadAddress || formData.jibunAddress) && (
           <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">
-            <p className="font-semibold">선택한 주소: {formData.roadAddress || formData.jibunAddress}</p>
-            {formData.locationName && <p className="mt-0.5 text-muted-foreground">장소명: {formData.locationName}</p>}
+            {formData.locationName && <p className="font-semibold">장소명: {formData.locationName}</p>}
+            <p className="mt-0.5 text-muted-foreground">주소: {formData.roadAddress || formData.jibunAddress}</p>
             {formData.locationX && formData.locationY && (
               <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                 좌표: {formData.locationX}, {formData.locationY}
