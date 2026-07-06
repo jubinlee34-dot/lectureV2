@@ -1,77 +1,17 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { getNormalizedKakaoRestApiKey } from "./_lib/env";
+import { HttpError, shouldExposeUpstreamBodyPreview } from "./_lib/http";
+import {
+  fetchKakaoKeywordSearch,
+  mapKakaoPlaceSearchItem,
+  type KakaoPlaceDocument,
+  type KakaoPlaceSearchItem,
+} from "./_lib/kakao";
 
-interface KakaoPlaceDocument {
-  id?: string;
-  place_name?: string;
-  road_address_name?: string;
-  address_name?: string;
-  x?: string;
-  y?: string;
-  phone?: string;
-  place_url?: string;
-}
-
-interface KakaoPlaceSearchItem {
-  id: string;
-  place_name: string;
-  road_address_name: string;
-  address_name: string;
-  address: string;
-  x: string;
-  y: string;
-  phone: string;
-  place_url: string;
-}
-
-class HttpError extends Error {
-  status: number;
-  upstreamStatus?: number;
-  upstreamBodyPreview?: string;
-
-  constructor(message: string, status: number, upstreamStatus?: number, upstreamBodyPreview?: string) {
-    super(message);
-    this.name = "HttpError";
-    this.status = status;
-    this.upstreamStatus = upstreamStatus;
-    this.upstreamBodyPreview = upstreamBodyPreview;
-  }
-}
+const KAKAO_REST_API_KEY_ERROR = "KAKAO_REST_API_KEY is not configured";
 
 function getKakaoRestApiKey() {
-  const apiKey = process.env.KAKAO_REST_API_KEY?.trim();
-  if (!apiKey) {
-    throw new HttpError("KAKAO_REST_API_KEY is not configured", 500);
-  }
-  const normalizedKey = apiKey.replace(/^KakaoAK\s+/i, "").trim();
-  if (!normalizedKey) {
-    throw new HttpError("KAKAO_REST_API_KEY is not configured", 500);
-  }
-  return normalizedKey;
-}
-
-function getBodyPreview(body: string) {
-  return body.slice(0, 500);
-}
-
-function shouldExposeUpstreamBodyPreview() {
-  return process.env.VERCEL_ENV !== "production";
-}
-
-function mapPlace(document: KakaoPlaceDocument): KakaoPlaceSearchItem {
-  const roadAddress = document.road_address_name || "";
-  const jibunAddress = document.address_name || "";
-
-  return {
-    id: document.id || "",
-    place_name: document.place_name || "",
-    road_address_name: roadAddress,
-    address_name: jibunAddress,
-    address: roadAddress || jibunAddress,
-    x: document.x || "",
-    y: document.y || "",
-    phone: document.phone || "",
-    place_url: document.place_url || "",
-  };
+  return getNormalizedKakaoRestApiKey(KAKAO_REST_API_KEY_ERROR);
 }
 
 async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPlaceSearchItem[]> {
@@ -80,15 +20,7 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
     throw new HttpError("query is required", 400);
   }
 
-  const params = new URLSearchParams({ query: cleanQuery });
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?${params.toString()}`;
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `KakaoAK ${apiKey}`,
-    },
-  });
-  const body = await response.text().catch(() => "");
-  const bodyPreview = getBodyPreview(body);
+  const { response, body, bodyPreview } = await fetchKakaoKeywordSearch(cleanQuery, apiKey);
 
   if (!response.ok) {
     console.error("Kakao place search failed", {
@@ -101,7 +33,7 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
 
   try {
     const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
-    return (data.documents || []).map(mapPlace);
+    return (data.documents || []).map(mapKakaoPlaceSearchItem);
   } catch {
     console.error("Kakao place search returned invalid JSON", {
       status: response.status,
