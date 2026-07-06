@@ -113,6 +113,7 @@ export function LectureForm({
   const [errors, setErrors] = useState<Partial<Record<keyof LectureFormData, string>>>({});
   const [placeResults, setPlaceResults] = useState<KakaoPlaceCandidate[]>([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
+  const [placeSearchMessage, setPlaceSearchMessage] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [additionalDates, setAdditionalDates] = useState<string[]>([]);
   const [newDateInput, setNewDateInput] = useState("");
@@ -130,18 +131,35 @@ export function LectureForm({
 
   const setField = (field: keyof LectureFormData, value: string | number | boolean | null) => {
     setFormData((prev) => {
-      if (field !== "location") return { ...prev, [field]: value };
-      return {
-        ...prev,
-        location: String(value),
-        roadAddress: "",
-        jibunAddress: "",
-        locationX: "",
-        locationY: "",
-      };
+      if (field === "location") {
+        return {
+          ...prev,
+          location: String(value),
+          roadAddress: "",
+          jibunAddress: "",
+          locationX: "",
+          locationY: "",
+        };
+      }
+
+      if (field === "locationName") {
+        return {
+          ...prev,
+          locationName: String(value),
+          roadAddress: "",
+          jibunAddress: "",
+          locationX: "",
+          locationY: "",
+        };
+      }
+
+      return { ...prev, [field]: value };
     });
     setErrors((prev) => ({ ...prev, [field]: undefined }));
-    if (field === "location") setPlaceResults([]);
+    if (field === "location" || field === "locationName") {
+      setPlaceResults([]);
+      setPlaceSearchMessage(null);
+    }
   };
 
   const applyParsedLectureText = () => {
@@ -180,28 +198,39 @@ export function LectureForm({
   };
 
   const handleSearchPlace = async () => {
-    const location = formData.location.trim() || formData.locationName?.trim();
-    if (!location) {
-      toast.error("검색할 장소명 또는 주소를 입력해 주세요.");
+    const query = formData.locationName?.trim() || formData.location.trim();
+    if (!query) {
+      toast.error("검색할 장소명을 입력해 주세요.");
       return;
     }
 
     setPlaceSearchLoading(true);
+    setPlaceResults([]);
+    setPlaceSearchMessage(null);
     try {
-      const results = await searchKakaoPlaces(location);
-      setPlaceResults(results);
+      const results = await searchKakaoPlaces(query);
       if (results.length === 0) {
-        toast.info("장소 검색 결과가 없습니다. 입력한 주소는 네이버 거리 계산 fallback에 사용됩니다.");
+        setPlaceSearchMessage("검색 결과가 없습니다. 장소명을 더 구체적으로 입력해 주세요.");
+        return;
       }
+
+      if (results.length === 1) {
+        handleSelectPlace(results[0]);
+        return;
+      }
+
+      setPlaceResults(results);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "장소 검색에 실패했습니다.");
+      const message = error instanceof Error ? error.message : "장소 검색에 실패했습니다.";
+      setPlaceSearchMessage(message);
+      toast.error(message);
     } finally {
       setPlaceSearchLoading(false);
     }
   };
 
   const handleSelectPlace = (place: KakaoPlaceCandidate) => {
-    const selectedAddress = place.roadAddress || place.jibunAddress || place.placeName;
+    const selectedAddress = place.address || place.roadAddress || place.jibunAddress;
     setFormData((prev) => ({
       ...prev,
       location: selectedAddress,
@@ -213,6 +242,7 @@ export function LectureForm({
     }));
     setErrors((prev) => ({ ...prev, location: undefined, locationName: undefined }));
     setPlaceResults([]);
+    setPlaceSearchMessage(null);
     toast.success("선택한 주소와 좌표를 저장했습니다.");
   };
 
@@ -321,7 +351,7 @@ export function LectureForm({
                 className="h-10 shrink-0 px-3 text-xs"
               >
                 {placeSearchLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
-                장소 검색
+                주소 찾기
               </Button>
             </div>
           </Field>
@@ -350,14 +380,20 @@ export function LectureForm({
 
         {(formData.roadAddress || formData.jibunAddress) && (
           <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">
-            <p className="font-semibold">선택한 주소: {formData.roadAddress || formData.jibunAddress}</p>
-            {formData.locationName && <p className="mt-0.5 text-muted-foreground">장소명: {formData.locationName}</p>}
+            {formData.locationName && <p className="font-semibold">장소명: {formData.locationName}</p>}
+            <p className="mt-0.5 text-muted-foreground">주소: {formData.roadAddress || formData.jibunAddress}</p>
             {formData.locationX && formData.locationY && (
               <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                 좌표: {formData.locationX}, {formData.locationY}
               </p>
             )}
           </div>
+        )}
+
+        {placeSearchMessage && (
+          <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            {placeSearchMessage}
+          </p>
         )}
 
         {placeResults.length > 0 && (
