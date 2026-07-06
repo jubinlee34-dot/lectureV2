@@ -84,6 +84,22 @@ export default function CalendarPage() {
     setViewMonth(next.getMonth());
   };
 
+  const selectCalendarDate = (date: string | null) => {
+    setSelectedDate(date);
+    if (!date) {
+      setSelectedLectureId(null);
+      return;
+    }
+
+    const firstLecture = [...(lectureMap[date] ?? [])].sort((a, b) => {
+      const timeOrder = (a.startTime ?? "").localeCompare(b.startTime ?? "");
+      if (timeOrder !== 0) return timeOrder;
+      return a.title.localeCompare(b.title);
+    })[0];
+
+    setSelectedLectureId(firstLecture?.id ?? null);
+  };
+
   const calendarReturnTo = useMemo(
     () =>
       buildCalendarReturnTo({
@@ -256,7 +272,7 @@ export default function CalendarPage() {
             viewMonth={viewMonth}
             lectureMap={lectureMap}
             selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            onSelectDate={selectCalendarDate}
             onMoveMonth={moveMonth}
           />
         </section>
