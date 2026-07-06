@@ -53,6 +53,10 @@ function getBodyPreview(body: string) {
   return body.slice(0, 500);
 }
 
+function shouldExposeUpstreamBodyPreview() {
+  return process.env.VERCEL_ENV !== "production";
+}
+
 function mapPlace(document: KakaoPlaceDocument): KakaoPlaceSearchItem {
   const roadAddress = document.road_address_name || "";
   const jibunAddress = document.address_name || "";
@@ -90,7 +94,7 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
     console.error("Kakao place search failed", {
       status: response.status,
       query: cleanQuery,
-      bodyPreview,
+      upstreamBodyPreview: bodyPreview,
     });
     throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
   }
@@ -102,9 +106,9 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
     console.error("Kakao place search returned invalid JSON", {
       status: response.status,
       query: cleanQuery,
-      bodyPreview,
+      upstreamBodyPreview: bodyPreview,
     });
-    throw new HttpError("Kakao place search returned invalid JSON", 502, response.status, bodyPreview);
+    throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
   }
 }
 
@@ -125,7 +129,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error instanceof HttpError && error.upstreamStatus) {
       responseBody.upstreamStatus = error.upstreamStatus;
-      responseBody.upstreamBodyPreview = error.upstreamBodyPreview;
+      if (shouldExposeUpstreamBodyPreview()) {
+        responseBody.upstreamBodyPreview = error.upstreamBodyPreview;
+      }
     }
 
     res.status(status).json(responseBody);
