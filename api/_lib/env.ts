@@ -1,4 +1,4 @@
-import { HttpError } from "./http";
+import { HttpError } from "./http.js";
 
 export function hasKakaoRestApiKey() {
   return Boolean(process.env.KAKAO_REST_API_KEY);

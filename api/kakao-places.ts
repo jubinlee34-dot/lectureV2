@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getRequiredKakaoRestApiKey, hasKakaoRestApiKey } from "./_lib/env";
-import { HttpError } from "./_lib/http";
+import { getRequiredKakaoRestApiKey, hasKakaoRestApiKey } from "./_lib/env.js";
+import { HttpError } from "./_lib/http.js";
 import {
   fetchKakaoKeywordSearch,
   mapKakaoPlaceCandidate,
   type KakaoPlaceCandidate,
   type KakaoPlaceDocument,
-} from "./_lib/kakao";
+} from "./_lib/kakao.js";
 
 const KAKAO_REST_API_KEY_ERROR = "카카오 REST API 키가 설정되지 않았습니다.";
 const KAKAO_QUERY_REQUIRED_ERROR = "검색어를 입력하세요.";

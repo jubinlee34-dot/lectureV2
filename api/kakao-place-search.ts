@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getNormalizedKakaoRestApiKey } from "./_lib/env";
-import { HttpError, shouldExposeUpstreamBodyPreview } from "./_lib/http";
+import { getNormalizedKakaoRestApiKey } from "./_lib/env.js";
+import { HttpError, shouldExposeUpstreamBodyPreview } from "./_lib/http.js";
 import {
   fetchKakaoKeywordSearch,
   mapKakaoPlaceSearchItem,
   type KakaoPlaceDocument,
   type KakaoPlaceSearchItem,
-} from "./_lib/kakao";
+} from "./_lib/kakao.js";
 
 const KAKAO_REST_API_KEY_ERROR = "KAKAO_REST_API_KEY is not configured";
 

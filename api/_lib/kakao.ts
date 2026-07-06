@@ -1,4 +1,4 @@
-import { getBodyPreview, readResponseBody } from "./http";
+import { getBodyPreview, readResponseBody } from "./http.js";
 
 export interface KakaoPlaceDocument {
   id?: string;

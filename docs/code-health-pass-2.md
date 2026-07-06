@@ -37,6 +37,7 @@ Guardrails followed:
 - `/api/naver-directions?health=1`
 - `/api/kakao-places?health=1`
 - `/api/kakao-place-search?query=%EA%B4%91%EC%96%91%EB%A7%A4%ED%99%94%ED%9A%8C%EA%B4%80`
+- Vercel Preview: /api/kakao-place-search?query=%EB%8C%80%EC%A0%84%EA%B4%B4%EC%A0%95%EC%A4%91%ED%95%99%EA%B5%90 should return JSON, not FUNCTION_INVOCATION_FAILED.
 - Confirm Kakao place-search success items still include `id`, `place_name`, `road_address_name`, `address_name`, `address`, `x`, `y`, `phone`, and `place_url`.
 - Confirm production Kakao upstream failures do not include `upstreamBodyPreview` in client responses.
 
