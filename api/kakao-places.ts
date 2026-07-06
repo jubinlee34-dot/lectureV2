@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getRequiredKakaoRestApiKey, hasKakaoRestApiKey } from "./_lib/env.js";
 import { HttpError } from "./_lib/http.js";
 import {
+  buildKakaoKeywordSearchQueries,
   fetchKakaoKeywordSearch,
   mapKakaoPlaceCandidate,
   type KakaoPlaceCandidate,
@@ -22,28 +23,35 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
     throw new HttpError(KAKAO_QUERY_REQUIRED_ERROR, 400);
   }
 
-  const { url, response, body } = await fetchKakaoKeywordSearch(cleanQuery, apiKey, {
-    size: "10",
-    acceptJson: true,
-  });
-
-  if (!response.ok) {
-    console.error("Kakao Local API request failed", {
-      kakaoRestApiKeyExists: hasKakaoRestApiKey(),
-      kakaoApiUrl: url,
-      kakaoResponseStatus: response.status,
-      kakaoResponseBody: body,
+  for (const searchQuery of buildKakaoKeywordSearchQueries(cleanQuery)) {
+    const { url, response, body } = await fetchKakaoKeywordSearch(searchQuery, apiKey, {
+      size: "10",
+      acceptJson: true,
     });
 
-    if (response.status === 401 || response.status === 403) {
-      throw new HttpError(KAKAO_AUTH_ERROR, response.status);
+    if (!response.ok) {
+      console.error("Kakao Local API request failed", {
+        kakaoRestApiKeyExists: hasKakaoRestApiKey(),
+        kakaoApiUrl: url,
+        kakaoResponseStatus: response.status,
+        kakaoResponseBody: body,
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        throw new HttpError(KAKAO_AUTH_ERROR, response.status);
+      }
+
+      throw new HttpError(`Kakao Local API failed with status ${response.status}`, response.status);
     }
 
-    throw new HttpError(`Kakao Local API failed with status ${response.status}`, response.status);
+    const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
+    const documents = data.documents || [];
+    if (documents.length > 0) {
+      return documents.map(mapKakaoPlaceCandidate);
+    }
   }
 
-  const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
-  return (data.documents || []).map(mapKakaoPlaceCandidate);
+  return [];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -32,6 +32,8 @@ export interface KakaoPlaceCandidate {
 }
 
 const KAKAO_LOCAL_KEYWORD_SEARCH_URL = "https://dapi.kakao.com/v2/local/search/keyword.json";
+const KAKAO_MEMO_WORDS = ["지역아동센터", "지역아동", "강의", "교육", "수업"];
+const MAX_KAKAO_FALLBACK_QUERIES = 3;
 
 interface KakaoKeywordSearchOptions {
   size?: string;
@@ -63,6 +65,48 @@ export function mapKakaoPlaceCandidate(document: KakaoPlaceDocument): KakaoPlace
     x: document.x || "",
     y: document.y || "",
   };
+}
+
+function normalizeKakaoSearchQuery(query: string) {
+  return query.trim().replace(/\s+/g, " ");
+}
+
+function removeParentheticalText(query: string) {
+  return normalizeKakaoSearchQuery(query.replace(/\s*[([{（［【].*?[)\]}）］】]\s*/g, " "));
+}
+
+function removeMemoWords(query: string) {
+  return normalizeKakaoSearchQuery(
+    KAKAO_MEMO_WORDS.reduce((nextQuery, word) => nextQuery.replace(new RegExp(`\\s*${word}\\s*`, "g"), " "), query)
+  );
+}
+
+function removeLastToken(query: string) {
+  const tokens = normalizeKakaoSearchQuery(query).split(" ").filter(Boolean);
+  if (tokens.length < 2) {
+    return "";
+  }
+  return tokens.slice(0, -1).join(" ");
+}
+
+export function buildKakaoKeywordSearchQueries(query: string) {
+  const cleanQuery = normalizeKakaoSearchQuery(query);
+  const candidates = [
+    cleanQuery,
+    removeParentheticalText(cleanQuery),
+    removeMemoWords(removeParentheticalText(cleanQuery)),
+    removeLastToken(removeMemoWords(removeParentheticalText(cleanQuery))),
+    removeLastToken(removeParentheticalText(cleanQuery)),
+  ];
+  const uniqueCandidates: string[] = [];
+
+  for (const candidate of candidates) {
+    if (candidate && !uniqueCandidates.includes(candidate)) {
+      uniqueCandidates.push(candidate);
+    }
+  }
+
+  return [uniqueCandidates[0], ...uniqueCandidates.slice(1, MAX_KAKAO_FALLBACK_QUERIES + 1)].filter(Boolean);
 }
 
 export async function fetchKakaoKeywordSearch(query: string, apiKey: string, options: KakaoKeywordSearchOptions = {}) {

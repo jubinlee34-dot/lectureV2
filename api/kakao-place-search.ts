@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getNormalizedKakaoRestApiKey } from "./_lib/env.js";
 import { HttpError, shouldExposeUpstreamBodyPreview } from "./_lib/http.js";
 import {
+  buildKakaoKeywordSearchQueries,
   fetchKakaoKeywordSearch,
   mapKakaoPlaceSearchItem,
   type KakaoPlaceDocument,
@@ -20,28 +21,35 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
     throw new HttpError("query is required", 400);
   }
 
-  const { response, body, bodyPreview } = await fetchKakaoKeywordSearch(cleanQuery, apiKey);
+  for (const searchQuery of buildKakaoKeywordSearchQueries(cleanQuery)) {
+    const { response, body, bodyPreview } = await fetchKakaoKeywordSearch(searchQuery, apiKey);
 
-  if (!response.ok) {
-    console.error("Kakao place search failed", {
-      status: response.status,
-      query: cleanQuery,
-      upstreamBodyPreview: bodyPreview,
-    });
-    throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
+    if (!response.ok) {
+      console.error("Kakao place search failed", {
+        status: response.status,
+        query: searchQuery,
+        upstreamBodyPreview: bodyPreview,
+      });
+      throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
+    }
+
+    try {
+      const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
+      const documents = data.documents || [];
+      if (documents.length > 0) {
+        return documents.map(mapKakaoPlaceSearchItem);
+      }
+    } catch {
+      console.error("Kakao place search returned invalid JSON", {
+        status: response.status,
+        query: searchQuery,
+        upstreamBodyPreview: bodyPreview,
+      });
+      throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
+    }
   }
 
-  try {
-    const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
-    return (data.documents || []).map(mapKakaoPlaceSearchItem);
-  } catch {
-    console.error("Kakao place search returned invalid JSON", {
-      status: response.status,
-      query: cleanQuery,
-      upstreamBodyPreview: bodyPreview,
-    });
-    throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
-  }
+  return [];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

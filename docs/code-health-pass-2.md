@@ -25,6 +25,7 @@ Guardrails followed:
   - `kakao.ts`: shared Kakao keyword-search fetch helper and response mappers.
 - Refactored `api/kakao-place-search.ts` to reuse the shared helpers while keeping the success response `{ ok, query, items }` and production error response policy unchanged.
 - Refactored `api/kakao-places.ts` to reuse the shared helpers while keeping the existing `{ places }`, health, and `{ error }` response shapes unchanged.
+- Added Kakao place search fallback queries that run only after the original keyword returns zero documents. Fallbacks normalize whitespace, remove parenthetical text, remove lecture memo-like words, and trim the final token with a maximum of three fallback attempts.
 
 ## Deferred Candidates
 
@@ -38,6 +39,9 @@ Guardrails followed:
 - `/api/kakao-places?health=1`
 - `/api/kakao-place-search?query=%EA%B4%91%EC%96%91%EB%A7%A4%ED%99%94%ED%9A%8C%EA%B4%80`
 - Vercel Preview: /api/kakao-place-search?query=%EB%8C%80%EC%A0%84%EA%B4%B4%EC%A0%95%EC%A4%91%ED%95%99%EA%B5%90 should return JSON, not FUNCTION_INVOCATION_FAILED.
+- `/api/kakao-place-search?query=%EB%B3%B4%EC%84%B1%EC%A2%85%ED%95%A9%EC%82%AC%ED%9A%8C%EB%B3%B5%EC%A7%80%EA%B4%80` should return Kakao place candidates when available.
+- `/api/kakao-place-search?query=%EB%B3%B4%EC%84%B1%EC%A2%85%ED%95%A9%EC%82%AC%ED%9A%8C%EB%B3%B5%EC%A7%80%EA%B4%80%20%EC%A7%80%EC%97%AD%EC%95%84%EB%8F%99` should fall back to the base place name when the original query has zero documents.
+- In the app, entering a place name should still allow selecting a road address when Kakao returns one.
 - Confirm Kakao place-search success items still include `id`, `place_name`, `road_address_name`, `address_name`, `address`, `x`, `y`, `phone`, and `place_url`.
 - Confirm production Kakao upstream failures do not include `upstreamBodyPreview` in client responses.
 
