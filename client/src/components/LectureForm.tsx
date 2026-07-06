@@ -605,11 +605,11 @@ function AiLectureParserPanel({
 
 function ParserPreview({ parsed }: { parsed: ParsedLectureFields }) {
   const extracted = parserPreviewFields
-    .filter((field) => parsed[field] !== undefined && parsed[field] !== "" && parsed[field] !== null)
+    .filter((field) => hasParserValue(parsed[field]))
     .map((field) => ({ field, label: parserFieldLabels[field] ?? String(field), value: formatParserValue(field, parsed[field]) }));
 
   const missing = parserPreviewFields
-    .filter((field) => parsed[field] === undefined || parsed[field] === "" || parsed[field] === null)
+    .filter((field) => !hasParserValue(parsed[field]))
     .map((field) => parserFieldLabels[field] ?? String(field));
 
   return (
@@ -643,8 +643,12 @@ function ParserPreview({ parsed }: { parsed: ParsedLectureFields }) {
   );
 }
 
+function hasParserValue(value: LectureFormData[keyof LectureFormData] | undefined): boolean {
+  return value !== undefined && value !== null && value !== "";
+}
+
 function formatParserValue(field: keyof LectureFormData, value: LectureFormData[keyof LectureFormData] | undefined): string {
-  if (value === undefined || value === null || value === "") return "";
+  if (!hasParserValue(value)) return "";
   if (field === "participants") return `${value}명`;
   if (field === "fee") return `${Number(value).toLocaleString("ko-KR")}원`;
   return String(value);
