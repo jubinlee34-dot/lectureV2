@@ -25,20 +25,32 @@ interface KakaoPlaceSearchItem {
 
 class HttpError extends Error {
   status: number;
+  upstreamStatus?: number;
+  upstreamBodyPreview?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, upstreamStatus?: number, upstreamBodyPreview?: string) {
     super(message);
     this.name = "HttpError";
     this.status = status;
+    this.upstreamStatus = upstreamStatus;
+    this.upstreamBodyPreview = upstreamBodyPreview;
   }
 }
 
 function getKakaoRestApiKey() {
-  const apiKey = process.env.KAKAO_REST_API_KEY;
+  const apiKey = process.env.KAKAO_REST_API_KEY?.trim();
   if (!apiKey) {
     throw new HttpError("KAKAO_REST_API_KEY is not configured", 500);
   }
-  return apiKey;
+  const normalizedKey = apiKey.replace(/^KakaoAK\s+/i, "").trim();
+  if (!normalizedKey) {
+    throw new HttpError("KAKAO_REST_API_KEY is not configured", 500);
+  }
+  return normalizedKey;
+}
+
+function getBodyPreview(body: string) {
+  return body.slice(0, 500);
 }
 
 function mapPlace(document: KakaoPlaceDocument): KakaoPlaceSearchItem {
@@ -72,17 +84,28 @@ async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPl
     },
   });
   const body = await response.text().catch(() => "");
+  const bodyPreview = getBodyPreview(body);
 
   if (!response.ok) {
     console.error("Kakao place search failed", {
       status: response.status,
       query: cleanQuery,
+      bodyPreview,
     });
-    throw new HttpError("Kakao place search failed", 502);
+    throw new HttpError("Kakao place search failed", 502, response.status, bodyPreview);
   }
 
-  const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
-  return (data.documents || []).map(mapPlace);
+  try {
+    const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
+    return (data.documents || []).map(mapPlace);
+  } catch {
+    console.error("Kakao place search returned invalid JSON", {
+      status: response.status,
+      query: cleanQuery,
+      bodyPreview,
+    });
+    throw new HttpError("Kakao place search returned invalid JSON", 502, response.status, bodyPreview);
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -98,6 +121,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof Error ? error.message : "Internal Server Error";
-    res.status(status).json({ ok: false, error: message });
+    const responseBody: Record<string, unknown> = { ok: false, error: message };
+
+    if (error instanceof HttpError && error.upstreamStatus) {
+      responseBody.upstreamStatus = error.upstreamStatus;
+      responseBody.upstreamBodyPreview = error.upstreamBodyPreview;
+    }
+
+    res.status(status).json(responseBody);
   }
 }
