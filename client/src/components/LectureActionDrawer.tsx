@@ -67,6 +67,14 @@ const modeDescription: Record<DrawerMode, string> = {
   blog: "홍보 블로그 초안을 작성하고 복사합니다.",
 };
 
+const modeIcon: Record<DrawerMode, React.ReactNode> = {
+  detail: <FileText className="h-4 w-4 text-primary" />,
+  edit: <FilePenLine className="h-4 w-4 text-primary" />,
+  tasks: <ClipboardCheck className="h-4 w-4 text-primary" />,
+  "contact-logs": <MessageSquare className="h-4 w-4 text-primary" />,
+  report: <FileText className="h-4 w-4 text-primary" />,
+  blog: <MessageSquare className="h-4 w-4 text-primary" />,
+};
 export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: LectureActionDrawerProps) {
   const { getLectureById, updateLecture } = useLectures();
   const { contactLogs } = useSupabase();
@@ -103,12 +111,7 @@ export function LectureActionDrawer({ lectureId, mode, open, onOpenChange }: Lec
       <SheetContent side="right" className="inset-0 h-dvh w-screen max-w-none overflow-y-auto p-0 sm:inset-y-0 sm:left-auto sm:w-[min(720px,92vw)] sm:max-w-none">
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2 text-base">
-            {drawerMode === "detail" && <FileText className="h-4 w-4 text-primary" />}
-            {drawerMode === "edit" && <FilePenLine className="h-4 w-4 text-primary" />}
-            {drawerMode === "tasks" && <ClipboardCheck className="h-4 w-4 text-primary" />}
-            {drawerMode === "contact-logs" && <MessageSquare className="h-4 w-4 text-primary" />}
-            {drawerMode === "report" && <FileText className="h-4 w-4 text-primary" />}
-            {drawerMode === "blog" && <MessageSquare className="h-4 w-4 text-primary" />}
+            {modeIcon[drawerMode]}
             {modeTitle[drawerMode]}
           </SheetTitle>
           <SheetDescription>{modeDescription[drawerMode]}</SheetDescription>
