@@ -1,89 +1,57 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { getRequiredKakaoRestApiKey, hasKakaoRestApiKey } from "./_lib/env.js";
+import { HttpError } from "./_lib/http.js";
+import {
+  buildKakaoKeywordSearchQueries,
+  fetchKakaoKeywordSearch,
+  mapKakaoPlaceCandidate,
+  type KakaoPlaceCandidate,
+  type KakaoPlaceDocument,
+} from "./_lib/kakao.js";
 
-interface KakaoPlaceDocument {
-  place_name?: string;
-  road_address_name?: string;
-  address_name?: string;
-  x?: string;
-  y?: string;
-}
-
-interface KakaoPlaceCandidate {
-  placeName: string;
-  roadAddress: string;
-  jibunAddress: string;
-  x: string;
-  y: string;
-}
-
-class HttpError extends Error {
-  status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "HttpError";
-    this.status = status;
-  }
-}
-
-function hasKakaoRestApiKey() {
-  return Boolean(process.env.KAKAO_REST_API_KEY);
-}
+const KAKAO_REST_API_KEY_ERROR = "카카오 REST API 키가 설정되지 않았습니다.";
+const KAKAO_QUERY_REQUIRED_ERROR = "검색어를 입력하세요.";
+const KAKAO_AUTH_ERROR = "카카오 인증 실패: REST API 키 설정을 확인하세요.";
 
 function getKakaoRestApiKey() {
-  const apiKey = process.env.KAKAO_REST_API_KEY;
-  if (!apiKey) {
-    throw new HttpError("카카오 REST API 키가 설정되지 않았습니다.", 500);
-  }
-  return apiKey;
-}
-
-function mapPlace(document: KakaoPlaceDocument): KakaoPlaceCandidate {
-  return {
-    placeName: document.place_name || "",
-    roadAddress: document.road_address_name || "",
-    jibunAddress: document.address_name || "",
-    x: document.x || "",
-    y: document.y || "",
-  };
+  return getRequiredKakaoRestApiKey(KAKAO_REST_API_KEY_ERROR);
 }
 
 async function searchKakaoPlaces(query: string, apiKey: string): Promise<KakaoPlaceCandidate[]> {
   const cleanQuery = query.trim();
   if (!cleanQuery) {
-    throw new HttpError("검색어를 입력하세요.", 400);
+    throw new HttpError(KAKAO_QUERY_REQUIRED_ERROR, 400);
   }
 
-  const params = new URLSearchParams({
-    query: cleanQuery,
-    size: "10",
-  });
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?${params.toString()}`;
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `KakaoAK ${apiKey}`,
-      Accept: "application/json",
-    },
-  });
-  const body = await response.text().catch(() => "");
-
-  if (!response.ok) {
-    console.error("Kakao Local API request failed", {
-      kakaoRestApiKeyExists: hasKakaoRestApiKey(),
-      kakaoApiUrl: url,
-      kakaoResponseStatus: response.status,
-      kakaoResponseBody: body,
+  for (const searchQuery of buildKakaoKeywordSearchQueries(cleanQuery)) {
+    const { url, response, body } = await fetchKakaoKeywordSearch(searchQuery, apiKey, {
+      size: "10",
+      acceptJson: true,
     });
 
-    if (response.status === 401 || response.status === 403) {
-      throw new HttpError("카카오 인증 실패: REST API 키 설정을 확인하세요.", response.status);
+    if (!response.ok) {
+      console.error("Kakao Local API request failed", {
+        kakaoRestApiKeyExists: hasKakaoRestApiKey(),
+        kakaoApiUrl: url,
+        kakaoResponseStatus: response.status,
+        kakaoResponseBody: body,
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        throw new HttpError(KAKAO_AUTH_ERROR, response.status);
+      }
+
+      throw new HttpError(`Kakao Local API failed with status ${response.status}`, response.status);
     }
 
-    throw new HttpError(`Kakao Local API failed with status ${response.status}`, response.status);
+    const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
+    const documents = data.documents || [];
+    if (documents.length > 0) {
+      return documents.map(mapKakaoPlaceCandidate);
+    }
   }
 
-  const data = JSON.parse(body) as { documents?: KakaoPlaceDocument[] };
-  return (data.documents || []).map(mapPlace);
+  return [];
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
