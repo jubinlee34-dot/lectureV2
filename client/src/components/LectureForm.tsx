@@ -119,6 +119,7 @@ export function LectureForm({
   const [newDateInput, setNewDateInput] = useState("");
   const [aiInput, setAiInput] = useState("");
   const [parserPreview, setParserPreview] = useState<ParsedLectureFields | null>(null);
+  const [isAdditionalInfoOpen, setIsAdditionalInfoOpen] = useState(() => hasLectureAdditionalInfo(initialData));
 
   const isEdit = Boolean(initialData);
   const shouldShowAiParser = showAiParser ?? !isEdit;
@@ -127,7 +128,8 @@ export function LectureForm({
     setFormData(buildInitialForm(initialData, defaultDate));
     setErrors({});
     setPlaceResults([]);
-  }, [initialData?.id, defaultDate]);
+    setIsAdditionalInfoOpen(hasLectureAdditionalInfo(initialData));
+  }, [initialData, defaultDate]);
 
   const setField = (field: keyof LectureFormData, value: string | number | boolean | null) => {
     setFormData((prev) => {
@@ -309,27 +311,41 @@ export function LectureForm({
         />
       )}
 
-      <Section title="강의 기본 정보">
+      <Section title="강의 핵심 정보">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="강의명" required error={errors.title}>
             <Input value={formData.title} onChange={(e) => setField("title", e.target.value)} placeholder="예: AI 문서 간소화" />
           </Field>
-          <Field label="교육주제" error={errors.topic}>
-            <Input value={formData.topic} onChange={(e) => setField("topic", e.target.value)} placeholder="예: 디지털 역량 강화" />
-          </Field>
-
           <Field label="기관명" error={errors.organization}>
             <Input value={formData.organization} onChange={(e) => setField("organization", e.target.value)} placeholder="예: 전사협" />
           </Field>
+
           <Field label="대상" error={errors.target}>
             <Input value={formData.target} onChange={(e) => setField("target", e.target.value)} placeholder="예: 실무자 20명" />
           </Field>
-
-          <Field label="담당자" error={errors.managerName} description="정보가 없으면 저장 시 '미정'으로 저장됩니다.">
-            <Input value={formData.managerName} onChange={(e) => setField("managerName", e.target.value)} placeholder="예: 김수환 또는 미정" />
+          <Field label="수강생 인원수" description="대시보드와 월별 통계에서 사용하는 기존 participants 필드에 저장됩니다.">
+            <Input
+              type="number"
+              min={0}
+              value={formData.participants}
+              onChange={(e) => setField("participants", Number(e.target.value || 0))}
+              placeholder="예: 20"
+            />
           </Field>
-          <Field label="담당자 연락처" error={errors.managerPhone}>
-            <Input type="tel" value={formData.managerPhone} onChange={(e) => setField("managerPhone", e.target.value)} placeholder="예: 010-1234-5678 또는 빈 값" />
+        </div>
+      </Section>
+
+      <Section title="일정 및 장소">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="강의일자" required error={errors.date}>
+            <Input type="date" value={formData.date} onChange={(e) => setField("date", e.target.value)} />
+          </Field>
+          <Field label="강의시간" error={errors.startTime || errors.endTime}>
+            <div className="flex items-center gap-2">
+              <Input type="time" value={formData.startTime || ""} onChange={(e) => setField("startTime", e.target.value)} />
+              <span className="text-sm font-semibold text-muted-foreground">~</span>
+              <Input type="time" value={formData.endTime || ""} onChange={(e) => setField("endTime", e.target.value)} />
+            </div>
           </Field>
 
           <Field label="장소명" error={errors.locationName}>
@@ -354,27 +370,6 @@ export function LectureForm({
                 주소 찾기
               </Button>
             </div>
-          </Field>
-
-          <Field label="강의일자" required error={errors.date}>
-            <Input type="date" value={formData.date} onChange={(e) => setField("date", e.target.value)} />
-          </Field>
-          <Field label="강의시간" error={errors.startTime || errors.endTime}>
-            <div className="flex items-center gap-2">
-              <Input type="time" value={formData.startTime || ""} onChange={(e) => setField("startTime", e.target.value)} />
-              <span className="text-sm font-semibold text-muted-foreground">~</span>
-              <Input type="time" value={formData.endTime || ""} onChange={(e) => setField("endTime", e.target.value)} />
-            </div>
-          </Field>
-
-          <Field label="수강생 인원수" description="대시보드와 월별 통계에서 사용하는 기존 participants 필드에 저장됩니다.">
-            <Input
-              type="number"
-              min={0}
-              value={formData.participants}
-              onChange={(e) => setField("participants", Number(e.target.value || 0))}
-              placeholder="예: 20"
-            />
           </Field>
         </div>
 
@@ -417,20 +412,49 @@ export function LectureForm({
         )}
       </Section>
 
-      <Section title="추가 메모">
-        <div className="space-y-4">
-          <Field label="준비물">
-            <Textarea value={formData.preparationItems || ""} onChange={(e) => setField("preparationItems", e.target.value)} rows={3} placeholder="예: 노트북, HDMI 어댑터, 실습 자료" />
+      <Section title="담당자/정산">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="담당자" error={errors.managerName} description="정보가 없으면 저장 시 '미정'으로 저장됩니다.">
+            <Input value={formData.managerName} onChange={(e) => setField("managerName", e.target.value)} placeholder="예: 김수환 또는 미정" />
           </Field>
-          <Field label="요청사항">
-            <Textarea value={formData.requestMemo || ""} onChange={(e) => setField("requestMemo", e.target.value)} rows={3} placeholder="기관 요청사항이나 강의 전 확인 내용을 적어주세요." />
+          <Field label="담당자 연락처" error={errors.managerPhone}>
+            <Input type="tel" value={formData.managerPhone} onChange={(e) => setField("managerPhone", e.target.value)} placeholder="예: 010-1234-5678 또는 빈 값" />
           </Field>
-          <Field label="내부 메모">
-            <Textarea value={formData.instructorMemo} onChange={(e) => setField("instructorMemo", e.target.value)} rows={3} placeholder="강사용 내부 메모를 적어주세요." />
+          <Field label="강사료">
+            <Input
+              type="number"
+              min={0}
+              value={formData.fee}
+              onChange={(e) => setField("fee", Number(e.target.value || 0))}
+              placeholder="예: 300000"
+            />
           </Field>
         </div>
       </Section>
 
+      <Section title="추가 정보">
+        <details
+          className="rounded-md border border-border bg-muted/10 p-4"
+          open={isAdditionalInfoOpen}
+          onToggle={(event) => setIsAdditionalInfoOpen(event.currentTarget.open)}
+        >
+          <summary className="cursor-pointer text-sm font-semibold text-foreground">선택 입력</summary>
+          <div className="mt-4 space-y-4">
+            <Field label="교육주제" error={errors.topic}>
+              <Input value={formData.topic} onChange={(e) => setField("topic", e.target.value)} placeholder="예: 디지털 역량 강화" />
+            </Field>
+            <Field label="준비물">
+              <Textarea value={formData.preparationItems || ""} onChange={(e) => setField("preparationItems", e.target.value)} rows={3} placeholder="예: 노트북, HDMI 어댑터, 실습 자료" />
+            </Field>
+            <Field label="요청사항">
+              <Textarea value={formData.requestMemo || ""} onChange={(e) => setField("requestMemo", e.target.value)} rows={3} placeholder="기관 요청사항이나 강의 전 확인 내용을 적어주세요." />
+            </Field>
+            <Field label="내부 메모">
+              <Textarea value={formData.instructorMemo} onChange={(e) => setField("instructorMemo", e.target.value)} rows={3} placeholder="강사용 내부 메모를 적어주세요." />
+            </Field>
+          </div>
+        </details>
+      </Section>
       {!initialData && (
         <Section title="반복 설정">
           <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
@@ -524,6 +548,10 @@ function parseDuration(duration: string | undefined) {
     return { startTime: startTime || "09:00", endTime: endTime || "11:00" };
   }
   return { startTime: "09:00", endTime: "11:00" };
+}
+
+function hasLectureAdditionalInfo(lecture?: Partial<LectureFormData>) {
+  return Boolean(lecture?.topic || lecture?.preparationItems || lecture?.requestMemo || lecture?.instructorMemo);
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
