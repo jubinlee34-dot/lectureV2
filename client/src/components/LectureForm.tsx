@@ -27,8 +27,8 @@ const emptyForm: LectureFormData = {
   target: "",
   date: "",
   duration: "",
-  startTime: "09:00",
-  endTime: "11:00",
+  startTime: "",
+  endTime: "",
   participants: 0,
   location: "",
   locationName: "",
@@ -272,7 +272,7 @@ export function LectureForm({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const duration = `${formData.startTime || ""} ~ ${formData.endTime || ""}`.trim();
+    const duration = formData.startTime && formData.endTime ? `${formData.startTime} ~ ${formData.endTime}` : "";
     const finalData: LectureFormData = {
       ...formData,
       duration,
@@ -545,9 +545,9 @@ function buildInitialForm(initialData?: Lecture, defaultDate?: string): LectureF
 function parseDuration(duration: string | undefined) {
   if (duration?.includes("~")) {
     const [startTime, endTime] = duration.split("~").map((value) => value.trim());
-    return { startTime: startTime || "09:00", endTime: endTime || "11:00" };
+    return { startTime: startTime || "", endTime: endTime || "" };
   }
-  return { startTime: "09:00", endTime: "11:00" };
+  return { startTime: "", endTime: "" };
 }
 
 function hasLectureAdditionalInfo(lecture?: Partial<LectureFormData>) {

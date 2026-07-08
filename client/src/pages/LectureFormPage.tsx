@@ -15,6 +15,7 @@ export default function LectureFormPage() {
   const { addLecture, updateLecture, getLectureById } = useLectures();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastCreatedLecture, setLastCreatedLecture] = useState<Lecture | null>(null);
+  const [lastCreatedCount, setLastCreatedCount] = useState(0);
   const [formKey, setFormKey] = useState(0);
   const isEdit = Boolean(params.id);
   const lecture = isEdit && params.id ? getLectureById(params.id) : undefined;
@@ -25,6 +26,7 @@ export default function LectureFormPage() {
   const handleSubmit = async (data: LectureFormData, recurringList?: LectureFormData[]) => {
     setIsSubmitting(true);
     setLastCreatedLecture(null);
+    setLastCreatedCount(0);
 
     try {
       if (isEdit && params.id) {
@@ -46,6 +48,10 @@ export default function LectureFormPage() {
       }
 
       setLastCreatedLecture(firstCreated);
+      setLastCreatedCount(createItems.length);
+      if (queryDate) navigate("/lectures/new", { replace: true });
+      setFormKey((key) => key + 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       toast.success(
         createItems.length > 1
           ? `${createItems.length}개의 반복 강의가 등록되었습니다.`
@@ -61,6 +67,8 @@ export default function LectureFormPage() {
 
   const resetForNextLecture = () => {
     setLastCreatedLecture(null);
+    setLastCreatedCount(0);
+    if (queryDate) navigate("/lectures/new", { replace: true });
     setFormKey((key) => key + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -95,9 +103,9 @@ export default function LectureFormPage() {
 
       {!isEdit && lastCreatedLecture && (
         <section className="mb-5 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-          <p className="font-semibold">강의가 등록되었습니다.</p>
+          <p className="font-semibold">{lastCreatedCount > 1 ? `${lastCreatedCount}개의 반복 강의가 등록되었습니다.` : "강의가 등록되었습니다."}</p>
           <p className="mt-1 text-green-800">
-            자동으로 업무관리나 강의목록으로 이동하지 않습니다. 다음 작업을 선택해 주세요.
+            계속 새 강의를 입력하거나, 방금 등록한 강의를 확인할 수 있습니다.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={resetForNextLecture}>
