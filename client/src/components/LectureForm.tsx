@@ -607,9 +607,10 @@ function AiLectureParserDialog({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           rows={7}
-          placeholder="예: 광주 전남대 진리관에서 대학생 20명 대상으로 AI활용(HINT) 교육을 2차 주제로 진행함. 오전 9시부터 오후 18시이고 준비물은 노트북과 HDMI 어댑터임."
+          placeholder="예) 8월 5일 광주 전남대학교 진리관에서 대학생 20명 대상으로 AI 활용(HINT) 2차 강의를 진행합니다. 오전 9시부터 오후 6시까지이며, 담당자는 김수환 010-1234-5678, 준비물은 노트북입니다."
           className="bg-background text-sm"
         />
+        <p className="text-xs text-muted-foreground">자유 문장으로 입력해도 됩니다. 날짜 · 강의명 · 대상 · 시간 · 장소 · 인원 · 담당자 · 연락처 · 메모를 자동으로 찾습니다.</p>
         {preview && <p className="text-xs text-muted-foreground">{buildParserSummary(preview)}</p>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onReset}>AI 입력 지우기</Button>

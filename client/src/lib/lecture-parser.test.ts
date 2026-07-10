@@ -63,6 +63,55 @@ function createLecture(overrides: Partial<Lecture> = {}): Lecture {
 }
 
 describe("parseLectureTextToForm", () => {
+  it("parses the reported natural lecture sentence with underscores", () => {
+    const parsed = parseLectureTextToForm(
+      "광주 전남대학교 진리관 대학생 대상 20명_HSD 기관_8월 5일 오전 9시부터 오후 6시까지, 강의명 AI활용(HINT) 2차, 메모는 7월23일 강의안 받음"
+    );
+
+    expect(parsed).toMatchObject({
+      date: "2026-08-05",
+      title: "AI 활용(HINT) 2차",
+      target: "대학생",
+      participants: 20,
+      startTime: "09:00",
+      endTime: "18:00",
+      duration: "09:00 ~ 18:00",
+      locationName: "광주 전남대학교 진리관",
+      location: "광주 전남대학교 진리관",
+      instructorMemo: "7월23일 강의안 받음",
+    });
+    expect(parsed.organization).toBeUndefined();
+    expect(parsed.fee).toBeUndefined();
+    expect(parsed.managerName).toBeUndefined();
+    expect(parsed.managerPhone).toBeUndefined();
+  });
+
+  it.each([
+    ["강의명 AI활용(HINT) 2차", "AI 활용(HINT) 2차"],
+    ["교육명 생성형 AI 교육", "생성형 AI 교육"],
+    ["제목 디지털 리터러시 특강", "디지털 리터러시 특강"],
+  ])("extracts loose title labels from %s", (input, expectedTitle) => {
+    expect(parseLectureTextToForm(input).title).toBe(expectedTitle);
+  });
+
+  it.each([
+    "광주 전남대학교 진리관 대학생 대상 20명",
+    "대학생 20명 대상",
+    "대상 대학생 20명",
+    "대학생 20명 대상으로",
+  ])("splits target and participants from %s", (input) => {
+    const parsed = parseLectureTextToForm(input);
+
+    expect(parsed.target).toBe("대학생");
+    expect(parsed.participants).toBe(20);
+  });
+
+  it.each([
+    "대학생 20명 대상으로 AI 활용 교육을 하기로 했습니다.",
+    "대학생 20명 대상으로 AI 활용 교육을 하겠습니다.",
+  ])("keeps PR 19 course phrase endings for %s", (input) => {
+    expect(parseLectureTextToForm(input).title).toBe("AI 활용 교육");
+  });
   it("extracts title, target, participants, time, location, and memo from a complete sentence", () => {
     const parsed = parseLectureTextToForm(
       "광주 전남대 진리관에서 대학생 20명 대상으로 AI활용(HINT) 교육을 2차 주제로 진행함. 오전 9시부터 오후 18시이고 준비물은 노트북과 HDMI 어댑터임."

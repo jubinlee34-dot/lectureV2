@@ -59,7 +59,7 @@ export const localLectureTextParser: LectureTextParser = {
 };
 
 function normalizeText(input: string): string {
-  return input.replace(/\s+/g, " ").trim();
+  return input.replace(/_+/g, ", ").replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").trim();
 }
 
 function parseDate(text: string): string | null {
@@ -129,12 +129,13 @@ function parsePhone(text: string): string | null {
 
 function parseTitle(text: string): string | null {
   const explicit = parseLabeledValue(text, ["제목", "강의명", "교육명"]);
-  return explicit ? cleanLectureTitle(explicit) : null;
+  const loose = parseLooseTitleLabel(text);
+  return explicit ? cleanLectureTitle(explicit) : loose;
 }
 
 function parseCoursePhrase(text: string): CoursePhrase | null {
-  const targetCourse = text.match(/대상으로\s*([^,.]{2,70}?\s*(?:수업|교육|강의))\s*(?:을|를)?(?:\s*(\d+)\s*차\s*주제로)?\s*(?:진행|실시|예정|합니다|했습니다|함|$)/);
-  const generalCourse = text.match(/([^,.]{2,70}?\s*(?:수업|교육|강의))\s*(?:을|를)?(?:\s*(\d+)\s*차\s*주제로)?\s*(?:진행|실시|예정|합니다|했습니다|함|$)/);
+  const targetCourse = text.match(/대상으로\s*([^,.]{2,70}?\s*(?:수업|교육|강의))\s*(?:을|를)?(?:\s*(\d+)\s*차\s*주제로)?\s*(?:하기로|진행|실시|예정|합니다|하겠습니다|했습니다|함|$)/);
+  const generalCourse = text.match(/([^,.]{2,70}?\s*(?:수업|교육|강의))\s*(?:을|를)?(?:\s*(\d+)\s*차\s*주제로)?\s*(?:하기로|진행|실시|예정|합니다|하겠습니다|했습니다|함|$)/);
   const raw = targetCourse?.[1] || generalCourse?.[1];
   if (!raw) return null;
 
@@ -146,7 +147,10 @@ function parseCoursePhrase(text: string): CoursePhrase | null {
 
 function parseTarget(text: string): ParsedTarget {
   const explicit = parseLabeledValue(text, ["대상", "교육대상"]);
-  const freeform = text.match(/([가-힣A-Za-z0-9\s]+?\d{0,4}\s*명)\s*(?:을\s*)?대상으로/);
+  const freeform =
+    text.match(/([가-힣A-Za-z0-9\s]+?\s*대상\s*\d{1,4}\s*명)/) ||
+    text.match(/([가-힣A-Za-z0-9\s]+?\s*\d{1,4}\s*명\s*대상(?:으로)?)/) ||
+    text.match(/대상\s+([가-힣A-Za-z0-9\s]+?\s*\d{1,4}\s*명)/);
   const raw = explicit || freeform?.[1];
   if (!raw) return { target: null, participants: null };
 
@@ -166,9 +170,47 @@ function parseLocationName(text: string): string | null {
   if (explicit) return cleanLocationName(explicit);
 
   const atPlace = text.match(/([^,.]{2,70}?)(?:에서|교육장에서)\s*(?:[^,.]*?(?:대상|교육|강의|수업|진행|실시))/);
-  if (!atPlace) return null;
+  if (atPlace) return cleanLocationName(atPlace[1]);
 
-  return cleanLocationName(atPlace[1]);
+  return parseLocationBeforeTarget(text);
+}
+
+function parseLooseTitleLabel(text: string): string | null {
+  const labels = ["강의명", "교육명", "제목"];
+  const escaped = labels.map(escapeRegExp).join("|");
+  const nextLabel = "(?=\\s*(?:기관명|기관|주최|교육처|의뢰처|제목|강의명|교육명|교육주제|주제|대상|교육대상|장소명|장소|교육장|강의장소|강의일자|날짜|강의시간|시간|담당자|연락처|준비물|준비|기관 요청사항|요청사항|요청|유의사항|참고사항|참고|내부 메모|메모)\\s*(?:은|는|:|\\s))";
+  const match = text.match(new RegExp(`(?:^|[,\\s])(?:${escaped})(?!\\s*(?:은|는|:))\\s+([^,.]+?)(?:,|\\.|${nextLabel}|$)`));
+  return match ? cleanLectureTitle(match[1]) : null;
+}
+
+function parseLocationBeforeTarget(text: string): string | null {
+  for (const segment of text.split(/[,.]/)) {
+    if (/(강의명|교육명|제목|기관명|강의일자|날짜|강의시간|시간|메모|준비물|요청사항)/.test(segment)) continue;
+
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    const targetIndex = tokens.findIndex((token) => token === "대상");
+    if (targetIndex < 2) continue;
+
+    const lastFacilityIndex = findLastFacilityTokenIndex(tokens.slice(0, targetIndex));
+    if (lastFacilityIndex < 0 || lastFacilityIndex >= targetIndex - 1) continue;
+
+    const location = cleanLocationName(tokens.slice(0, lastFacilityIndex + 1).join(" "));
+    if (location) return location;
+  }
+
+  return null;
+}
+
+function findLastFacilityTokenIndex(tokens: string[]): number {
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    if (isFacilityToken(tokens[index])) return index;
+  }
+  return -1;
+}
+
+function isFacilityToken(token: string): boolean {
+  const facilityEndings = ["대학교", "대학", "학교", "진리관", "복지관", "센터", "교육원", "도서관", "교육실", "강의실", "회의실", "관"];
+  return facilityEndings.some((ending) => token.endsWith(ending));
 }
 
 function parseUnifiedMemo(text: string): string | null {
@@ -233,10 +275,20 @@ function cleanTarget(value: string): string | null {
   const cleaned = cleanValue(value)
     .replace(/^.*?에서\s*/, "")
     .replace(/\d{1,4}\s*명/g, "")
-    .replace(/\s*(?:을|를)\s*대상으로.*$/g, "")
+    .replace(/\s*(?:을|를)?\s*대상(?:으로)?.*$/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned || null;
+  return stripLocationPrefixFromTarget(cleaned) || null;
+}
+
+function stripLocationPrefixFromTarget(value: string): string {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  if (tokens.length < 3) return value;
+
+  const lastFacilityIndex = findLastFacilityTokenIndex(tokens);
+  if (lastFacilityIndex < 0 || lastFacilityIndex >= tokens.length - 1) return value;
+
+  return tokens.slice(lastFacilityIndex + 1).join(" ").trim() || value;
 }
 
 function cleanLocationName(value: string): string | null {
