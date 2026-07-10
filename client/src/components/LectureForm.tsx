@@ -1,9 +1,18 @@
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { parseLectureTextToForm, type ParsedLectureFields } from "@/lib/lecture-parser";
-import { Loader2, Search, X } from "lucide-react";
+import { buildUnifiedLectureMemo } from "@/utils/lectureMemo";
+import { Loader2, RotateCcw, Search, Wand2, X } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -63,41 +72,29 @@ const emptyForm: LectureFormData = {
 };
 
 const parserFieldLabels: Partial<Record<keyof LectureFormData, string>> = {
+  date: "강의일자",
   title: "강의명",
-  topic: "교육주제",
-  organization: "기관명",
   target: "대상",
+  startTime: "시작시간",
+  endTime: "종료시간",
+  locationName: "강의장소",
+  participants: "수강인원",
   managerName: "담당자",
   managerPhone: "담당자 연락처",
-  locationName: "장소명",
-  location: "상세주소",
-  date: "강의일자",
-  startTime: "시작 시간",
-  endTime: "종료 시간",
-  participants: "수강생 인원수",
-  preparationItems: "준비물",
-  requestMemo: "요청사항",
-  instructorMemo: "내부 메모",
-  fee: "금액",
+  instructorMemo: "메모",
 };
 
 const parserPreviewFields: Array<keyof LectureFormData> = [
-  "title",
-  "topic",
-  "organization",
-  "target",
-  "managerName",
-  "managerPhone",
-  "locationName",
-  "location",
   "date",
+  "title",
+  "target",
   "startTime",
   "endTime",
+  "locationName",
   "participants",
-  "preparationItems",
-  "requestMemo",
+  "managerName",
+  "managerPhone",
   "instructorMemo",
-  "fee",
 ];
 
 export function LectureForm({
@@ -119,6 +116,8 @@ export function LectureForm({
   const [newDateInput, setNewDateInput] = useState("");
   const [aiInput, setAiInput] = useState("");
   const [parserPreview, setParserPreview] = useState<ParsedLectureFields | null>(null);
+  const [parserSummary, setParserSummary] = useState<string | null>(null);
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [isAdditionalInfoOpen, setIsAdditionalInfoOpen] = useState(() => hasLectureAdditionalInfo(initialData));
 
   const isEdit = Boolean(initialData);
@@ -128,6 +127,8 @@ export function LectureForm({
     setFormData(buildInitialForm(initialData, defaultDate));
     setErrors({});
     setPlaceResults([]);
+    setParserPreview(null);
+    setParserSummary(null);
     setIsAdditionalInfoOpen(hasLectureAdditionalInfo(initialData));
   }, [initialData, defaultDate]);
 
@@ -170,6 +171,7 @@ export function LectureForm({
 
     if (entries.length === 0) {
       setParserPreview({});
+      setParserSummary("자동 추출할 수 있는 항목을 찾지 못했습니다.");
       toast.info("자동 추출할 수 있는 항목을 찾지 못했습니다.");
       return;
     }
@@ -190,13 +192,18 @@ export function LectureForm({
       return next;
     });
     if (parsed.location) setPlaceResults([]);
+
     setParserPreview(parsed);
-    toast.success("자동 추출 결과를 폼에 반영했습니다. 저장 전 내용을 확인해 주세요.");
+    const summary = buildParserSummary(parsed);
+    setParserSummary(summary);
+    setIsAiDialogOpen(false);
+    toast.success(summary);
   };
 
   const resetAiParser = () => {
     setAiInput("");
     setParserPreview(null);
+    setParserSummary(null);
   };
 
   const handleSearchPlace = async () => {
@@ -276,8 +283,12 @@ export function LectureForm({
     const finalData: LectureFormData = {
       ...formData,
       duration,
+      topic: formData.topic.trim() || formData.title.trim(),
       managerName: formData.managerName.trim() || "미정",
       managerPhone: formData.managerPhone.trim(),
+      preparationItems: "",
+      requestMemo: "",
+      instructorMemo: formData.instructorMemo.trim(),
       workflowStage: initialData?.workflowStage ?? "before",
       content: formData.content || "",
       updatedAt: new Date().toISOString(),
@@ -300,72 +311,62 @@ export function LectureForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-7">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {shouldShowAiParser && (
-        <AiLectureParserPanel
-          value={aiInput}
-          preview={parserPreview}
-          onChange={setAiInput}
-          onApply={applyParsedLectureText}
-          onReset={resetAiParser}
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-h-5 text-xs text-muted-foreground" aria-live="polite">
+            {parserSummary}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsAiDialogOpen(true)} className="h-9">
+              <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+              AI 자동 입력
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={resetAiParser} className="h-9">
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              AI 입력 지우기
+            </Button>
+          </div>
+          <AiLectureParserDialog
+            open={isAiDialogOpen}
+            value={aiInput}
+            preview={parserPreview}
+            onOpenChange={setIsAiDialogOpen}
+            onChange={setAiInput}
+            onApply={applyParsedLectureText}
+            onReset={resetAiParser}
+          />
+        </div>
       )}
 
       <Section title="강의 핵심 정보">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="강의명" required error={errors.title}>
-            <Input value={formData.title} onChange={(e) => setField("title", e.target.value)} placeholder="예: AI 문서 간소화" />
-          </Field>
-          <Field label="기관명" error={errors.organization}>
-            <Input value={formData.organization} onChange={(e) => setField("organization", e.target.value)} placeholder="예: 전사협" />
-          </Field>
-
-          <Field label="대상" error={errors.target}>
-            <Input value={formData.target} onChange={(e) => setField("target", e.target.value)} placeholder="예: 실무자 20명" />
-          </Field>
-          <Field label="수강생 인원수" description="대시보드와 월별 통계에서 사용하는 기존 participants 필드에 저장됩니다.">
-            <Input
-              type="number"
-              min={0}
-              value={formData.participants}
-              onChange={(e) => setField("participants", Number(e.target.value || 0))}
-              placeholder="예: 20"
-            />
-          </Field>
-        </div>
-      </Section>
-
-      <Section title="일정 및 장소">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Field label="강의일자" required error={errors.date}>
-            <Input type="date" value={formData.date} onChange={(e) => setField("date", e.target.value)} />
+            <Input className="h-10 text-sm" type="date" value={formData.date} onChange={(e) => setField("date", e.target.value)} />
           </Field>
-          <Field label="강의시간" error={errors.startTime || errors.endTime}>
+          <Field label="강의시간" error={errors.startTime || errors.endTime} className="lg:col-span-1">
             <div className="flex items-center gap-2">
-              <Input type="time" value={formData.startTime || ""} onChange={(e) => setField("startTime", e.target.value)} />
-              <span className="text-sm font-semibold text-muted-foreground">~</span>
-              <Input type="time" value={formData.endTime || ""} onChange={(e) => setField("endTime", e.target.value)} />
+              <Input className="h-10 min-w-0 text-sm" type="time" value={formData.startTime || ""} onChange={(e) => setField("startTime", e.target.value)} />
+              <span className="shrink-0 text-sm font-semibold text-muted-foreground">~</span>
+              <Input className="h-10 min-w-0 text-sm" type="time" value={formData.endTime || ""} onChange={(e) => setField("endTime", e.target.value)} />
             </div>
           </Field>
-
-          <Field label="장소명" error={errors.locationName}>
-            <Input value={formData.locationName || ""} onChange={(e) => setField("locationName", e.target.value)} placeholder="예: 상비원 교육실" />
+          <Field label="수강인원">
+            <Input className="h-10 text-sm" type="number" min={0} value={formData.participants} onChange={(e) => setField("participants", Number(e.target.value || 0))} placeholder="예: 20" />
           </Field>
-          <Field label="상세주소" error={errors.location} description="기존 네이버 거리계산/길찾기의 목적지로 사용됩니다.">
+          <Field label="강의명" required error={errors.title} className="md:col-span-2">
+            <Input className="h-10 text-sm" value={formData.title} onChange={(e) => setField("title", e.target.value)} placeholder="예: AI 활용(HINT) 교육 2차" />
+          </Field>
+          <Field label="대상" error={errors.target}>
+            <Input className="h-10 text-sm" value={formData.target} onChange={(e) => setField("target", e.target.value)} placeholder="예: 대학생" />
+          </Field>
+          <Field label="장소명" error={errors.locationName}>
+            <Input className="h-10 text-sm" value={formData.locationName || ""} onChange={(e) => setField("locationName", e.target.value)} placeholder="예: 전남대 진리관" />
+          </Field>
+          <Field label="상세주소" error={errors.location} className="md:col-span-2">
             <div className="flex gap-2">
-              <Input
-                value={formData.location}
-                onChange={(e) => setField("location", e.target.value)}
-                placeholder="예: 전남 여수시 연등1길 38"
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleSearchPlace}
-                disabled={placeSearchLoading}
-                className="h-10 shrink-0 px-3 text-xs"
-              >
+              <Input className="h-10 min-w-0 flex-1 text-sm" value={formData.location} onChange={(e) => setField("location", e.target.value)} placeholder="예: 광주 전남대 진리관" />
+              <Button type="button" variant="outline" onClick={handleSearchPlace} disabled={placeSearchLoading} className="h-10 shrink-0 px-3 text-xs">
                 {placeSearchLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
                 주소 찾기
               </Button>
@@ -385,11 +386,7 @@ export function LectureForm({
           </div>
         )}
 
-        {placeSearchMessage && (
-          <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            {placeSearchMessage}
-          </p>
-        )}
+        {placeSearchMessage && <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{placeSearchMessage}</p>}
 
         {placeResults.length > 0 && (
           <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-card">
@@ -412,88 +409,81 @@ export function LectureForm({
         )}
       </Section>
 
-      <Section title="담당자/정산">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="담당자" error={errors.managerName} description="정보가 없으면 저장 시 '미정'으로 저장됩니다.">
-            <Input value={formData.managerName} onChange={(e) => setField("managerName", e.target.value)} placeholder="예: 김수환 또는 미정" />
+      <Section title="강의 연락 정보">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Field label="담당자" error={errors.managerName}>
+            <Input className="h-10 text-sm" value={formData.managerName} onChange={(e) => setField("managerName", e.target.value)} placeholder="예: 김수환" />
           </Field>
           <Field label="담당자 연락처" error={errors.managerPhone}>
-            <Input type="tel" value={formData.managerPhone} onChange={(e) => setField("managerPhone", e.target.value)} placeholder="예: 010-1234-5678 또는 빈 값" />
+            <Input className="h-10 text-sm" type="tel" value={formData.managerPhone} onChange={(e) => setField("managerPhone", e.target.value)} placeholder="예: 010-1234-5678" />
           </Field>
-          <Field label="강사료">
-            <Input
-              type="number"
-              min={0}
-              value={formData.fee}
-              onChange={(e) => setField("fee", Number(e.target.value || 0))}
-              placeholder="예: 300000"
+          <Field label="메모" className="md:col-span-2">
+            <Textarea
+              value={formData.instructorMemo}
+              onChange={(e) => setField("instructorMemo", e.target.value)}
+              rows={3}
+              placeholder="준비물, 요청사항, 참고사항, 내부 메모를 한 번에 적어주세요."
+              className="min-h-[68px] resize-y text-sm"
             />
           </Field>
         </div>
       </Section>
 
-      <Section title="추가 정보">
+      <Section title="기타 정보">
         <details
-          className="rounded-md border border-border bg-muted/10 p-4"
+          className="rounded-md border border-border bg-muted/10 px-3 py-2"
           open={isAdditionalInfoOpen}
           onToggle={(event) => setIsAdditionalInfoOpen(event.currentTarget.open)}
         >
-          <summary className="cursor-pointer text-sm font-semibold text-foreground">선택 입력</summary>
-          <div className="mt-4 space-y-4">
-            <Field label="교육주제" error={errors.topic}>
-              <Input value={formData.topic} onChange={(e) => setField("topic", e.target.value)} placeholder="예: 디지털 역량 강화" />
+          <summary className="cursor-pointer text-sm font-semibold text-foreground">기관명과 강사료</summary>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field label="기관명" error={errors.organization}>
+              <Input className="h-10 text-sm" value={formData.organization} onChange={(e) => setField("organization", e.target.value)} placeholder="예: 전사협" />
             </Field>
-            <Field label="준비물">
-              <Textarea value={formData.preparationItems || ""} onChange={(e) => setField("preparationItems", e.target.value)} rows={3} placeholder="예: 노트북, HDMI 어댑터, 실습 자료" />
-            </Field>
-            <Field label="요청사항">
-              <Textarea value={formData.requestMemo || ""} onChange={(e) => setField("requestMemo", e.target.value)} rows={3} placeholder="기관 요청사항이나 강의 전 확인 내용을 적어주세요." />
-            </Field>
-            <Field label="내부 메모">
-              <Textarea value={formData.instructorMemo} onChange={(e) => setField("instructorMemo", e.target.value)} rows={3} placeholder="강사용 내부 메모를 적어주세요." />
+            <Field label="강사료">
+              <Input className="h-10 text-sm" type="number" min={0} value={formData.fee} onChange={(e) => setField("fee", Number(e.target.value || 0))} placeholder="예: 300000" />
             </Field>
           </div>
         </details>
       </Section>
+
       {!initialData && (
-        <Section title="반복 설정">
-          <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground">
-              <input
-                type="checkbox"
-                checked={isRecurring}
-                onChange={(e) => setIsRecurring(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-              />
-              이 일정을 반복해서 등록합니다.
-            </label>
-            {isRecurring && (
-              <div className="space-y-3">
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Label className="mb-1.5 block text-xs text-muted-foreground">추가 강의일</Label>
-                    <Input type="date" value={newDateInput} onChange={(e) => setNewDateInput(e.target.value)} className="h-9 text-sm" />
-                  </div>
-                  <Button type="button" onClick={handleAddDate} variant="outline" size="sm" className="h-9 shrink-0">
-                    추가
-                  </Button>
+        <section className="space-y-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground">
+            <input
+              type="checkbox"
+              checked={isRecurring}
+              onChange={(e) => setIsRecurring(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            반복 일정으로 등록
+          </label>
+          {isRecurring && (
+            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">추가 강의일</Label>
+                  <Input type="date" value={newDateInput} onChange={(e) => setNewDateInput(e.target.value)} className="h-9 text-sm" />
                 </div>
-                {additionalDates.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {additionalDates.map((date) => (
-                      <span key={date} className="inline-flex items-center gap-1 rounded border border-primary/20 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                        {date}
-                        <button type="button" onClick={() => setAdditionalDates((prev) => prev.filter((item) => item !== date))} className="rounded-full p-0.5 hover:bg-primary/20">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <Button type="button" onClick={handleAddDate} variant="outline" size="sm" className="h-9 shrink-0">
+                  추가
+                </Button>
               </div>
-            )}
-          </div>
-        </Section>
+              {additionalDates.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {additionalDates.map((date) => (
+                    <span key={date} className="inline-flex items-center gap-1 rounded border border-primary/20 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                      {date}
+                      <button type="button" onClick={() => setAdditionalDates((prev) => prev.filter((item) => item !== date))} className="rounded-full p-0.5 hover:bg-primary/20">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       <div className="flex justify-end gap-3 border-t border-border pt-4">
@@ -538,6 +528,7 @@ function buildInitialForm(initialData?: Lecture, defaultDate?: string): LectureF
     blogWritten: initialData.blogWritten ?? false,
     blogUrl: initialData.blogUrl || "",
     afterMemo: initialData.afterMemo || "",
+    instructorMemo: buildUnifiedLectureMemo(initialData),
     updatedAt: initialData.updatedAt || null,
   };
 }
@@ -551,13 +542,13 @@ function parseDuration(duration: string | undefined) {
 }
 
 function hasLectureAdditionalInfo(lecture?: Partial<LectureFormData>) {
-  return Boolean(lecture?.topic || lecture?.preparationItems || lecture?.requestMemo || lecture?.instructorMemo);
+  return Boolean(lecture?.organization || lecture?.fee);
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="border-b border-border pb-2 text-sm font-semibold text-foreground">{title}</h2>
+      <h2 className="border-b border-border pb-1.5 text-sm font-semibold text-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -567,117 +558,80 @@ function Field({
   label,
   required,
   error,
-  description,
+  className = "",
   children,
 }: {
   label: string;
   required?: boolean;
   error?: string;
-  description?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="flex items-center text-sm font-medium text-foreground">
+    <div className={`space-y-1.5 ${className}`}>
+      <Label className="flex items-center text-[13px] font-medium text-foreground">
         {label}
         {required && <span className="ml-0.5 font-bold text-destructive">*</span>}
       </Label>
       {children}
-      {description && <p className="text-xs text-muted-foreground">{description}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
 
-function AiLectureParserPanel({
+function AiLectureParserDialog({
+  open,
   value,
   preview,
+  onOpenChange,
   onChange,
   onApply,
   onReset,
 }: {
+  open: boolean;
   value: string;
   preview: ParsedLectureFields | null;
+  onOpenChange: (open: boolean) => void;
   onChange: (value: string) => void;
   onApply: () => void;
   onReset: () => void;
 }) {
   return (
-    <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-      <div className="mb-3">
-        <h2 className="text-sm font-bold text-foreground">AI로 강의정보 채우기</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          강의 안내문, 문자, 메모를 붙여넣으면 등록 항목에 맞게 자동으로 정리합니다.
-        </p>
-      </div>
-      <Textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={5}
-        placeholder="예: 6월 23일 전사협에서 미입력 교육 진행. 담당자는 미등록. 장소는 상비원. 오전 10시부터 12시까지. 참여자는 20명 예상."
-        className="bg-background"
-      />
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" onClick={onApply} disabled={!value.trim()}>
-          항목 자동 채우기
-        </Button>
-        <Button type="button" variant="outline" size="sm" onClick={onReset}>
-          초기화
-        </Button>
-        <span className="text-xs text-muted-foreground">자동 추출 결과입니다. 저장 전 내용을 확인해 주세요.</span>
-      </div>
-      {preview && <ParserPreview parsed={preview} />}
-    </section>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>AI 자동 입력</DialogTitle>
+          <DialogDescription>강의 안내 문장이나 메모를 붙여넣으면 핵심 항목만 폼에 채웁니다.</DialogDescription>
+        </DialogHeader>
+        <Textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          rows={7}
+          placeholder="예) 8월 5일 광주 전남대학교 진리관에서 대학생 20명 대상으로 AI 활용(HINT) 2차 강의를 진행합니다. 오전 9시부터 오후 6시까지이며, 담당자는 김수환 010-1234-5678, 준비물은 노트북입니다."
+          className="bg-background text-sm"
+        />
+        <p className="text-xs text-muted-foreground">자유 문장으로 입력해도 됩니다. 날짜 · 강의명 · 대상 · 시간 · 장소 · 인원 · 담당자 · 연락처 · 메모를 자동으로 찾습니다.</p>
+        {preview && <p className="text-xs text-muted-foreground">{buildParserSummary(preview)}</p>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onReset}>AI 입력 지우기</Button>
+          <Button type="button" onClick={onApply} disabled={!value.trim()}>자동 채우기</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function ParserPreview({ parsed }: { parsed: ParsedLectureFields }) {
-  const extracted = parserPreviewFields
-    .filter((field) => hasParserValue(parsed[field]))
-    .map((field) => ({ field, label: parserFieldLabels[field] ?? String(field), value: formatParserValue(field, parsed[field]) }));
-
+function buildParserSummary(parsed: ParsedLectureFields): string {
+  const extracted = parserPreviewFields.filter((field) => hasParserValue(parsed[field]));
   const missing = parserPreviewFields
     .filter((field) => !hasParserValue(parsed[field]))
     .map((field) => parserFieldLabels[field] ?? String(field));
 
-  return (
-    <div className="mt-3 grid gap-3 rounded-lg border border-border bg-background p-3 text-xs sm:grid-cols-2">
-      <div>
-        <p className="mb-2 font-semibold text-foreground">추출된 항목</p>
-        {extracted.length === 0 ? (
-          <p className="text-muted-foreground">추출된 항목이 없습니다.</p>
-        ) : (
-          <dl className="space-y-1">
-            {extracted.map((item) => (
-              <div key={item.field} className="flex justify-between gap-2">
-                <dt className="shrink-0 text-muted-foreground">{item.label}</dt>
-                <dd className="min-w-0 truncate font-semibold text-foreground">{item.value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
-      <div>
-        <p className="mb-2 font-semibold text-foreground">추출하지 못한 항목</p>
-        <div className="flex flex-wrap gap-1.5">
-          {missing.map((label) => (
-            <span key={label} className="rounded-md border border-border bg-muted px-2 py-1 text-muted-foreground">
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  if (extracted.length === 0) return "자동 추출할 수 있는 항목을 찾지 못했습니다.";
+  if (missing.length === 0) return "자동 입력이 완료되었습니다.";
+  return `자동 입력 ${extracted.length}개 완료 · 확인 필요: ${missing.join(", ")}`;
 }
 
 function hasParserValue(value: LectureFormData[keyof LectureFormData] | undefined): boolean {
   return value !== undefined && value !== null && value !== "";
-}
-
-function formatParserValue(field: keyof LectureFormData, value: LectureFormData[keyof LectureFormData] | undefined): string {
-  if (!hasParserValue(value)) return "";
-  if (field === "participants") return `${value}명`;
-  if (field === "fee") return `${Number(value).toLocaleString("ko-KR")}원`;
-  return String(value);
 }

@@ -16,6 +16,7 @@ import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
 import type { Lecture, LectureContactLog, LectureFormData, WorkTaskCategory, WorkTaskStage } from "@/types/lecture";
 import { formatDate } from "@/utils/format";
+import { buildUnifiedLectureMemo } from "@/utils/lectureMemo";
 import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { generateBlogDraft, generateReport } from "@/utils/templates";
 import {
@@ -213,10 +214,8 @@ function DetailPanel({
         <div className="sm:col-span-2">
           <InfoItem label="교육 내용" value={lecture.content || "-"} />
         </div>
-        <InfoItem label="준비물" value={lecture.preparationItems || "-"} />
-        <InfoItem label="요청사항" value={lecture.requestMemo || "-"} />
         <div className="sm:col-span-2">
-          <InfoItem label="내부 메모" value={lecture.instructorMemo || "-"} />
+          <InfoItem label="메모" value={buildUnifiedLectureMemo(lecture) || "-"} />
         </div>
         <div className="sm:col-span-2">
           <InfoItem label="강의 후 메모" value={lecture.afterMemo || lecture.reflection || "-"} />

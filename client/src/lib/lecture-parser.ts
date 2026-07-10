@@ -31,17 +31,11 @@ export const localLectureTextParser: LectureTextParser = {
     const targetInfo = parseTarget(text);
     const participants = targetInfo.participants ?? parseParticipants(text);
     const phone = parsePhone(text);
-    const fee = parseFee(text);
     const locationName = parseLocationName(text);
-    const organization = parseOrganization(text) || inferOrganizationFromLocationName(locationName);
     const coursePhrase = parseCoursePhrase(text);
     const title = parseTitle(text) || coursePhrase?.title || null;
-    const topic = parseTopic(text) || (parseTitle(text) ? coursePhrase?.topic || null : null);
     const managerName = parseManagerName(text);
-    const address = parseAddress(text);
-    const preparationItems = parseMemoField(text, ["준비물", "준비"]);
-    const requestMemo = parseMemoField(text, ["요청사항", "요청"]);
-    const instructorMemo = parseMemoField(text, ["내부 메모", "메모"]);
+    const memo = parseUnifiedMemo(text);
 
     if (date) parsed.date = date;
     if (timeRange) {
@@ -49,31 +43,23 @@ export const localLectureTextParser: LectureTextParser = {
       parsed.endTime = timeRange.endTime;
       parsed.duration = `${timeRange.startTime} ~ ${timeRange.endTime}`;
     }
-    if (participants !== null) parsed.participants = participants;
-    if (phone) parsed.managerPhone = phone;
-    if (fee !== null) parsed.fee = fee;
-    if (organization) parsed.organization = organization;
     if (title) parsed.title = title;
-    if (topic && normalizeComparable(topic) !== normalizeComparable(title)) parsed.topic = topic;
     if (targetInfo.target) parsed.target = targetInfo.target;
-    if (managerName) parsed.managerName = managerName;
-    if (locationName) parsed.locationName = locationName;
-    if (address) {
-      parsed.location = address;
-      parsed.roadAddress = address;
-    } else if (locationName) {
+    if (participants !== null) parsed.participants = participants;
+    if (locationName) {
+      parsed.locationName = locationName;
       parsed.location = locationName;
     }
-    if (preparationItems) parsed.preparationItems = preparationItems;
-    if (requestMemo) parsed.requestMemo = requestMemo;
-    if (instructorMemo) parsed.instructorMemo = instructorMemo;
+    if (managerName) parsed.managerName = managerName;
+    if (phone) parsed.managerPhone = phone;
+    if (memo) parsed.instructorMemo = memo;
 
     return parsed;
   },
 };
 
 function normalizeText(input: string): string {
-  return input.replace(/\s+/g, " ").trim();
+  return input.replace(/_+/g, ", ").replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").trim();
 }
 
 function parseDate(text: string): string | null {
@@ -96,10 +82,10 @@ function toDateString(year: number, month: number, day: number): string | null {
 }
 
 function parseTimeRange(text: string): { startTime: string; endTime: string } | null {
-  const numeric = text.match(/(\d{1,2}):(\d{2})\s*(?:~|-|부터|에서)\s*(\d{1,2}):(\d{2})/);
+  const numeric = text.match(/(오전|오후)?\s*(\d{1,2}):(\d{2})\s*(?:~|-|부터|에서)\s*(오전|오후)?\s*(\d{1,2}):(\d{2})/);
   if (numeric) {
-    const startTime = normalizeTime(Number(numeric[1]), Number(numeric[2]), "");
-    const endTime = normalizeTime(Number(numeric[3]), Number(numeric[4]), "");
+    const startTime = normalizeTime(Number(numeric[2]), Number(numeric[3]), numeric[1] || "");
+    const endTime = normalizeTime(Number(numeric[5]), Number(numeric[6]), numeric[4] || inferEndMeridiem(numeric[1] || "", Number(numeric[5])));
     if (startTime && endTime) return { startTime, endTime };
   }
 
@@ -114,6 +100,7 @@ function parseTimeRange(text: string): { startTime: string; endTime: string } | 
 }
 
 function inferEndMeridiem(startMeridiem: string, endHour: number): string {
+  if (endHour >= 13) return "";
   if (startMeridiem === "오전" && endHour === 12) return "";
   return startMeridiem;
 }
@@ -140,62 +127,30 @@ function parsePhone(text: string): string | null {
   return raw.replace(/^(\d{3})(\d{3,4})(\d{4})$/, "$1-$2-$3");
 }
 
-function parseFee(text: string): number | null {
-  const manwon = text.match(/(\d+(?:\.\d+)?)\s*만원/);
-  if (manwon) return Math.round(Number(manwon[1]) * 10000);
-
-  const won = text.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*원/);
-  if (won) return Number(won[1].replace(/,/g, ""));
-
-  return null;
-}
-
-function parseOrganization(text: string): string | null {
-  if (text.includes("전사협")) return "전사협";
-
-  const explicit = parseLabeledValue(text, ["기관", "기관명", "주최", "교육처", "의뢰처"]);
-  if (explicit) return cleanValue(explicit);
-
-  const requested = text.match(/([^,.]{2,30}?)에서\s*의뢰/);
-  if (requested) return cleanValue(requested[1]);
-
-  const atOrg = text.match(/(?:^|[.]\s*)([^,.]{2,30}?(?:복지관|센터|협회|상담소|학교|도서관|재단|기관))에서/);
-  return atOrg ? cleanValue(atOrg[1]) : null;
-}
-
-function inferOrganizationFromLocationName(locationName: string | null): string | null {
-  if (!locationName) return null;
-  const match = locationName.match(/^(.+?)\s*(?:교육실|강의실|회의실)$/);
-  return match ? cleanValue(match[1]) : null;
-}
-
 function parseTitle(text: string): string | null {
   const explicit = parseLabeledValue(text, ["제목", "강의명", "교육명"]);
-  return explicit ? cleanLectureTitle(explicit) : null;
-}
-
-function parseTopic(text: string): string | null {
-  const explicit = parseLabeledValue(text, ["교육주제", "주제"]);
-  if (explicit) return cleanTopic(explicit);
-
-  const topicPhrase = text.match(/([^,.]{2,40}?)\s*주제(?:로|입니다|이고|이며|,|\.|$)/);
-  return topicPhrase ? cleanTopic(topicPhrase[1]) : null;
+  const loose = parseLooseTitleLabel(text);
+  return explicit ? cleanLectureTitle(explicit) : loose;
 }
 
 function parseCoursePhrase(text: string): CoursePhrase | null {
-  const afterTarget = text.match(/대상으로\s*([^,.]{2,60}?\s*(?:수업|교육|강의))\s*(?:을|를)?\s*(?:하기로|진행|실시|예정|합니다|하겠습니다|했습니다|합니다\.|$)/);
-  const general = text.match(/([^,.]{2,60}?\s*(?:수업|교육|강의))\s*(?:을|를)?\s*(?:하기로|진행|실시|예정|합니다|하겠습니다|했습니다|합니다\.|$)/);
-  const raw = afterTarget?.[1] || general?.[1];
+  const targetCourse = text.match(/대상으로\s*([^,.]{2,70}?\s*(?:수업|교육|강의))\s*(?:을|를)?(?:\s*(\d+)\s*차\s*주제로)?\s*(?:하기로|진행|실시|예정|합니다|하겠습니다|했습니다|함|$)/);
+  const generalCourse = text.match(/([^,.]{2,70}?\s*(?:수업|교육|강의))\s*(?:을|를)?(?:\s*(\d+)\s*차\s*주제로)?\s*(?:하기로|진행|실시|예정|합니다|하겠습니다|했습니다|함|$)/);
+  const raw = targetCourse?.[1] || generalCourse?.[1];
   if (!raw) return null;
 
-  const title = cleanCourseTitle(raw);
+  const round = targetCourse?.[2] || generalCourse?.[2] || "";
+  const title = cleanCourseTitle(`${raw}${round ? ` ${round}차` : ""}`);
   if (!title) return null;
   return { title, topic: cleanTopic(title) };
 }
 
 function parseTarget(text: string): ParsedTarget {
   const explicit = parseLabeledValue(text, ["대상", "교육대상"]);
-  const freeform = text.match(/([^,.]{2,80}?\d{0,4}\s*명)을\s*대상으로/);
+  const freeform =
+    text.match(/([가-힣A-Za-z0-9\s]+?\s*대상\s*\d{1,4}\s*명)/) ||
+    text.match(/([가-힣A-Za-z0-9\s]+?\s*\d{1,4}\s*명\s*대상(?:으로)?)/) ||
+    text.match(/대상\s+([가-힣A-Za-z0-9\s]+?\s*\d{1,4}\s*명)/);
   const raw = explicit || freeform?.[1];
   if (!raw) return { target: null, participants: null };
 
@@ -211,25 +166,62 @@ function parseManagerName(text: string): string | null {
 }
 
 function parseLocationName(text: string): string | null {
-  const explicit = parseLabeledValue(text, ["장소명", "장소", "교육장"]);
-  if (explicit) {
-    const value = cleanLocationName(explicit);
-    return value && !looksLikeAddress(value) ? value : null;
-  }
+  const explicit = parseLabeledValue(text, ["장소명", "장소", "교육장", "강의장소"]);
+  if (explicit) return cleanLocationName(explicit);
 
-  const room = text.match(/([^,.]{2,50}?(?:교육실|강의실|회의실))에서/);
-  if (!room) return null;
+  const atPlace = text.match(/([^,.]{2,70}?)(?:에서|교육장에서)\s*(?:[^,.]*?(?:대상|교육|강의|수업|진행|실시))/);
+  if (atPlace) return cleanLocationName(atPlace[1]);
 
-  const value = cleanLocationName(room[1]);
-  return value && !looksLikeAddress(value) ? value : null;
+  return parseLocationBeforeTarget(text);
 }
 
-function parseAddress(text: string): string | null {
-  const explicit = text.match(/(?:상세주소|주소)(?:은|는|:)?\s*([^,.]+?)(?:입니다|이고|이며|,|\.|$)/);
-  if (explicit) return cleanValue(explicit[1]);
+function parseLooseTitleLabel(text: string): string | null {
+  const labels = ["강의명", "교육명", "제목"];
+  const escaped = labels.map(escapeRegExp).join("|");
+  const nextLabel = "(?=\\s*(?:기관명|기관|주최|교육처|의뢰처|제목|강의명|교육명|교육주제|주제|대상|교육대상|장소명|장소|교육장|강의장소|강의일자|날짜|강의시간|시간|담당자|연락처|준비물|준비|기관 요청사항|요청사항|요청|유의사항|참고사항|참고|내부 메모|메모)\\s*(?:은|는|:|\\s))";
+  const match = text.match(new RegExp(`(?:^|[,\\s])(?:${escaped})(?!\\s*(?:은|는|:))\\s+([^,.]+?)(?:,|\\.|${nextLabel}|$)`));
+  return match ? cleanLectureTitle(match[1]) : null;
+}
 
-  const address = text.match(/([가-힣]+(?:시|도)\s+[가-힣]+(?:시|군|구)\s+[가-힣A-Za-z0-9·\s-]+(?:길|로)\s*\d+(?:-\d+)?)/);
-  return address ? cleanValue(address[1]) : null;
+function parseLocationBeforeTarget(text: string): string | null {
+  for (const segment of text.split(/[,.]/)) {
+    if (/(강의명|교육명|제목|기관명|강의일자|날짜|강의시간|시간|메모|준비물|요청사항)/.test(segment)) continue;
+
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    const targetIndex = tokens.findIndex((token) => token === "대상");
+    if (targetIndex < 2) continue;
+
+    const lastFacilityIndex = findLastFacilityTokenIndex(tokens.slice(0, targetIndex));
+    if (lastFacilityIndex < 0 || lastFacilityIndex >= targetIndex - 1) continue;
+
+    const location = cleanLocationName(tokens.slice(0, lastFacilityIndex + 1).join(" "));
+    if (location) return location;
+  }
+
+  return null;
+}
+
+function findLastFacilityTokenIndex(tokens: string[]): number {
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    if (isFacilityToken(tokens[index])) return index;
+  }
+  return -1;
+}
+
+function isFacilityToken(token: string): boolean {
+  const facilityEndings = ["대학교", "대학", "학교", "진리관", "복지관", "센터", "교육원", "도서관", "교육실", "강의실", "회의실", "관"];
+  return facilityEndings.some((ending) => token.endsWith(ending));
+}
+
+function parseUnifiedMemo(text: string): string | null {
+  const memoParts = [
+    parseMemoField(text, ["준비물", "준비"]),
+    parseMemoField(text, ["기관 요청사항", "요청사항", "요청"]),
+    parseMemoField(text, ["유의사항", "참고사항", "강의 관련 참고사항", "참고"]),
+    parseMemoField(text, ["내부 메모", "메모"]),
+  ].filter((value): value is string => Boolean(value));
+
+  return memoParts.length > 0 ? Array.from(new Set(memoParts)).join("\n") : null;
 }
 
 function parseMemoField(text: string, labels: string[]): string | null {
@@ -239,8 +231,8 @@ function parseMemoField(text: string, labels: string[]): string | null {
 
 function parseLabeledValue(text: string, labels: string[]): string | null {
   const escaped = labels.map(escapeRegExp).join("|");
-  const nextLabel = "(?=\\s*(?:기관명|기관|주최|교육처|의뢰처|제목|강의명|교육명|교육주제|주제|대상|교육대상|장소명|장소|교육장|강의일자|날짜|강의시간|시간|담당자|연락처|준비물|준비|요청사항|요청|내부 메모|메모)\\s*:)";
-  const match = text.match(new RegExp(`(?:${escaped})(?:은|는|:)\\s*([^,.]+?)(?:입니다|이고|이며|,|\\.|${nextLabel}|$)`));
+  const nextLabel = "(?=\\s*(?:기관명|기관|주최|교육처|의뢰처|제목|강의명|교육명|교육주제|주제|대상|교육대상|장소명|장소|교육장|강의장소|강의일자|날짜|강의시간|시간|담당자|연락처|준비물|준비|기관 요청사항|요청사항|요청|유의사항|참고사항|참고|내부 메모|메모)\\s*(?:은|는|:))";
+  const match = text.match(new RegExp(`(?:${escaped})(?:은|는|:)\\s*([^,.]+?)(?:입니다|이고|이며|임|,|\\.|${nextLabel}|$)`));
   return match ? cleanValue(match[1]) : null;
 }
 
@@ -254,12 +246,15 @@ function cleanValue(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/[.,，。]+$/g, "")
-    .replace(/\s*(?:입니다|이며|이고|하고|합니다)$/g, "")
+    .replace(/\s*(?:입니다|이며|이고|하고|합니다|임)$/g, "")
     .trim();
 }
 
 function cleanLectureTitle(value: string): string {
-  return cleanValue(value).replace(/\s*(?:진행|실시|예정)$/g, "").trim();
+  return cleanValue(value)
+    .replace(/AI\s*활용/g, "AI 활용")
+    .replace(/\s*(?:진행|실시|예정)$/g, "")
+    .trim();
 }
 
 function cleanCourseTitle(value: string): string {
@@ -280,10 +275,20 @@ function cleanTarget(value: string): string | null {
   const cleaned = cleanValue(value)
     .replace(/^.*?에서\s*/, "")
     .replace(/\d{1,4}\s*명/g, "")
-    .replace(/\s*(?:을|를)\s*대상으로.*$/g, "")
+    .replace(/\s*(?:을|를)?\s*대상(?:으로)?.*$/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned || null;
+  return stripLocationPrefixFromTarget(cleaned) || null;
+}
+
+function stripLocationPrefixFromTarget(value: string): string {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  if (tokens.length < 3) return value;
+
+  const lastFacilityIndex = findLastFacilityTokenIndex(tokens);
+  if (lastFacilityIndex < 0 || lastFacilityIndex >= tokens.length - 1) return value;
+
+  return tokens.slice(lastFacilityIndex + 1).join(" ").trim() || value;
 }
 
 function cleanLocationName(value: string): string | null {
@@ -296,12 +301,4 @@ function cleanLocationName(value: string): string | null {
 
 function cleanPersonName(value: string): string {
   return cleanValue(value).replace(/[^가-힣]/g, "").trim();
-}
-
-function normalizeComparable(value: string | null): string {
-  return (value || "").replace(/\s+/g, "").trim();
-}
-
-function looksLikeAddress(value: string): boolean {
-  return /(?:시|도)\s+.+(?:길|로)\s*\d+/.test(value);
 }
