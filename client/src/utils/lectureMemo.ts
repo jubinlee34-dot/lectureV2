@@ -2,30 +2,34 @@ import type { Lecture, LectureFormData } from "@/types/lecture";
 
 type LectureMemoSource = Pick<Partial<Lecture | LectureFormData>, "preparationItems" | "requestMemo" | "instructorMemo">;
 
-const LEGACY_PREFIXES = ["준비물:", "요청사항:", "내부 메모:"];
-
 function cleanMemoPart(value?: string | null) {
   return value?.trim() || "";
 }
 
-export function hasCombinedLectureMemo(value?: string | null) {
-  const memo = cleanMemoPart(value);
-  return LEGACY_PREFIXES.some((prefix) => memo.includes(prefix));
+function includesPart(memo: string, part: string) {
+  return !part || memo.includes(part);
 }
 
 export function buildUnifiedLectureMemo(source?: LectureMemoSource | null) {
   if (!source) return "";
 
+  const preparationItems = cleanMemoPart(source.preparationItems);
+  const requestMemo = cleanMemoPart(source.requestMemo);
   const instructorMemo = cleanMemoPart(source.instructorMemo);
-  if (hasCombinedLectureMemo(instructorMemo)) return instructorMemo;
+  const legacyParts = [preparationItems, requestMemo].filter(Boolean);
 
-  const parts = [
-    { label: "준비물", value: cleanMemoPart(source.preparationItems) },
-    { label: "요청사항", value: cleanMemoPart(source.requestMemo) },
+  if (legacyParts.length === 0) return instructorMemo;
+
+  if (instructorMemo && legacyParts.every((part) => includesPart(instructorMemo, part))) {
+    return instructorMemo;
+  }
+
+  return [
+    { label: "준비물", value: preparationItems },
+    { label: "요청사항", value: requestMemo },
     { label: "내부 메모", value: instructorMemo },
   ]
     .filter((item) => item.value)
-    .map((item) => `${item.label}: ${item.value}`);
-
-  return parts.join("\n");
+    .map((item) => `${item.label}: ${item.value}`)
+    .join("\n");
 }

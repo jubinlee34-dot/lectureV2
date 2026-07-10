@@ -283,6 +283,7 @@ export function LectureForm({
     const finalData: LectureFormData = {
       ...formData,
       duration,
+      topic: formData.topic.trim() || formData.title.trim(),
       managerName: formData.managerName.trim() || "미정",
       managerPhone: formData.managerPhone.trim(),
       instructorMemo: formData.instructorMemo.trim(),
@@ -321,7 +322,7 @@ export function LectureForm({
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={resetAiParser} className="h-9">
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              초기화
+              AI 입력 지우기
             </Button>
           </div>
           <AiLectureParserDialog
@@ -609,7 +610,7 @@ function AiLectureParserDialog({
         />
         {preview && <p className="text-xs text-muted-foreground">{buildParserSummary(preview)}</p>}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onReset}>초기화</Button>
+          <Button type="button" variant="outline" onClick={onReset}>AI 입력 지우기</Button>
           <Button type="button" onClick={onApply} disabled={!value.trim()}>자동 채우기</Button>
         </DialogFooter>
       </DialogContent>

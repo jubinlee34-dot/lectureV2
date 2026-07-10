@@ -1,9 +1,61 @@
 import { describe, expect, it } from "vitest";
-import { parseLectureTextToForm, type ParsedLectureFields } from "./lecture-parser";
+import type { Lecture } from "@/types/lecture";
 import { buildUnifiedLectureMemo } from "@/utils/lectureMemo";
+import { generateBlogDraft, generateReport } from "@/utils/templates";
+import { parseLectureTextToForm, type ParsedLectureFields } from "./lecture-parser";
 
 function mergeParsed(existing: ParsedLectureFields, parsed: ParsedLectureFields) {
   return { ...existing, ...parsed };
+}
+
+function createLecture(overrides: Partial<Lecture> = {}): Lecture {
+  return {
+    id: "lecture-test",
+    organization: "테스트 기관",
+    title: "AI 활용 교육",
+    topic: "AI 활용",
+    target: "대학생",
+    date: "2026-07-10",
+    duration: "09:00 ~ 12:00",
+    startTime: "09:00",
+    endTime: "12:00",
+    participants: 20,
+    location: "전남대 진리관",
+    locationName: "전남대 진리관",
+    roadAddress: "",
+    jibunAddress: "",
+    locationX: "",
+    locationY: "",
+    placeMemo: "",
+    preparationItems: "",
+    requestMemo: "",
+    content: "",
+    reflection: "",
+    managerName: "김민수",
+    managerPhone: "010-1234-5678",
+    fee: 0,
+    paymentStatus: "unpaid",
+    paidAmount: 0,
+    workflowStage: "before",
+    actualParticipants: null,
+    paymentDate: "",
+    reportSubmitted: false,
+    reportSubmittedAt: "",
+    satisfactionMemo: "",
+    improvementMemo: "",
+    blogWritten: false,
+    blogUrl: "",
+    afterMemo: "",
+    participantReaction: "",
+    instructorMemo: "",
+    memorableQuestion: "",
+    createdAt: "2026-07-10T00:00:00.000Z",
+    updatedAt: null,
+    travelDistanceKm: null,
+    travelDurationMin: null,
+    travelUpdatedAt: null,
+    ...overrides,
+  };
 }
 
 describe("parseLectureTextToForm", () => {
@@ -72,8 +124,14 @@ describe("parseLectureTextToForm", () => {
       duration: "10:00 ~ 13:00",
     });
   });
+});
 
-  it("combines legacy preparation, request, and instructor memo once for editing", () => {
+describe("buildUnifiedLectureMemo", () => {
+  it("keeps new data with only instructorMemo unchanged", () => {
+    expect(buildUnifiedLectureMemo({ instructorMemo: "일반 메모 원문" })).toBe("일반 메모 원문");
+  });
+
+  it("combines legacy preparation and request data once", () => {
     const combined = buildUnifiedLectureMemo({
       preparationItems: "노트북 준비",
       requestMemo: "30분 전 도착",
@@ -81,6 +139,47 @@ describe("parseLectureTextToForm", () => {
     });
 
     expect(combined).toBe("준비물: 노트북 준비\n요청사항: 30분 전 도착\n내부 메모: 실습 시간 확보");
+  });
+
+  it("returns the same value when a combined memo is passed again", () => {
+    const combined = "준비물: 노트북 준비\n요청사항: 30분 전 도착\n내부 메모: 실습 시간 확보";
+
     expect(buildUnifiedLectureMemo({ preparationItems: "노트북 준비", requestMemo: "30분 전 도착", instructorMemo: combined })).toBe(combined);
+  });
+
+  it("does not lose separate requestMemo when instructorMemo contains a general preparation label", () => {
+    expect(buildUnifiedLectureMemo({ requestMemo: "30분 전 도착", instructorMemo: "준비물: 현장 상황에 따라 확인" })).toBe(
+      "요청사항: 30분 전 도착\n내부 메모: 준비물: 현장 상황에 따라 확인"
+    );
+  });
+});
+
+describe("template memo and topic compatibility", () => {
+  it("falls back to lecture title when topic is empty", () => {
+    const lecture = createLecture({ topic: "", title: "생성형 AI 실습" });
+    const report = generateReport(lecture);
+    const blog = generateBlogDraft(lecture);
+
+    const hashtagLine = blog.split("# 해시태그")[1];
+    expect(report).toContain("| 교육주제 | 생성형 AI 실습 |");
+    expect(hashtagLine).toContain("#생성형AI실습");
+    expect(hashtagLine).not.toContain("# ");
+  });
+
+  it("does not use unified pre-lecture memo as after-lecture observation", () => {
+    const lecture = createLecture({
+      instructorMemo: "준비물: 노트북\n요청사항: 30분 전 도착",
+      afterMemo: "참여자들이 실습 결과를 적극적으로 공유함",
+      reflection: "다음에는 실습 시간을 더 확보",
+    });
+    const report = generateReport(lecture);
+    const blog = generateBlogDraft(lecture);
+
+    expect(report).not.toContain("준비물: 노트북");
+    expect(report).not.toContain("요청사항: 30분 전 도착");
+    expect(blog).not.toContain("준비물: 노트북");
+    expect(blog).not.toContain("요청사항: 30분 전 도착");
+    expect(report).toContain("참여자들이 실습 결과를 적극적으로 공유함");
+    expect(blog).toContain("참여자들이 실습 결과를 적극적으로 공유함");
   });
 });
