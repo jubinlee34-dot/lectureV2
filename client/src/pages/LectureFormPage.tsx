@@ -85,20 +85,17 @@ export default function LectureFormPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-[1120px] px-4 py-4 sm:px-6 sm:py-5">
       <button
         onClick={() => navigate(isEdit && params.id ? lectureDrawerPath(params.id) : "/lectures")}
-        className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
         {isEdit ? "상세 패널로 돌아가기" : "강의 목록으로 돌아가기"}
       </button>
 
-      <div className="mb-8">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">{isEdit ? "강의 수정" : "강의 등록"}</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          기본 정보, 일정/장소, 담당자, 준비 메모를 등록합니다.
-        </p>
       </div>
 
       {!isEdit && lastCreatedLecture && (

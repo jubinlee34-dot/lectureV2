@@ -16,6 +16,7 @@ import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
 import type { Lecture, LectureContactLog, LectureFormData, WorkTaskCategory, WorkTaskStage } from "@/types/lecture";
 import { formatDate } from "@/utils/format";
+import { buildUnifiedLectureMemo } from "@/utils/lectureMemo";
 import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { generateBlogDraft, generateReport } from "@/utils/templates";
 import {
