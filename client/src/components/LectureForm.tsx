@@ -286,6 +286,8 @@ export function LectureForm({
       topic: formData.topic.trim() || formData.title.trim(),
       managerName: formData.managerName.trim() || "미정",
       managerPhone: formData.managerPhone.trim(),
+      preparationItems: "",
+      requestMemo: "",
       instructorMemo: formData.instructorMemo.trim(),
       workflowStage: initialData?.workflowStage ?? "before",
       content: formData.content || "",

@@ -26,9 +26,6 @@ function makeHashtag(value?: string | null): string | null {
   return tag ? `#${tag.substring(0, 20)}` : null;
 }
 
-function getAfterObservation(lecture: Lecture): string {
-  return lecture.afterMemo?.trim() || lecture.reflection?.trim() || "";
-}
 
 function buildBackground(lecture: Lecture, orgType: ReturnType<typeof detectOrgType>): string {
   const topic = getLectureTopic(lecture);
@@ -72,7 +69,6 @@ function buildParticipantSection(lecture: Lecture): string {
   const parts: string[] = [];
   const reaction = lecture.participantReaction?.trim();
   const question = lecture.memorableQuestion?.trim();
-  const afterObservation = getAfterObservation(lecture);
 
   if (reaction) {
     parts.push(`교육 진행 과정에서 관찰된 참여자들의 반응과 분위기는 매우 고무적이었다. 구체적으로는 ${reaction}`);
@@ -84,9 +80,6 @@ function buildParticipantSection(lecture: Lecture): string {
     parts.push(`특히 병원 예약 등 실무 활용 단계에서 한 참여자가 "${question}"와 같은 질문을 제기하였으며, 이는 교육 내용을 실무 및 실생활과 연계하려는 적극적인 학습 동기를 보여주었다.`);
   }
 
-  if (afterObservation) {
-    parts.push(`강의 후 기록에 의하면, ${afterObservation} 이 부분이 교육 완성도를 한층 올리는 핵심 요소로 작용하였다.`);
-  }
 
   return parts.join("\n\n");
 }
@@ -94,7 +87,7 @@ function buildParticipantSection(lecture: Lecture): string {
 function buildSummarySection(lecture: Lecture): string {
   const parts: string[] = [];
   const date = formatDate(lecture.date);
-  const reflection = lecture.reflection?.trim();
+  const reflection = lecture.reflection?.trim() || lecture.afterMemo?.trim();
 
   parts.push(`${date}에 진행된 본 교육은 참여자들의 고른 참여 속에서 준비된 과정을 질서 있게 소화하였다. 실습 위주의 진행과 개별 피드백 시간이 적절하게 배분되어 대다수 인원이 주요 핵심 단계를 수강 시간 내 성공적으로 실행하는 정량적 성과를 거두었다.`);
   parts.push(reflection || "한계점으로는 수강생 간 개인별 이해 속도 및 기기 활용 수준의 차이로 인해 진행 속도의 유연한 조율이 수시로 요구되었으며, 차기 교육 구성 시 난이도별 분반 편성을 검토하거나 보조 강사 인력이 배치된다면 더욱 완성도 높은 수업이 될 것으로 예상된다.");
@@ -225,15 +218,15 @@ function buildBestActivity(lecture: Lecture): string {
 
 function buildMemorable(lecture: Lecture): string {
   const question = lecture.memorableQuestion?.trim();
-  const afterObservation = getAfterObservation(lecture);
+  const afterMemo = lecture.afterMemo?.trim();
 
-  if (question || afterObservation) {
+  if (question || afterMemo) {
     const parts: string[] = [];
     if (question) {
       parts.push(`중간에 한 참여자가 손을 번쩍 들며 "${question}"라고 날카로운 의문을 던진 순간이 백미였다. 이 돌발 질문 하나 덕택에 다른 참여자들도 고개를 끄덕이며 수업 몰입도가 최고조에 달했다.`);
     }
-    if (afterObservation) {
-      parts.push(`강의 후 돌아보니 다음 수업을 위해 남겨둘 지점이 분명했다. ${afterObservation}`);
+    if (afterMemo) {
+      parts.push(`강의 후 돌아보니 다음 수업을 위해 남겨둘 지점이 분명했다. ${afterMemo}`);
     }
     return parts.join("\n\n");
   }
@@ -242,7 +235,7 @@ function buildMemorable(lecture: Lecture): string {
 }
 
 function buildClosing(lecture: Lecture): string {
-  const reflection = lecture.reflection?.trim() || lecture.afterMemo?.trim();
+  const reflection = lecture.reflection?.trim();
   if (reflection) {
     return `${reflection}\n\n이번 교육 여정을 매듭지으며 강단에서의 강의 구성을 한층 더 참여 주체 중심으로 설계해야겠다는 과제를 얻었다. 다음 교육 때는 현장의 목소리를 모아 실생활 적용 포인트를 더욱 정밀하게 개량하여 선보이고자 한다.`;
   }

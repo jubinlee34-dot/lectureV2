@@ -8,6 +8,10 @@ function mergeParsed(existing: ParsedLectureFields, parsed: ParsedLectureFields)
   return { ...existing, ...parsed };
 }
 
+function countOccurrences(value: string, needle: string) {
+  return value.split(needle).length - 1;
+}
+
 function createLecture(overrides: Partial<Lecture> = {}): Lecture {
   return {
     id: "lecture-test",
@@ -179,7 +183,67 @@ describe("template memo and topic compatibility", () => {
     expect(report).not.toContain("요청사항: 30분 전 도착");
     expect(blog).not.toContain("준비물: 노트북");
     expect(blog).not.toContain("요청사항: 30분 전 도착");
-    expect(report).toContain("참여자들이 실습 결과를 적극적으로 공유함");
+    expect(report).toContain("다음에는 실습 시간을 더 확보");
+    expect(report).not.toContain("참여자들이 실습 결과를 적극적으로 공유함");
     expect(blog).toContain("참여자들이 실습 결과를 적극적으로 공유함");
+  });
+});
+
+describe("final unified memo migration and after-note usage", () => {
+  it("keeps legacy memo content after migration clears legacy fields", () => {
+    const unified = buildUnifiedLectureMemo({
+      preparationItems: "Laptop",
+      requestMemo: "Arrive early",
+      instructorMemo: "Practice block",
+    });
+    const reopened = buildUnifiedLectureMemo({ preparationItems: "", requestMemo: "", instructorMemo: unified });
+
+    expect(reopened).toBe(unified);
+    expect(reopened).toContain("Laptop");
+    expect(reopened).toContain("Arrive early");
+    expect(reopened).toContain("Practice block");
+  });
+
+  it("does not resurrect a deleted preparation line after legacy fields are cleared", () => {
+    const editedMemo = "Arrive early\nPractice block";
+    const reopened = buildUnifiedLectureMemo({ preparationItems: "", requestMemo: "", instructorMemo: editedMemo });
+
+    expect(reopened).toBe(editedMemo);
+    expect(reopened).not.toContain("Laptop");
+  });
+
+  it("uses reflection once in report summary and blog closing when only reflection exists", () => {
+    const lecture = createLecture({ reflection: "Reflection only note", afterMemo: "", instructorMemo: "???: Laptop" });
+    const report = generateReport(lecture);
+    const blog = generateBlogDraft(lecture);
+
+    expect(countOccurrences(report, "Reflection only note")).toBe(1);
+    expect(countOccurrences(blog, "Reflection only note")).toBe(1);
+  });
+
+  it("uses afterMemo once in report summary and blog memorable section when only afterMemo exists", () => {
+    const lecture = createLecture({ reflection: "", afterMemo: "After memo only note", instructorMemo: "????: Arrive early" });
+    const report = generateReport(lecture);
+    const blog = generateBlogDraft(lecture);
+
+    expect(countOccurrences(report, "After memo only note")).toBe(1);
+    expect(countOccurrences(blog, "After memo only note")).toBe(1);
+  });
+
+  it("keeps instructorMemo preparation and request text out of report and blog", () => {
+    const lecture = createLecture({
+      instructorMemo: "???: Laptop\n????: Arrive early",
+      participantReaction: "Reaction note",
+      memorableQuestion: "Question note",
+      afterMemo: "After note",
+      reflection: "Reflection note",
+    });
+    const report = generateReport(lecture);
+    const blog = generateBlogDraft(lecture);
+
+    expect(report).not.toContain("???: Laptop");
+    expect(report).not.toContain("????: Arrive early");
+    expect(blog).not.toContain("???: Laptop");
+    expect(blog).not.toContain("????: Arrive early");
   });
 });
