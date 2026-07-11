@@ -36,8 +36,8 @@ export function CalendarGrid({
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   return (
-    <section className="h-fit rounded-xl border border-border bg-card p-4">
-      <div className="mb-4 flex items-center justify-between">
+    <section className="rounded-xl border border-border bg-card p-4 md:flex md:h-full md:min-h-0 md:flex-col md:overflow-hidden">
+      <div className="mb-4 flex shrink-0 items-center justify-between">
         <button
           onClick={() => onMoveMonth(-1)}
           className="rounded-md p-1.5 hover:bg-muted"
@@ -57,7 +57,7 @@ export function CalendarGrid({
         </button>
       </div>
 
-      <div className="mb-1 grid grid-cols-7">
+      <div className="mb-1 grid shrink-0 grid-cols-7">
         {weekdays.map((day, index) => (
           <div
             key={day}
@@ -74,11 +74,11 @@ export function CalendarGrid({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1 md:min-h-0 md:flex-1 md:grid-rows-6">
         {cells.map((day, index) => {
           if (!day)
             return (
-              <div key={`empty-${index}`} aria-hidden="true" className="min-h-12 sm:min-h-14" />
+              <div key={`empty-${index}`} aria-hidden="true" className="min-h-12 sm:min-h-14 md:min-h-0" />
             );
 
           const dateStr = toDateStr(day);
@@ -92,7 +92,7 @@ export function CalendarGrid({
               key={dateStr}
               onClick={() => onSelectDate(selected ? null : dateStr)}
               className={cn(
-                "flex min-h-12 flex-col items-center justify-between rounded-lg border border-transparent px-1 py-1.5 text-xs font-medium transition-colors sm:min-h-14",
+                "flex min-h-12 flex-col items-center justify-between rounded-lg border border-transparent px-1 py-1.5 text-xs font-medium transition-colors sm:min-h-14 md:h-full md:min-h-0",
                 selected && "bg-primary text-primary-foreground",
                 !selected &&
                   isToday &&

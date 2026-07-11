@@ -286,8 +286,8 @@ export default function CalendarPage() {
       </div>
 
       <div className="flex flex-col gap-4 md:h-[calc(100dvh-11rem)] md:min-h-0">
-        <div className="grid grid-cols-1 gap-4 md:h-[clamp(320px,46dvh,430px)] md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-stretch">
-          <section className="min-w-0 md:h-full md:[&>section]:h-full">
+        <div className="grid min-h-0 grid-cols-1 gap-4 md:h-[clamp(320px,46dvh,430px)] md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-stretch">
+          <section className="min-h-0 min-w-0 md:h-full md:[&>section]:h-full">
             <CalendarGrid
               viewYear={viewYear}
               viewMonth={viewMonth}
@@ -298,7 +298,7 @@ export default function CalendarPage() {
             />
           </section>
 
-          <aside className="min-w-0 md:h-full">
+          <aside className="min-h-0 min-w-0 md:h-full">
             {selectedLecture ? (
               <CalendarLectureDetailPanel
                 lecture={selectedLecture}
