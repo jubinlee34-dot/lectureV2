@@ -24,12 +24,12 @@ export function CalendarGrid({
   const today = new Date();
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const trailingBlankCount = Math.max(0, 42 - firstDay - daysInMonth);
   const cells = [
     ...Array(firstDay).fill(null),
     ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+    ...Array(trailingBlankCount).fill(null),
   ];
-
-  while (cells.length % 7 !== 0) cells.push(null);
 
   const toDateStr = (day: number) =>
     `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -78,7 +78,7 @@ export function CalendarGrid({
         {cells.map((day, index) => {
           if (!day)
             return (
-              <div key={`empty-${index}`} className="min-h-12 sm:min-h-14" />
+              <div key={`empty-${index}`} aria-hidden="true" className="min-h-12 sm:min-h-14" />
             );
 
           const dateStr = toDateStr(day);
