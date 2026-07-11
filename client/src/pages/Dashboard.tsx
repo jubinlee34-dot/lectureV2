@@ -16,8 +16,6 @@ import {
   MessageCircle,
   Phone,
   Plus,
-  TrendingUp,
-  Users,
   Wallet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -201,16 +199,8 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard icon={<BookOpen className="h-5 w-5 text-blue-600" />} label="총 강의" value={`${stats.totalCount}개`} onClick={() => navigate("/lectures")} />
-        <StatCard icon={<Users className="h-5 w-5 text-violet-600" />} label="총 참여자" value={`${stats.totalParticipants.toLocaleString()}명`} />
-        <StatCard icon={<TrendingUp className="h-5 w-5 text-emerald-600" />} label="올해 강의" value={`${stats.currentYearCount}개`} />
-        <StatCard icon={<CalendarDays className="h-5 w-5 text-amber-600" />} label="예정 강의" value={`${stats.upcomingCount}건`} onClick={() => navigate("/calendar")} />
-      </div>
-
-
-      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <section className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+      <div className="mb-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+        <section className="order-1 rounded-xl border border-border bg-card p-4 lg:order-1 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
               <CalendarDays className="h-4 w-4 text-primary" />
@@ -272,7 +262,7 @@ export default function Dashboard() {
           )}
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section className="order-4 rounded-xl border border-border bg-card p-4 lg:order-2">
           <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
             <ClipboardList className="h-4 w-4 text-primary" />
             진행 단계
@@ -283,12 +273,8 @@ export default function Dashboard() {
             <WorkflowRow label="홍보 완료" count={promotedCount} total={lectures.length} color="bg-green-500" onClick={() => navigate("/calendar?status=promoted")} />
           </div>
         </section>
-      </div>
-
-      {/* 할일 & 최근 등록 강의 Grid */}
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* 할일 Section */}
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section className="order-2 rounded-xl border border-border bg-card p-4 lg:order-3 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
               <ClipboardList className="h-4.5 w-4.5 text-blue-600" />
@@ -348,7 +334,7 @@ export default function Dashboard() {
         </section>
 
         {/* 최근 등록 강의 Section */}
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section className="order-3 rounded-xl border border-border bg-card p-4 lg:order-4">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
               <BookOpen className="h-4.5 w-4.5 text-blue-600" />
@@ -425,16 +411,6 @@ export default function Dashboard() {
         />
       )}
     </div>
-  );
-}
-
-function StatCard({ icon, label, value, onClick }: { icon: React.ReactNode; label: string; value: string; onClick?: () => void }) {
-  return (
-    <button onClick={onClick} className={`rounded-xl border border-border bg-card p-3 text-left ${onClick ? "hover:border-primary/40" : "cursor-default"}`}>
-      <div className="mb-2">{icon}</div>
-      <p className="text-xl font-bold text-foreground">{value}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
-    </button>
   );
 }
 
