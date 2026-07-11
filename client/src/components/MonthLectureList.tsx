@@ -8,6 +8,8 @@ interface MonthLectureListProps {
   selectedLectureId?: string | null;
   selectedDate?: string | null;
   onSelect: (lecture: Lecture) => void;
+  className?: string;
+  listClassName?: string;
 }
 
 export function MonthLectureList({
@@ -16,16 +18,18 @@ export function MonthLectureList({
   selectedLectureId,
   selectedDate,
   onSelect,
+  className = "",
+  listClassName = "",
 }: MonthLectureListProps) {
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
-      <h3 className="mb-3 text-sm font-semibold text-foreground">
+    <section className={`rounded-xl border border-border bg-card p-4 ${className}`}>
+      <h3 className="mb-3 shrink-0 text-sm font-semibold text-foreground">
         {viewMonth + 1}월 강의 일정
         <span className="ml-1 text-xs font-normal text-muted-foreground">
           {monthLectures.length}건
         </span>
       </h3>
-      <div className="space-y-2">
+      <div className={`space-y-2 ${listClassName}`}>
         {monthLectures.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">
             이번 달 조건에 맞는 강의가 없습니다.

@@ -208,19 +208,20 @@ export default function CalendarPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <select
-              value={selectedYear}
-              onChange={event => changeYear(event.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary sm:w-auto"
-            >
-              {availableYears.map(year => (
-                <option key={year} value={year}>
-                  {year}년
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-wrap items-center gap-3 md:flex-nowrap md:justify-between">
+          <select
+            value={selectedYear}
+            onChange={event => changeYear(event.target.value)}
+            className="order-1 h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+          >
+            {availableYears.map(year => (
+              <option key={year} value={year}>
+                {year}년
+              </option>
+            ))}
+          </select>
+
+          <div className="order-3 min-w-0 flex-[1_0_100%] md:order-2 md:flex md:flex-[1_1_auto] md:items-center">
             <StatusNavigation
               value={statusFilter}
               counts={statusCounts}
@@ -229,7 +230,7 @@ export default function CalendarPage() {
             />
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
+          <div className="order-2 ml-auto flex shrink-0 items-center gap-2 md:order-3 md:justify-end">
             <Button
               variant="outline"
               size="sm"
@@ -284,8 +285,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(360px,1fr)_minmax(280px,360px)] xl:grid-cols-[minmax(560px,1fr)_380px]">
-        <section className="min-w-0">
+      <div className="grid grid-cols-1 gap-4 md:h-[calc(100dvh-11rem)] md:min-h-0 md:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] md:items-stretch xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <section className="min-w-0 md:h-full">
           <CalendarGrid
             viewYear={viewYear}
             viewMonth={viewMonth}
@@ -296,8 +297,8 @@ export default function CalendarPage() {
           />
         </section>
 
-        <aside className="min-w-0 space-y-4 md:sticky md:top-4 md:grid md:max-h-[calc(100vh-8rem)] md:grid-rows-[auto_minmax(0,1fr)] md:gap-4 md:space-y-0 md:overflow-hidden">
-          <div className="min-w-0">
+        <aside className="min-w-0 space-y-4 md:flex md:h-full md:min-h-0 md:flex-col md:space-y-0 md:overflow-hidden">
+          <div className="min-w-0 md:shrink-0">
             {selectedLecture ? (
               <CalendarLectureDetailPanel
                 lecture={selectedLecture}
@@ -313,8 +314,10 @@ export default function CalendarPage() {
             )}
           </div>
 
-          <div className="min-w-0 md:min-h-0 md:overflow-y-auto md:pr-1">
+          <div className="min-w-0 md:mt-4 md:flex md:min-h-0 md:flex-1 md:flex-col">
             <MonthLectureList
+              className="md:flex md:min-h-0 md:flex-1 md:flex-col"
+              listClassName="md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain md:pr-1 md:[scrollbar-gutter:stable]"
               viewMonth={viewMonth}
               monthLectures={monthLectures}
               selectedLectureId={selectedLectureId}
