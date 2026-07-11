@@ -285,23 +285,24 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:h-[calc(100dvh-11rem)] md:min-h-0 md:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] md:items-stretch xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <section className="min-w-0 md:h-full">
-          <CalendarGrid
-            viewYear={viewYear}
-            viewMonth={viewMonth}
-            lectureMap={lectureMap}
-            selectedDate={selectedDate}
-            onSelectDate={selectCalendarDate}
-            onMoveMonth={moveMonth}
-          />
-        </section>
+      <div className="flex flex-col gap-4 md:h-[calc(100dvh-11rem)] md:min-h-0">
+        <div className="grid grid-cols-1 gap-4 md:h-[clamp(320px,46dvh,430px)] md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-stretch">
+          <section className="min-w-0 md:h-full md:[&>section]:h-full">
+            <CalendarGrid
+              viewYear={viewYear}
+              viewMonth={viewMonth}
+              lectureMap={lectureMap}
+              selectedDate={selectedDate}
+              onSelectDate={selectCalendarDate}
+              onMoveMonth={moveMonth}
+            />
+          </section>
 
-        <aside className="min-w-0 space-y-4 md:flex md:h-full md:min-h-0 md:flex-col md:space-y-0 md:overflow-hidden">
-          <div className="min-w-0 md:shrink-0">
+          <aside className="min-w-0 md:h-full">
             {selectedLecture ? (
               <CalendarLectureDetailPanel
                 lecture={selectedLecture}
+                className="md:h-full"
                 onClose={() => setSelectedLectureId(null)}
                 onAction={openLectureAction}
                 onSms={setSmsTarget}
@@ -310,22 +311,22 @@ export default function CalendarPage() {
                 onDelete={handleDeleteLecture}
               />
             ) : (
-              <CalendarLectureEmptyPanel />
+              <CalendarLectureEmptyPanel className="md:h-full" />
             )}
-          </div>
+          </aside>
+        </div>
 
-          <div className="min-w-0 md:mt-4 md:flex md:min-h-0 md:flex-1 md:flex-col">
-            <MonthLectureList
-              className="md:flex md:min-h-0 md:flex-1 md:flex-col"
-              listClassName="md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain md:pr-1 md:[scrollbar-gutter:stable]"
-              viewMonth={viewMonth}
-              monthLectures={monthLectures}
-              selectedLectureId={selectedLectureId}
-              selectedDate={selectedDate}
-              onSelect={lecture => setSelectedLectureId(lecture.id)}
-            />
-          </div>
-        </aside>
+        <div className="min-w-0 md:flex md:min-h-0 md:flex-1 md:flex-col">
+          <MonthLectureList
+            className="md:flex md:min-h-0 md:flex-1 md:flex-col"
+            listClassName="md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain md:pr-1 md:[scrollbar-gutter:stable]"
+            viewMonth={viewMonth}
+            monthLectures={monthLectures}
+            selectedLectureId={selectedLectureId}
+            selectedDate={selectedDate}
+            onSelect={lecture => setSelectedLectureId(lecture.id)}
+          />
+        </div>
       </div>
       {smsTarget && (
         <SmsModal
@@ -385,6 +386,7 @@ function CalendarLectureDetailPanel({
   onPromote,
   onRollback,
   onDelete,
+  className = "",
 }: {
   lecture: Lecture;
   onClose: () => void;
@@ -393,15 +395,16 @@ function CalendarLectureDetailPanel({
   onPromote: (lecture: Lecture) => void;
   onRollback: (lecture: Lecture) => void;
   onDelete: (id: string) => void;
+  className?: string;
 }) {
   return (
     <section
       onClick={onClose}
-      className="rounded-xl border border-primary/30 bg-primary/5 p-2"
+      className={`rounded-xl border border-primary/30 bg-primary/5 p-2 ${className}`}
     >
       <div
         onClick={event => event.stopPropagation()}
-        className="rounded-lg bg-card p-3 shadow-sm"
+        className="h-full rounded-lg bg-card p-3 shadow-sm"
       >
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -428,9 +431,9 @@ function CalendarLectureDetailPanel({
   );
 }
 
-function CalendarLectureEmptyPanel() {
+function CalendarLectureEmptyPanel({ className = "" }: { className?: string }) {
   return (
-    <section className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
+    <section className={`flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-4 text-center ${className}`}>
       <CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted-foreground/60" />
       <h3 className="text-sm font-semibold text-foreground">
         강의를 선택해 주세요.
