@@ -62,6 +62,60 @@ function normalizeDateKey(dateStr?: string | null) {
   return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
+function toLocalDateTime(dateKey: string) {
+  const parts = parseDateParts(dateKey);
+  if (!parts) return null;
+  return new Date(parts.year, parts.month - 1, parts.day, 12).getTime();
+}
+
+function getDateDiffInDays(fromDateKey: string, toDateKey: string) {
+  const fromTime = toLocalDateTime(fromDateKey);
+  const toTime = toLocalDateTime(toDateKey);
+  if (fromTime === null || toTime === null) return null;
+  return Math.round((toTime - fromTime) / 86400000);
+}
+
+function formatMonthDay(dateStr?: string | null) {
+  const parts = parseDateParts(dateStr);
+  if (!parts) return "";
+  return `${parts.month}월 ${parts.day}일`;
+}
+
+function formatDueStatus(todo: Todo, todayKey: string) {
+  const dateKey = normalizeDateKey(todo.dueDate);
+  if (!dateKey) return "날짜 없음";
+  const dateText = formatMonthDay(dateKey);
+  const diff = getDateDiffInDays(todayKey, dateKey);
+  if (diff === null) return dateText || "날짜 없음";
+  if (diff === 0) return `오늘 · ${dateText}`;
+  if (diff > 0) return `D-${diff} · ${dateText}`;
+  if (todo.done) return `완료 · ${dateText}`;
+  return `기한초과 ${Math.abs(diff)}일 · ${dateText}`;
+}
+
+function getPriorityMeta(priority: TodoPriority) {
+  switch (priority) {
+    case "high":
+      return {
+        label: "높음",
+        className: "bg-red-50 text-red-700 border-red-200",
+        dotClassName: "bg-red-500",
+      };
+    case "low":
+      return {
+        label: "낮음",
+        className: "bg-blue-50 text-blue-700 border-blue-200",
+        dotClassName: "bg-blue-500",
+      };
+    case "medium":
+    default:
+      return {
+        label: "보통",
+        className: "bg-yellow-50 text-yellow-700 border-yellow-200",
+        dotClassName: "bg-yellow-500",
+      };
+  }
+}
 function formatLectureLabel(lecture: Lecture, includeDate = true) {
   const date = includeDate ? formatShortDate(lecture.date) : "";
   const title = lecture.title || "강의명 없음";
@@ -577,7 +631,9 @@ export default function TodoPage() {
             const lecture = lectures.find((l) => l.id === todo.lectureId);
             const overdue = checkIsOverdue(todo);
             const isEditing = editingId === todo.id;
-            const dueDateText = formatKoreanDate(todo.dueDate);
+            const dueStatusText = formatDueStatus(todo, todayKey);
+            const priorityMeta = getPriorityMeta(todo.priority);
+            const lectureTitle = lecture?.title?.trim();
 
             if (isEditing) {
               return (
@@ -657,98 +713,120 @@ export default function TodoPage() {
             return (
               <div
                 key={todo.id}
-                className={`flex items-start justify-between gap-3 p-4 rounded-xl border bg-card transition-all ${
+                className={`rounded-lg border bg-card px-3 py-2 transition-all ${
                   todo.done ? "border-border/60 bg-muted/20 opacity-80" : "border-border hover:shadow-xs"
                 } ${selectedIds.includes(todo.id) ? "border-primary bg-primary/5" : ""}`}
               >
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className="flex items-center shrink-0 mt-1" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(todo.id)}
-                      onChange={(e) => handleSelect(todo.id, e.target.checked)}
-                      className="h-4.5 w-4.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                    />
-                  </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(todo.id)}
+                          onChange={(e) => handleSelect(todo.id, e.target.checked)}
+                          aria-label="할 일 선택"
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleTodo(todo.id);
+                            if (!todo.done) {
+                              toast.success("할 일을 완료했습니다.");
+                            }
+                          }}
+                          aria-label={todo.done ? "할 일을 미완료로 변경" : "할 일을 완료로 변경"}
+                          title={todo.done ? "미완료로 변경" : "완료로 변경"}
+                          className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer ${
+                            todo.done ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30 hover:border-primary bg-background"
+                          }`}
+                        >
+                          {todo.done && <Check className="h-3 w-3 stroke-[3]" />}
+                        </button>
+                      </div>
 
-                  <button
-                    onClick={() => {
-                      toggleTodo(todo.id);
-                      if (!todo.done) {
-                        toast.success("할 일을 완료했습니다.");
-                      }
-                    }}
-                    className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer ${
-                      todo.done ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30 hover:border-primary bg-background"
-                    }`}
-                  >
-                    {todo.done && <Check className="h-3 w-3 stroke-[3]" />}
-                  </button>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-xs ${priorityMeta.className}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${priorityMeta.dotClassName}`} />
+                        {priorityMeta.label}
+                      </span>
 
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-medium text-foreground leading-snug break-words ${todo.done ? "line-through text-muted-foreground" : ""}`}>
-                      {todo.text}
-                    </p>
-
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                      {todo.priority === "high" && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                          높음
-                        </span>
-                      )}
-                      {todo.priority === "medium" && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-50 text-yellow-700 border border-yellow-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
-                          보통
-                        </span>
-                      )}
-                      {todo.priority === "low" && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                          낮음
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-2 grid gap-1 text-[11px] sm:text-xs">
-                      {lecture && (
-                        <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 text-muted-foreground">
-                          <span className="font-semibold text-foreground/70">관련 강의</span>
-                          <span className="min-w-0 break-words">{formatLectureLabel(lecture)}</span>
-                        </div>
-                      )}
-                      <div
-                        className={`grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 ${
-                          overdue ? "text-destructive font-semibold" : "text-muted-foreground"
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold sm:text-xs ${
+                          overdue
+                            ? "border-destructive/30 bg-destructive/10 text-destructive"
+                            : "border-border bg-muted/40 text-muted-foreground"
                         }`}
                       >
-                        <span className="inline-flex items-center gap-1 font-semibold text-foreground/70">
-                          {overdue && <AlertCircle className="h-3 w-3 stroke-[2.5] text-destructive" />}
-                          마감일
-                        </span>
-                        <span>{dueDateText || "없음"}</span>
+                        {overdue && <AlertCircle className="h-3 w-3 stroke-[2.5]" />}
+                        {dueStatusText}
+                      </span>
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p
+                        title={lectureTitle ? `${todo.text} (${lectureTitle})` : todo.text}
+                        className={`min-w-0 flex-1 truncate text-sm font-medium leading-snug text-foreground ${
+                          todo.done ? "line-through text-muted-foreground" : ""
+                        }`}
+                      >
+                        <span>{todo.text}</span>
+                        {lectureTitle && (
+                          <span className="font-normal text-muted-foreground"> ({lectureTitle})</span>
+                        )}
+                      </p>
+
+                      <div className="flex shrink-0 items-center gap-0.5 sm:hidden" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(todo)}
+                          aria-label="할 일 수정"
+                          title="수정"
+                          className="p-1 rounded-md text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            deleteTodo(todo.id);
+                            toast.success("할 일을 삭제했습니다.");
+                          }}
+                          aria-label="할 일 삭제"
+                          title="삭제"
+                          className="p-1 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => startEdit(todo)}
-                    className="p-1 rounded-md text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      deleteTodo(todo.id);
-                      toast.success("할 일을 삭제했습니다.");
-                    }}
-                    className="p-1 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="hidden shrink-0 items-center gap-0.5 sm:flex" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(todo)}
+                      aria-label="할 일 수정"
+                      title="수정"
+                      className="p-1 rounded-md text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteTodo(todo.id);
+                        toast.success("할 일을 삭제했습니다.");
+                      }}
+                      aria-label="할 일 삭제"
+                      title="삭제"
+                      className="p-1 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
