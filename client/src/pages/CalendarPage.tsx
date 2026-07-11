@@ -29,6 +29,7 @@ export default function CalendarPage() {
   const { lectures, bulkAddLectures, updateLecture, deleteLecture } =
     useLectures();
   const today = new Date();
+  const currentYear = String(today.getFullYear());
   const initialCalendarState = readCalendarQueryState(today);
   const [viewYear, setViewYear] = useState(initialCalendarState.year);
   const [viewMonth, setViewMonth] = useState(initialCalendarState.month);
@@ -45,14 +46,23 @@ export default function CalendarPage() {
   );
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
+  const selectedYear = String(viewYear);
 
-  const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
+  const availableYears = useMemo(
+    () => buildAvailableYears(lectures, currentYear),
+    [lectures, currentYear]
+  );
+  const yearLectures = useMemo(
+    () => lectures.filter(lecture => getLectureYear(lecture) === selectedYear),
+    [lectures, selectedYear]
+  );
+  const statusCounts = useMemo(() => getStatusCounts(yearLectures), [yearLectures]);
   const statusFilteredLectures = useMemo(
     () =>
       statusFilter === "all"
-        ? lectures
-        : lectures.filter(lecture => lecture.workflowStage === statusFilter),
-    [lectures, statusFilter]
+        ? yearLectures
+        : yearLectures.filter(lecture => lecture.workflowStage === statusFilter),
+    [yearLectures, statusFilter]
   );
 
   const lectureMap = useMemo(() => {
@@ -66,22 +76,27 @@ export default function CalendarPage() {
   }, [statusFilteredLectures]);
 
   const selectedLecture = selectedLectureId
-    ? lectures.find(lecture => lecture.id === selectedLectureId)
+    ? statusFilteredLectures.find(lecture => lecture.id === selectedLectureId)
     : undefined;
 
   const monthLectures = useMemo(() => {
     return statusFilteredLectures
-      .filter(lecture => {
-        const date = new Date(lecture.date);
-        return date.getFullYear() === viewYear && date.getMonth() === viewMonth;
-      })
+      .filter(lecture => Number(lecture.date?.slice(5, 7)) === viewMonth + 1)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [statusFilteredLectures, viewYear, viewMonth]);
+  }, [statusFilteredLectures, viewMonth]);
 
   const moveMonth = (diff: number) => {
     const next = new Date(viewYear, viewMonth + diff, 1);
     setViewYear(next.getFullYear());
     setViewMonth(next.getMonth());
+  };
+
+  const changeYear = (year: string) => {
+    const nextYear = Number(year);
+    if (!Number.isFinite(nextYear)) return;
+    setViewYear(nextYear);
+    setSelectedDate(null);
+    setSelectedLectureId(null);
   };
 
   const selectCalendarDate = (date: string | null) => {
@@ -182,118 +197,137 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div>
+      <div className="mb-5 flex flex-col gap-3">
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <CalendarDays className="h-6 w-6 text-primary" />
             강의 캘린더
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            월별 목록에서 강의를 선택하고, 캘린더에서는 날짜별 일정을
-            탐색합니다.
+            강의 일정을 월별로 확인하고 관리합니다.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setImportOpen(true)}
-            className="hidden lg:inline-flex"
+        <div className="flex flex-wrap items-center gap-3 md:flex-nowrap md:justify-between">
+          <select
+            value={selectedYear}
+            onChange={event => changeYear(event.target.value)}
+            className="order-1 h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
           >
-            <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
-            가져오기
-          </Button>
-          {lectures.length > 0 && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  downloadCSV(lectures, "강의목록.csv");
-                  toast.success("CSV 파일을 다운로드했습니다.");
-                }}
-                className="hidden lg:inline-flex"
-              >
-                <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
-                CSV
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  downloadICS(lectures, "강의일정.ics");
-                  toast.success("ICS 파일을 다운로드했습니다.");
-                }}
-                className="hidden lg:inline-flex"
-              >
-                <Download className="mr-1.5 h-4 w-4 text-blue-600" />
-                ICS
-              </Button>
-            </>
-          )}
-          <Button
-            size="sm"
-            onClick={() =>
-              navigate(
-                selectedDate
-                  ? `/lectures/new?date=${selectedDate}`
-                  : "/lectures/new"
-              )
-            }
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            강의 등록
-          </Button>
+            {availableYears.map(year => (
+              <option key={year} value={year}>
+                {year}년
+              </option>
+            ))}
+          </select>
+
+          <div className="order-3 min-w-0 flex-[1_0_100%] md:order-2 md:flex md:flex-[1_1_auto] md:items-center">
+            <StatusNavigation
+              value={statusFilter}
+              counts={statusCounts}
+              onChange={setStatusFilter}
+              className="min-w-0"
+            />
+          </div>
+
+          <div className="order-2 ml-auto flex shrink-0 items-center gap-2 md:order-3 md:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="hidden lg:inline-flex"
+            >
+              <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
+              가져오기
+            </Button>
+            {lectures.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    downloadCSV(lectures, "강의목록.csv");
+                    toast.success("CSV 파일을 다운로드했습니다.");
+                  }}
+                  className="hidden lg:inline-flex"
+                >
+                  <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
+                  CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    downloadICS(lectures, "강의일정.ics");
+                    toast.success("ICS 파일을 다운로드했습니다.");
+                  }}
+                  className="hidden lg:inline-flex"
+                >
+                  <Download className="mr-1.5 h-4 w-4 text-blue-600" />
+                  ICS
+                </Button>
+              </>
+            )}
+            <Button
+              size="sm"
+              onClick={() =>
+                navigate(
+                  selectedDate
+                    ? `/lectures/new?date=${selectedDate}`
+                    : "/lectures/new"
+                )
+              }
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              강의 등록
+            </Button>
+          </div>
         </div>
       </div>
 
-      <StatusNavigation
-        value={statusFilter}
-        counts={statusCounts}
-        onChange={setStatusFilter}
-        className="mb-4"
-      />
+      <div className="flex flex-col gap-4 md:h-[calc(100dvh-11rem)] md:min-h-0">
+        <div className="grid min-h-0 grid-cols-1 gap-4 md:h-[clamp(320px,46dvh,430px)] md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-stretch">
+          <section className="min-h-0 min-w-0 md:h-full md:[&>section]:h-full">
+            <CalendarGrid
+              viewYear={viewYear}
+              viewMonth={viewMonth}
+              lectureMap={lectureMap}
+              selectedDate={selectedDate}
+              onSelectDate={selectCalendarDate}
+              onMoveMonth={moveMonth}
+            />
+          </section>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_340px] xl:grid-cols-[280px_minmax(520px,1fr)_340px]">
-        <aside className="order-3 lg:col-span-2 xl:order-1 xl:col-span-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-9rem)] xl:overflow-y-auto xl:pr-1">
+          <aside className="min-h-0 min-w-0 md:h-full">
+            {selectedLecture ? (
+              <CalendarLectureDetailPanel
+                lecture={selectedLecture}
+                className="md:h-full"
+                onClose={() => setSelectedLectureId(null)}
+                onAction={openLectureAction}
+                onSms={setSmsTarget}
+                onPromote={promoteLecture}
+                onRollback={rollbackLecture}
+                onDelete={handleDeleteLecture}
+              />
+            ) : (
+              <CalendarLectureEmptyPanel className="md:h-full" />
+            )}
+          </aside>
+        </div>
+
+        <div className="min-w-0 md:flex md:min-h-0 md:flex-1 md:flex-col">
           <MonthLectureList
+            className="md:flex md:min-h-0 md:flex-1 md:flex-col"
+            listClassName="md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain md:pr-1 md:[scrollbar-gutter:stable]"
             viewMonth={viewMonth}
             monthLectures={monthLectures}
             selectedLectureId={selectedLectureId}
             selectedDate={selectedDate}
             onSelect={lecture => setSelectedLectureId(lecture.id)}
           />
-        </aside>
-
-        <section className="order-1 xl:order-2">
-          <CalendarGrid
-            viewYear={viewYear}
-            viewMonth={viewMonth}
-            lectureMap={lectureMap}
-            selectedDate={selectedDate}
-            onSelectDate={selectCalendarDate}
-            onMoveMonth={moveMonth}
-          />
-        </section>
-
-        <aside className="order-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto xl:order-3">
-          {selectedLecture ? (
-            <CalendarLectureDetailPanel
-              lecture={selectedLecture}
-              onClose={() => setSelectedLectureId(null)}
-              onAction={openLectureAction}
-              onSms={setSmsTarget}
-              onPromote={promoteLecture}
-              onRollback={rollbackLecture}
-              onDelete={handleDeleteLecture}
-            />
-          ) : (
-            <CalendarLectureEmptyPanel />
-          )}
-        </aside>
+        </div>
       </div>
-
       {smsTarget && (
         <SmsModal
           open={!!smsTarget}
@@ -330,6 +364,20 @@ export default function CalendarPage() {
   );
 }
 
+function getLectureYear(lecture: Lecture) {
+  const year = lecture.date?.slice(0, 4);
+  return year?.match(/^\d{4}$/) ? year : "";
+}
+
+function buildAvailableYears(lectures: Lecture[], currentYear: string) {
+  const years = new Set<string>([currentYear]);
+  lectures.forEach(lecture => {
+    const year = getLectureYear(lecture);
+    if (year) years.add(year);
+  });
+  return Array.from(years).sort((a, b) => b.localeCompare(a));
+}
+
 function CalendarLectureDetailPanel({
   lecture,
   onClose,
@@ -338,6 +386,7 @@ function CalendarLectureDetailPanel({
   onPromote,
   onRollback,
   onDelete,
+  className = "",
 }: {
   lecture: Lecture;
   onClose: () => void;
@@ -346,15 +395,16 @@ function CalendarLectureDetailPanel({
   onPromote: (lecture: Lecture) => void;
   onRollback: (lecture: Lecture) => void;
   onDelete: (id: string) => void;
+  className?: string;
 }) {
   return (
     <section
       onClick={onClose}
-      className="rounded-xl border border-primary/30 bg-primary/5 p-2"
+      className={`rounded-xl border border-primary/30 bg-primary/5 p-2 ${className}`}
     >
       <div
         onClick={event => event.stopPropagation()}
-        className="rounded-lg bg-card p-3 shadow-sm"
+        className="h-full rounded-lg bg-card p-3 shadow-sm"
       >
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -381,9 +431,9 @@ function CalendarLectureDetailPanel({
   );
 }
 
-function CalendarLectureEmptyPanel() {
+function CalendarLectureEmptyPanel({ className = "" }: { className?: string }) {
   return (
-    <section className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
+    <section className={`flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-4 text-center ${className}`}>
       <CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted-foreground/60" />
       <h3 className="text-sm font-semibold text-foreground">
         강의를 선택해 주세요.
