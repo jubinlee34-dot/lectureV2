@@ -18,7 +18,7 @@ import {
   Plus,
   Wallet,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import type { Lecture, Todo, TodoPriority } from "@/types/lecture";
@@ -36,6 +36,12 @@ type ScheduleSummary = {
   remainingThisMonth: number;
   remainingThisWeek: number;
   nextWeek: number;
+};
+
+type FeeSummary = {
+  scheduled: number;
+  paid: number;
+  unpaid: number;
 };
 
 function getTodayDateKey() {
@@ -135,6 +141,30 @@ function buildScheduleSummary(lectures: Lecture[], todayKey: string): ScheduleSu
   };
 }
 
+function getLectureYear(lecture: Lecture) {
+  const year = lecture.date?.slice(0, 4);
+  return year?.match(/^\d{4}$/) ? year : "";
+}
+
+function buildAvailableYears(lectures: Lecture[], currentYear: string) {
+  const years = new Set<string>();
+  lectures.forEach((lecture) => {
+    const year = getLectureYear(lecture);
+    if (year) years.add(year);
+  });
+  if (years.size === 0) years.add(currentYear);
+  return Array.from(years).sort((a, b) => b.localeCompare(a));
+}
+
+function buildFeeSummary(lectures: Lecture[]): FeeSummary {
+  const scheduled = lectures.reduce((sum, lecture) => sum + (lecture.fee || 0), 0);
+  const paid = lectures.reduce((sum, lecture) => sum + (lecture.paidAmount || 0), 0);
+  return {
+    scheduled,
+    paid,
+    unpaid: Math.max(scheduled - paid, 0),
+  };
+}
 function getDashboardTodoMeta(todo: Todo, todayKey: string): DashboardTodoMeta {
   const dueKey = normalizeDateKey(todo.dueDate);
   if (!dueKey) {
@@ -216,15 +246,35 @@ function getDueBadgeClassName(state: DashboardTodoDueState) {
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
-  const { lectures, stats, upcomingLectures } = useLectures();
+  const { lectures, upcomingLectures } = useLectures();
   const { pendingTodos, toggleTodo } = useTodos();
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
   const [feeOpen, setFeeOpen] = useState(false);
 
+  const currentYear = String(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(currentYear);
   const todayKey = useMemo(() => getTodayDateKey(), []);
-  const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
+  const availableYears = useMemo(() => buildAvailableYears(lectures, currentYear), [lectures, currentYear]);
+
+  useEffect(() => {
+    if (!availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0]);
+      setFeeOpen(false);
+    }
+  }, [availableYears, selectedYear]);
+
+  const selectedYearLectures = useMemo(
+    () => lectures.filter((lecture) => getLectureYear(lecture) === selectedYear),
+    [lectures, selectedYear]
+  );
+  const selectedYearStatusCounts = useMemo(() => getStatusCounts(selectedYearLectures), [selectedYearLectures]);
+  const selectedYearFeeSummary = useMemo(() => buildFeeSummary(selectedYearLectures), [selectedYearLectures]);
   const scheduleSummary = useMemo(() => buildScheduleSummary(lectures, todayKey), [lectures, todayKey]);
 
+  const changeSelectedYear = (year: string) => {
+    setSelectedYear(year);
+    setFeeOpen(false);
+  };
   const dashboardTodos = useMemo(() => {
     return sortDashboardTodos(pendingTodos, todayKey).slice(0, 3);
   }, [pendingTodos, todayKey]);
@@ -242,12 +292,12 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      <StatusSummaryBar counts={statusCounts} />
+      <StatusSummaryBar counts={selectedYearStatusCounts} selectedYear={selectedYear} availableYears={availableYears} onYearChange={changeSelectedYear} />
 
-      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(240px,0.7fr)_minmax(0,1.3fr)]">
-        <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-1">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(260px,0.7fr)_minmax(0,1.3fr)] lg:items-start">
+        <div className="order-2 min-w-0 w-full space-y-4 lg:order-1">
           <ScheduleSummaryCard summary={scheduleSummary} />
-          <section className="self-start rounded-xl border border-border bg-card p-4">
+          <section className="w-full min-w-0 rounded-xl border border-border bg-card p-4">
             <button
               type="button"
               onClick={() => setFeeOpen((open) => !open)}
@@ -256,7 +306,7 @@ export default function Dashboard() {
             >
               <span className="flex items-center gap-1.5">
                 <Wallet className="h-4 w-4 text-primary" />
-                이번 달 강사료 현황
+                {selectedYear}년 강사료 현황
               </span>
               <span className="shrink-0 text-xs font-medium text-muted-foreground">
                 {feeOpen ? "금액 숨기기 ▲" : "금액 보기 ▼"}
@@ -264,16 +314,16 @@ export default function Dashboard() {
             </button>
             {feeOpen && (
               <div className="mt-4 grid gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                <MoneyBox label="지급 예정" value={formatKRW(stats.thisMonthFee)} />
-                <MoneyBox label="지급 완료" value={formatKRW(stats.thisMonthPaid)} tone="green" />
-                <MoneyBox label="미지급" value={formatKRW(stats.thisMonthUnpaid)} tone="red" />
+                <MoneyBox label="지급 예정" value={formatKRW(selectedYearFeeSummary.scheduled)} />
+                <MoneyBox label="지급 완료" value={formatKRW(selectedYearFeeSummary.paid)} tone="green" />
+                <MoneyBox label="미지급" value={formatKRW(selectedYearFeeSummary.unpaid)} tone="red" />
               </div>
             )}
           </section>
         </div>
 
-        <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-2">
-          <section className="rounded-xl border border-border bg-card p-4">
+        <div className="order-1 min-w-0 w-full space-y-4 lg:order-2">
+          <section className="w-full min-w-0 rounded-xl border border-border bg-card p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
                 <CalendarDays className="h-4 w-4 text-primary" />
@@ -347,7 +397,7 @@ export default function Dashboard() {
             )}
           </section>
 
-          <section className="rounded-xl border border-border bg-card p-4">
+          <section className="w-full min-w-0 rounded-xl border border-border bg-card p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
                 <ClipboardList className="h-4.5 w-4.5 text-blue-600" />
@@ -424,17 +474,37 @@ export default function Dashboard() {
   );
 }
 
-function StatusSummaryBar({ counts }: { counts: ReturnType<typeof getStatusCounts> }) {
+function StatusSummaryBar({
+  counts,
+  selectedYear,
+  availableYears,
+  onYearChange,
+}: {
+  counts: ReturnType<typeof getStatusCounts>;
+  selectedYear: string;
+  availableYears: string[];
+  onYearChange: (year: string) => void;
+}) {
   return (
     <section className="rounded-lg border border-border bg-card px-3 py-2">
-      <div className="flex flex-col gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-0">
+      <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
+        <select
+          value={selectedYear}
+          onChange={(event) => onYearChange(event.target.value)}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+        >
+          {availableYears.map((year) => (
+            <option key={year} value={year}>
+              {year}년
+            </option>
+          ))}
+        </select>
+        <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-0">
           <StatusSummaryItem label="전체" value={counts.all} />
           <StatusSummaryItem label={statusLabels.before} value={counts.before} />
           <StatusSummaryItem label={statusLabels.after} value={counts.after} />
           <StatusSummaryItem label={statusLabels.promoted} value={counts.promoted} last />
         </div>
-        <p className="shrink-0 text-[11px] text-muted-foreground">※ 전체 기간 기준</p>
       </div>
     </section>
   );
@@ -449,7 +519,7 @@ function StatusSummaryItem({ label, value, last = false }: { label: string; valu
 
 function ScheduleSummaryCard({ summary }: { summary: ScheduleSummary }) {
   return (
-    <section className="self-start rounded-xl border border-border bg-card p-4">
+    <section className="w-full min-w-0 rounded-xl border border-border bg-card p-4">
       <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
         <CalendarDays className="h-4 w-4 text-primary" />
         일정 요약
