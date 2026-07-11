@@ -23,7 +23,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import type { Lecture } from "@/types/lecture";
+import type { Lecture, Todo, TodoPriority } from "@/types/lecture";
 
 const stageLabels: Record<string, string> = {
   before: "강의 전",
@@ -36,6 +36,136 @@ const stageStyles: Record<string, string> = {
   after: "bg-amber-50 text-amber-700 border-amber-200",
   promoted: "bg-green-50 text-green-700 border-green-200",
 };
+
+
+type DashboardTodoDueState = "overdue" | "today" | "soon" | "future" | "none";
+
+type DashboardTodoMeta = {
+  dueKey: string;
+  dueDiff: number | null;
+  dueLabel: string;
+  dueState: DashboardTodoDueState;
+};
+
+function getTodayDateKey() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
+function parseDateParts(dateStr?: string | null) {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split("-");
+  if (!year || !month || !day) return null;
+  const yearNum = Number(year);
+  const monthNum = Number(month);
+  const dayNum = Number(day);
+  if (!yearNum || !monthNum || !dayNum) return null;
+  return { year: yearNum, month: monthNum, day: dayNum };
+}
+
+function normalizeDateKey(dateStr?: string | null) {
+  const parts = parseDateParts(dateStr);
+  if (!parts) return "";
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function toLocalDateTime(dateKey: string) {
+  const parts = parseDateParts(dateKey);
+  if (!parts) return null;
+  return new Date(parts.year, parts.month - 1, parts.day, 12).getTime();
+}
+
+function getDateDiffInDays(fromDateKey: string, toDateKey: string) {
+  const fromTime = toLocalDateTime(fromDateKey);
+  const toTime = toLocalDateTime(toDateKey);
+  if (fromTime === null || toTime === null) return null;
+  return Math.round((toTime - fromTime) / 86400000);
+}
+
+function formatMonthDay(dateStr?: string | null) {
+  const parts = parseDateParts(dateStr);
+  if (!parts) return "";
+  return `${parts.month}월 ${parts.day}일`;
+}
+
+function getDashboardTodoMeta(todo: Todo, todayKey: string): DashboardTodoMeta {
+  const dueKey = normalizeDateKey(todo.dueDate);
+  if (!dueKey) {
+    return { dueKey: "", dueDiff: null, dueLabel: "날짜 없음", dueState: "none" };
+  }
+
+  const dueDiff = getDateDiffInDays(todayKey, dueKey);
+  const dateText = formatMonthDay(dueKey);
+  if (dueDiff === null) {
+    return { dueKey, dueDiff, dueLabel: dateText || "날짜 없음", dueState: "none" };
+  }
+
+  if (dueDiff < 0) {
+    return { dueKey, dueDiff, dueLabel: `기한초과 ${Math.abs(dueDiff)}일 · ${dateText}`, dueState: "overdue" };
+  }
+  if (dueDiff === 0) {
+    return { dueKey, dueDiff, dueLabel: `오늘 · ${dateText}`, dueState: "today" };
+  }
+  if (dueDiff <= 3) {
+    return { dueKey, dueDiff, dueLabel: `D-${dueDiff} · ${dateText}`, dueState: "soon" };
+  }
+  return { dueKey, dueDiff, dueLabel: `D-${dueDiff} · ${dateText}`, dueState: "future" };
+}
+
+function getDashboardTodoSortBucket(todo: Todo, meta: DashboardTodoMeta) {
+  if (meta.dueState === "overdue") return 0;
+  if (meta.dueState === "today") return 1;
+  if (meta.dueState === "soon") return 2;
+  if (todo.priority === "high" && meta.dueState !== "none") return 3;
+  if (meta.dueState === "future") return 4;
+  return 5;
+}
+
+function sortDashboardTodos(todos: Todo[], todayKey: string) {
+  return [...todos].sort((a, b) => {
+    const aMeta = getDashboardTodoMeta(a, todayKey);
+    const bMeta = getDashboardTodoMeta(b, todayKey);
+    const bucketDiff = getDashboardTodoSortBucket(a, aMeta) - getDashboardTodoSortBucket(b, bMeta);
+    if (bucketDiff !== 0) return bucketDiff;
+
+    const aDue = aMeta.dueDiff ?? Number.MAX_SAFE_INTEGER;
+    const bDue = bMeta.dueDiff ?? Number.MAX_SAFE_INTEGER;
+    if (aDue !== bDue) return aDue - bDue;
+
+    const priorityOrder: Record<TodoPriority, number> = { high: 0, medium: 1, low: 2 };
+    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return a.text.localeCompare(b.text, "ko");
+  });
+}
+
+function getPriorityMeta(priority: TodoPriority) {
+  switch (priority) {
+    case "high":
+      return { label: "높음", className: "bg-red-50 text-red-700 border-red-200", dotClassName: "bg-red-500" };
+    case "low":
+      return { label: "낮음", className: "bg-blue-50 text-blue-700 border-blue-200", dotClassName: "bg-blue-500" };
+    case "medium":
+    default:
+      return { label: "보통", className: "bg-yellow-50 text-yellow-700 border-yellow-200", dotClassName: "bg-yellow-500" };
+  }
+}
+
+function getDueBadgeClassName(state: DashboardTodoDueState) {
+  switch (state) {
+    case "overdue":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    case "today":
+    case "soon":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "future":
+      return "border-blue-100 bg-blue-50/70 text-blue-700";
+    case "none":
+    default:
+      return "border-border bg-muted/40 text-muted-foreground";
+  }
+}
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
@@ -53,6 +183,10 @@ export default function Dashboard() {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
   }, [lectures]);
+
+  const dashboardTodos = useMemo(() => {
+    return sortDashboardTodos(pendingTodos, getTodayDateKey()).slice(0, 3);
+  }, [pendingTodos]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
@@ -173,23 +307,42 @@ export default function Dashboard() {
           {pendingTodos.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">진행 중인 할 일이 없습니다.</div>
           ) : (
-            <div className="space-y-3">
-              {pendingTodos.slice(0, 4).map((todo) => (
-                <div key={todo.id} className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      toggleTodo(todo.id);
-                      toast.success("할 일을 완료했습니다.");
-                    }}
-                    className="h-5 w-5 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center shrink-0 hover:border-primary bg-background cursor-pointer"
-                  >
-                    <Check className="h-3 w-3 text-primary scale-0 transition-transform" />
-                  </button>
-                  <span className="text-sm font-medium text-foreground leading-snug break-words truncate">
-                    {todo.text}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-2">
+              {dashboardTodos.map((todo) => {
+                const priorityMeta = getPriorityMeta(todo.priority);
+                const dueMeta = getDashboardTodoMeta(todo, getTodayDateKey());
+                return (
+                  <div key={todo.id} className="flex min-w-0 flex-col gap-1.5 rounded-lg px-1 py-1 sm:flex-row sm:items-center sm:gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleTodo(todo.id);
+                          toast.success("할 일을 완료했습니다.");
+                        }}
+                        aria-label="할 일을 완료로 변경"
+                        title="완료"
+                        className="h-5 w-5 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center shrink-0 hover:border-primary bg-background cursor-pointer"
+                      >
+                        <Check className="h-3 w-3 text-primary scale-0 transition-transform" />
+                      </button>
+
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${priorityMeta.className}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${priorityMeta.dotClassName}`} />
+                        {priorityMeta.label}
+                      </span>
+
+                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold ${getDueBadgeClassName(dueMeta.dueState)}`}>
+                        {dueMeta.dueLabel}
+                      </span>
+                    </div>
+
+                    <span title={todo.text} className="min-w-0 flex-1 truncate text-sm font-medium leading-snug text-foreground">
+                      {todo.text}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
