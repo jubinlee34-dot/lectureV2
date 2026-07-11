@@ -197,102 +197,95 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6">
-      <div className="mb-6 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+      <div className="mb-5 flex flex-col gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <CalendarDays className="h-6 w-6 text-primary" />
             강의 캘린더
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            월별 목록에서 강의를 선택하고, 캘린더에서는 날짜별 일정을
-            탐색합니다.
+            강의 일정을 월별로 확인하고 관리합니다.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <select
-            value={selectedYear}
-            onChange={event => changeYear(event.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
-          >
-            {availableYears.map(year => (
-              <option key={year} value={year}>
-                {year}년
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setImportOpen(true)}
-            className="hidden lg:inline-flex"
-          >
-            <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
-            가져오기
-          </Button>
-          {lectures.length > 0 && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  downloadCSV(lectures, "강의목록.csv");
-                  toast.success("CSV 파일을 다운로드했습니다.");
-                }}
-                className="hidden lg:inline-flex"
-              >
-                <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
-                CSV
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  downloadICS(lectures, "강의일정.ics");
-                  toast.success("ICS 파일을 다운로드했습니다.");
-                }}
-                className="hidden lg:inline-flex"
-              >
-                <Download className="mr-1.5 h-4 w-4 text-blue-600" />
-                ICS
-              </Button>
-            </>
-          )}
-          <Button
-            size="sm"
-            onClick={() =>
-              navigate(
-                selectedDate
-                  ? `/lectures/new?date=${selectedDate}`
-                  : "/lectures/new"
-              )
-            }
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            강의 등록
-          </Button>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <select
+              value={selectedYear}
+              onChange={event => changeYear(event.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary sm:w-auto"
+            >
+              {availableYears.map(year => (
+                <option key={year} value={year}>
+                  {year}년
+                </option>
+              ))}
+            </select>
+            <StatusNavigation
+              value={statusFilter}
+              counts={statusCounts}
+              onChange={setStatusFilter}
+              className="min-w-0"
+            />
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="hidden lg:inline-flex"
+            >
+              <Upload className="mr-1.5 h-4 w-4 text-blue-600" />
+              가져오기
+            </Button>
+            {lectures.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    downloadCSV(lectures, "강의목록.csv");
+                    toast.success("CSV 파일을 다운로드했습니다.");
+                  }}
+                  className="hidden lg:inline-flex"
+                >
+                  <Sheet className="mr-1.5 h-4 w-4 text-green-600" />
+                  CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    downloadICS(lectures, "강의일정.ics");
+                    toast.success("ICS 파일을 다운로드했습니다.");
+                  }}
+                  className="hidden lg:inline-flex"
+                >
+                  <Download className="mr-1.5 h-4 w-4 text-blue-600" />
+                  ICS
+                </Button>
+              </>
+            )}
+            <Button
+              size="sm"
+              onClick={() =>
+                navigate(
+                  selectedDate
+                    ? `/lectures/new?date=${selectedDate}`
+                    : "/lectures/new"
+                )
+              }
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              강의 등록
+            </Button>
+          </div>
         </div>
       </div>
 
-      <StatusNavigation
-        value={statusFilter}
-        counts={statusCounts}
-        onChange={setStatusFilter}
-        className="mb-4"
-      />
-
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(520px,1fr)_340px] xl:grid-cols-[280px_minmax(520px,1fr)_340px]">
-        <aside className="order-3 lg:col-span-2 xl:order-1 xl:col-span-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-9rem)] xl:overflow-y-auto xl:pr-1">
-          <MonthLectureList
-            viewMonth={viewMonth}
-            monthLectures={monthLectures}
-            selectedLectureId={selectedLectureId}
-            selectedDate={selectedDate}
-            onSelect={lecture => setSelectedLectureId(lecture.id)}
-          />
-        </aside>
-
-        <section className="order-1 xl:order-2">
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(360px,1fr)_minmax(280px,360px)] xl:grid-cols-[minmax(560px,1fr)_380px]">
+        <section className="min-w-0">
           <CalendarGrid
             viewYear={viewYear}
             viewMonth={viewMonth}
@@ -303,23 +296,34 @@ export default function CalendarPage() {
           />
         </section>
 
-        <aside className="order-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto xl:order-3">
-          {selectedLecture ? (
-            <CalendarLectureDetailPanel
-              lecture={selectedLecture}
-              onClose={() => setSelectedLectureId(null)}
-              onAction={openLectureAction}
-              onSms={setSmsTarget}
-              onPromote={promoteLecture}
-              onRollback={rollbackLecture}
-              onDelete={handleDeleteLecture}
+        <aside className="min-w-0 space-y-4 md:sticky md:top-4 md:grid md:max-h-[calc(100vh-8rem)] md:grid-rows-[auto_minmax(0,1fr)] md:gap-4 md:space-y-0 md:overflow-hidden">
+          <div className="min-w-0">
+            {selectedLecture ? (
+              <CalendarLectureDetailPanel
+                lecture={selectedLecture}
+                onClose={() => setSelectedLectureId(null)}
+                onAction={openLectureAction}
+                onSms={setSmsTarget}
+                onPromote={promoteLecture}
+                onRollback={rollbackLecture}
+                onDelete={handleDeleteLecture}
+              />
+            ) : (
+              <CalendarLectureEmptyPanel />
+            )}
+          </div>
+
+          <div className="min-w-0 md:min-h-0 md:overflow-y-auto md:pr-1">
+            <MonthLectureList
+              viewMonth={viewMonth}
+              monthLectures={monthLectures}
+              selectedLectureId={selectedLectureId}
+              selectedDate={selectedDate}
+              onSelect={lecture => setSelectedLectureId(lecture.id)}
             />
-          ) : (
-            <CalendarLectureEmptyPanel />
-          )}
+          </div>
         </aside>
       </div>
-
       {smsTarget && (
         <SmsModal
           open={!!smsTarget}
