@@ -2,6 +2,21 @@ import { useCallback, useMemo } from "react";
 import { useSupabase } from "../contexts/SupabaseContext";
 import type { Todo, TodoPriority } from "../types/lecture";
 
+function getTodayDateKey() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDateKey(dateStr?: string) {
+  if (!dateStr) return "";
+  const [year, month, day] = dateStr.split("-");
+  if (!year || !month || !day) return "";
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
 export function useTodos() {
   const {
     todos,
@@ -15,20 +30,18 @@ export function useTodos() {
     error,
   } = useSupabase();
 
-  /** 특정 강의에 연결된 할일 */
   const getTodosByLecture = useCallback(
     (lectureId: string) => todos.filter((t) => t.lectureId === lectureId),
     [todos]
   );
 
-  /** 미완료 할일만 */
   const pendingTodos = useMemo(() => todos.filter((t) => !t.done), [todos]);
 
-  /** 오늘 마감 또는 지난 할일 */
   const overdueTodos = useMemo(() => {
+    const todayKey = getTodayDateKey();
     return pendingTodos.filter((t) => {
-      if (!t.dueDate) return false;
-      return new Date(t.dueDate) < new Date();
+      const dueDateKey = normalizeDateKey(t.dueDate);
+      return Boolean(dueDateKey) && dueDateKey < todayKey;
     });
   }, [pendingTodos]);
 
