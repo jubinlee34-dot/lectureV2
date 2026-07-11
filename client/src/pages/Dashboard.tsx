@@ -244,7 +244,7 @@ export default function Dashboard() {
 
       <StatusSummaryBar counts={statusCounts} />
 
-      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(240px,0.7fr)_minmax(0,1.3fr)]">
         <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-1">
           <ScheduleSummaryCard summary={scheduleSummary} />
           <section className="self-start rounded-xl border border-border bg-card p-4">
@@ -252,7 +252,7 @@ export default function Dashboard() {
               type="button"
               onClick={() => setFeeOpen((open) => !open)}
               aria-expanded={feeOpen}
-              className="flex min-h-11 w-full items-center justify-between gap-3 border-none bg-transparent text-left text-sm font-semibold text-foreground outline-none cursor-pointer"
+              className="flex min-h-9 w-full items-center justify-between gap-3 border-none bg-transparent text-left text-sm font-semibold text-foreground outline-none cursor-pointer"
             >
               <span className="flex items-center gap-1.5">
                 <Wallet className="h-4 w-4 text-primary" />
@@ -426,18 +426,19 @@ export default function Dashboard() {
 
 function StatusSummaryBar({ counts }: { counts: ReturnType<typeof getStatusCounts> }) {
   return (
-    <section className="rounded-xl border border-border bg-card px-3 py-3">
-      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-0">
-        <StatusSummaryItem label="전체" value={counts.all} />
-        <StatusSummaryItem label={statusLabels.before} value={counts.before} />
-        <StatusSummaryItem label={statusLabels.after} value={counts.after} />
-        <StatusSummaryItem label={statusLabels.promoted} value={counts.promoted} last />
+    <section className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="flex flex-col gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-0">
+          <StatusSummaryItem label="전체" value={counts.all} />
+          <StatusSummaryItem label={statusLabels.before} value={counts.before} />
+          <StatusSummaryItem label={statusLabels.after} value={counts.after} />
+          <StatusSummaryItem label={statusLabels.promoted} value={counts.promoted} last />
+        </div>
+        <p className="shrink-0 text-[11px] text-muted-foreground">※ 전체 기간 기준</p>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">※ 전체 기간 기준</p>
     </section>
   );
 }
-
 function StatusSummaryItem({ label, value, last = false }: { label: string; value: number; last?: boolean }) {
   return (
     <span className={`min-w-0 ${last ? "" : "sm:after:mx-3 sm:after:text-border sm:after:content-['|']"}`}>
