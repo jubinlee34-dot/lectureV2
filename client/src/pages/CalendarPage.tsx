@@ -29,6 +29,7 @@ export default function CalendarPage() {
   const { lectures, bulkAddLectures, updateLecture, deleteLecture } =
     useLectures();
   const today = new Date();
+  const currentYear = String(today.getFullYear());
   const initialCalendarState = readCalendarQueryState(today);
   const [viewYear, setViewYear] = useState(initialCalendarState.year);
   const [viewMonth, setViewMonth] = useState(initialCalendarState.month);
@@ -45,14 +46,23 @@ export default function CalendarPage() {
   );
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
+  const selectedYear = String(viewYear);
 
-  const statusCounts = useMemo(() => getStatusCounts(lectures), [lectures]);
+  const availableYears = useMemo(
+    () => buildAvailableYears(lectures, currentYear),
+    [lectures, currentYear]
+  );
+  const yearLectures = useMemo(
+    () => lectures.filter(lecture => getLectureYear(lecture) === selectedYear),
+    [lectures, selectedYear]
+  );
+  const statusCounts = useMemo(() => getStatusCounts(yearLectures), [yearLectures]);
   const statusFilteredLectures = useMemo(
     () =>
       statusFilter === "all"
-        ? lectures
-        : lectures.filter(lecture => lecture.workflowStage === statusFilter),
-    [lectures, statusFilter]
+        ? yearLectures
+        : yearLectures.filter(lecture => lecture.workflowStage === statusFilter),
+    [yearLectures, statusFilter]
   );
 
   const lectureMap = useMemo(() => {
@@ -66,22 +76,27 @@ export default function CalendarPage() {
   }, [statusFilteredLectures]);
 
   const selectedLecture = selectedLectureId
-    ? lectures.find(lecture => lecture.id === selectedLectureId)
+    ? statusFilteredLectures.find(lecture => lecture.id === selectedLectureId)
     : undefined;
 
   const monthLectures = useMemo(() => {
     return statusFilteredLectures
-      .filter(lecture => {
-        const date = new Date(lecture.date);
-        return date.getFullYear() === viewYear && date.getMonth() === viewMonth;
-      })
+      .filter(lecture => Number(lecture.date?.slice(5, 7)) === viewMonth + 1)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [statusFilteredLectures, viewYear, viewMonth]);
+  }, [statusFilteredLectures, viewMonth]);
 
   const moveMonth = (diff: number) => {
     const next = new Date(viewYear, viewMonth + diff, 1);
     setViewYear(next.getFullYear());
     setViewMonth(next.getMonth());
+  };
+
+  const changeYear = (year: string) => {
+    const nextYear = Number(year);
+    if (!Number.isFinite(nextYear)) return;
+    setViewYear(nextYear);
+    setSelectedDate(null);
+    setSelectedLectureId(null);
   };
 
   const selectCalendarDate = (date: string | null) => {
@@ -182,8 +197,8 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div>
+      <div className="mb-6 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <CalendarDays className="h-6 w-6 text-primary" />
             강의 캘린더
@@ -194,7 +209,18 @@ export default function CalendarPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <select
+            value={selectedYear}
+            onChange={event => changeYear(event.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+          >
+            {availableYears.map(year => (
+              <option key={year} value={year}>
+                {year}년
+              </option>
+            ))}
+          </select>
           <Button
             variant="outline"
             size="sm"
@@ -328,6 +354,20 @@ export default function CalendarPage() {
       />
     </div>
   );
+}
+
+function getLectureYear(lecture: Lecture) {
+  const year = lecture.date?.slice(0, 4);
+  return year?.match(/^\d{4}$/) ? year : "";
+}
+
+function buildAvailableYears(lectures: Lecture[], currentYear: string) {
+  const years = new Set<string>([currentYear]);
+  lectures.forEach(lecture => {
+    const year = getLectureYear(lecture);
+    if (year) years.add(year);
+  });
+  return Array.from(years).sort((a, b) => b.localeCompare(a));
 }
 
 function CalendarLectureDetailPanel({
