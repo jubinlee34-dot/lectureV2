@@ -45,7 +45,7 @@ export function Sidebar({
   const [signingOut, setSigningOut] = useState(false);
   const signingOutRef = useRef(false);
   const { user, signOut } = useAuth();
-  const userEmail = user?.email?.trim() || "\uB85C\uADF8\uC778 \uC0AC\uC6A9\uC790";
+  const userEmail = user?.email?.trim() || "로그인 사용자";
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/";
@@ -61,10 +61,10 @@ export function Sidebar({
     try {
       const result = await signOut();
       if (result.error) {
-        toast.error("\uB85C\uADF8\uC544\uC6C3\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+        toast.error("로그아웃에 실패했습니다. 잠시 후 다시 시도해 주세요.");
       }
     } catch {
-      toast.error("\uB85C\uADF8\uC544\uC6C3\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+      toast.error("로그아웃에 실패했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       signingOutRef.current = false;
       setSigningOut(false);
@@ -124,7 +124,7 @@ export function Sidebar({
       </nav>
       <div className="shrink-0 border-t border-border px-3 py-3">
         <div className="mb-2 min-w-0 px-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{String.fromCharCode(0xACC4, 0xC815)}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">계정</p>
           <p className="mt-1 truncate text-xs text-foreground" title={userEmail}>{userEmail}</p>
         </div>
         <button
@@ -134,7 +134,7 @@ export function Sidebar({
           className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
         >
           <LogOut className="h-4 w-4" />
-          {signingOut ? String.fromCharCode(0xB85C, 0xADF8, 0xC544, 0xC6C3, 0x20, 0xC911) : String.fromCharCode(0xB85C, 0xADF8, 0xC544, 0xC6C3)}
+          {signingOut ? "로그아웃 중" : "로그아웃"}
         </button>
       </div>
     </div>
