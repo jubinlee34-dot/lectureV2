@@ -20,6 +20,7 @@ import { Route, Switch, useLocation, useSearch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { AuthProvider } from "./contexts/AuthContext";
 import { SupabaseProvider } from "./contexts/SupabaseContext";
 
 import BlogPage from "./pages/BlogPage";
@@ -100,7 +101,8 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
-        <SupabaseProvider>
+        <AuthProvider>
+          <SupabaseProvider>
           <TooltipProvider>
             <Toaster position="top-right" richColors />
 
@@ -135,7 +137,8 @@ function App() {
               </main>
             </div>
           </TooltipProvider>
-        </SupabaseProvider>
+          </SupabaseProvider>
+        </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
