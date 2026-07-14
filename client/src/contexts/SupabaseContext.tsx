@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { nanoid } from "nanoid";
-import { dummyLectures, dummyTodos } from "../data/dummyData";
 import type { Lecture, LectureContactLog, LectureFormData, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
 import type { InstructorProfile } from "../types/instructor";
 import { toast } from "sonner";
@@ -69,20 +68,6 @@ const DEFAULT_PROFILE: InstructorProfile = {
     { id: "specialty", label: "주요 강의 분야", value: "" },
   ],
 };
-
-const DEFAULT_BEFORE_TASKS: Array<{ category: WorkTaskCategory; text: string }> = [
-  { category: "material", text: "강의 교안 최종 확인" },
-  { category: "material", text: "실습 자료와 배포물 준비" },
-  { category: "contact", text: "담당자에게 일정 확인 문자 발송" },
-  { category: "logistics", text: "강의 장소와 장비 확인" },
-  { category: "logistics", text: "참여 인원과 준비물 확인" },
-];
-
-const DEFAULT_AFTER_TASKS: Array<{ category: WorkTaskCategory; text: string }> = [
-  { category: "report", text: "결과 보고서 작성 및 제출 확인" },
-  { category: "invoice", text: "강사료 입금 확인" },
-  { category: "blog", text: "블로그/SNS 홍보 초안 작성" },
-];
 
 const LECTURE_DB_COLUMNS = [
   "id",
@@ -272,7 +257,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const initializingRef = useRef<Record<string, boolean>>({});
 
-  // Initialize and Sync / Migrate / Seed
+  // Initialize and sync existing Supabase data only.
   useEffect(() => {
     async function initDb() {
       try {
@@ -288,144 +273,29 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         if (lecturesError) throw lecturesError;
 
         let loadedLectures = (dbLectures || []).map(normalizeLecture);
-        let loadedTodos: Todo[] = [];
-        let loadedWorkTasks: WorkTask[] = [];
-        let loadedSmsHistory: SmsHistory[] = [];
-        let loadedContactLogs: LectureContactLog[] = [];
-        let loadedProfile: InstructorProfile | null = null;
 
-        // 2. If lectures table is empty, check for migration or seeding
-        if (loadedLectures.length === 0) {
-          const localLecturesRaw = localStorage.getItem("lecture-archive-lectures");
-          const localTodosRaw = localStorage.getItem("lecture-archive-v2-todos");
-          const localWorkTasksRaw = localStorage.getItem("lecture-archive-worktasks");
-          const localSmsHistoryRaw = localStorage.getItem("lecture-archive-smshistory");
-          const localProfileRaw = localStorage.getItem("lecture-archive-instructor-profile");
+        // 2. Fetch related tables without creating fallback data.
+        const { data: dbTodos, error: todosErr } = await supabase.from("todos").select("*").order("createdAt", { ascending: false });
+        if (todosErr) throw todosErr;
+        const loadedTodos: Todo[] = dbTodos || [];
 
-          const hasLocalData = localLecturesRaw || localTodosRaw || localWorkTasksRaw || localProfileRaw;
+        const { data: dbTasks, error: tasksErr } = await supabase.from("work_tasks").select("*").order("createdAt", { ascending: true });
+        if (tasksErr) throw tasksErr;
+        const loadedWorkTasks: WorkTask[] = dbTasks || [];
 
-          if (hasLocalData) {
-            // ================= MIGRATION FROM LOCALSTORAGE =================
-            toast.loading("기존 로컬 데이터를 Supabase로 마이그레이션하는 중...");
-            
-            const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw).map(normalizeLecture) : [];
-            const localTodos: Todo[] = localTodosRaw ? JSON.parse(localTodosRaw) : [];
-            const localWorkTasks: WorkTask[] = localWorkTasksRaw ? JSON.parse(localWorkTasksRaw) : [];
-            const localSmsHistory: SmsHistory[] = localSmsHistoryRaw ? JSON.parse(localSmsHistoryRaw) : [];
-            const localProfile: InstructorProfile = localProfileRaw ? JSON.parse(localProfileRaw) : DEFAULT_PROFILE;
+        const { data: dbSms, error: smsErr } = await supabase.from("sms_history").select("*").order("sentAt", { ascending: false });
+        if (smsErr) throw smsErr;
+        const loadedSmsHistory: SmsHistory[] = dbSms || [];
 
-            // Save Lectures
-            if (localLectures.length > 0) {
-              const lecturePayload = localLectures.map((lecture) => pickLectureDbPayload(lecture));
-              debugLecturePayload("local migration insert", lecturePayload);
-              const { error: insErr } = await supabase.from("lectures").insert(lecturePayload);
-              if (insErr) {
-                logSupabaseError("local migration insert lectures failed", insErr);
-                throw insErr;
-              }
-              loadedLectures = localLectures;
-            }
+        const { data: dbContactLogs, error: contactLogsErr } = await supabase.from("lecture_contact_logs").select("*").order("occurredAt", { ascending: false });
+        if (contactLogsErr) throw contactLogsErr;
+        const loadedContactLogs: LectureContactLog[] = (dbContactLogs || []).map(normalizeContactLog);
 
-            // Save Todos
-            if (localTodos.length > 0) {
-              const { error: insErr } = await supabase.from("todos").insert(localTodos);
-              if (insErr) throw insErr;
-              loadedTodos = localTodos;
-            }
+        const { data: dbProfile, error: profileErr } = await supabase.from("instructor_profile").select("*").eq("id", "default").maybeSingle();
+        if (profileErr) throw profileErr;
+        const loadedProfile: InstructorProfile | null = dbProfile ? (dbProfile as InstructorProfile) : null;
 
-            // Save WorkTasks
-            if (localWorkTasks.length > 0) {
-              const { error: insErr } = await supabase.from("work_tasks").insert(localWorkTasks);
-              if (insErr) throw insErr;
-              loadedWorkTasks = localWorkTasks;
-            }
-
-            // Save SMS History
-            if (localSmsHistory.length > 0) {
-              const { error: insErr } = await supabase.from("sms_history").insert(localSmsHistory);
-              if (insErr) throw insErr;
-              loadedSmsHistory = localSmsHistory;
-            }
-
-            // Save Profile
-            const { error: upsertErr } = await supabase.from("instructor_profile").upsert({
-              id: "default",
-              ...localProfile,
-            });
-            if (upsertErr) throw upsertErr;
-            loadedProfile = localProfile;
-
-            toast.dismiss();
-            toast.success("기존 로컬 데이터가 Supabase에 안전하게 백업 및 마이그레이션되었습니다!");
-          } else {
-            // ================= SEEDING DUMMY DATA =================
-            toast.loading("데이터베이스 초기 설정을 시작합니다...");
-            
-            // Insert default dummy lectures
-            const dummyLecturePayload = dummyLectures.map((lecture) => pickLectureDbPayload(normalizeLecture(lecture)));
-            debugLecturePayload("seed insert", dummyLecturePayload);
-            const { error: insErr } = await supabase.from("lectures").insert(dummyLecturePayload);
-            if (insErr) {
-              logSupabaseError("seed insert lectures failed", insErr);
-              throw insErr;
-            }
-            loadedLectures = dummyLectures.map(normalizeLecture);
-
-            // Insert default dummy todos
-            const { error: insTodoErr } = await supabase.from("todos").insert(dummyTodos);
-            if (insTodoErr) throw insTodoErr;
-            loadedTodos = dummyTodos;
-
-            // Insert default profile
-            const { error: upsertErr } = await supabase.from("instructor_profile").upsert({
-              id: "default",
-              ...DEFAULT_PROFILE,
-            });
-            if (upsertErr) throw upsertErr;
-            loadedProfile = DEFAULT_PROFILE;
-
-            toast.dismiss();
-            toast.success("기본 데모 데이터 및 프로필이 성공적으로 설정되었습니다.");
-          }
-        } else {
-          // ================= STANDARD DB FETCH =================
-          // Fetch Todos
-          const { data: dbTodos, error: todosErr } = await supabase.from("todos").select("*").order("createdAt", { ascending: false });
-          if (todosErr) throw todosErr;
-          loadedTodos = dbTodos || [];
-
-          // Fetch WorkTasks
-          const { data: dbTasks, error: tasksErr } = await supabase.from("work_tasks").select("*").order("createdAt", { ascending: true });
-          if (tasksErr) throw tasksErr;
-          loadedWorkTasks = dbTasks || [];
-
-          // Fetch SMS History
-          const { data: dbSms, error: smsErr } = await supabase.from("sms_history").select("*").order("sentAt", { ascending: false });
-          if (smsErr) throw smsErr;
-          loadedSmsHistory = dbSms || [];
-
-          // Fetch Contact Logs
-          const { data: dbContactLogs, error: contactLogsErr } = await supabase.from("lecture_contact_logs").select("*").order("occurredAt", { ascending: false });
-          if (contactLogsErr) throw contactLogsErr;
-          loadedContactLogs = (dbContactLogs || []).map(normalizeContactLog);
-
-          // Fetch Profile
-          const { data: dbProfile, error: profileErr } = await supabase.from("instructor_profile").select("*").eq("id", "default").maybeSingle();
-          if (profileErr) throw profileErr;
-          
-          if (!dbProfile) {
-            const { error: upsertErr } = await supabase.from("instructor_profile").upsert({
-              id: "default",
-              ...DEFAULT_PROFILE,
-            });
-            if (upsertErr) throw upsertErr;
-            loadedProfile = DEFAULT_PROFILE;
-          } else {
-            loadedProfile = dbProfile as InstructorProfile;
-          }
-        }
-
-        // 오늘 이전 날짜의 강의 중 상태가 "강의 전"인 강의들을 "강의 후"로 자동 전환
+        // Keep existing automatic workflow-stage transition behavior unchanged.
         const todayStr = new Date().toISOString().split("T")[0];
         const toAutoTransition = loadedLectures.filter(
           (lecture) => lecture.date && lecture.date < todayStr && lecture.workflowStage === "before"
@@ -742,7 +612,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const initTasks = useCallback(async (lectureId: string): Promise<void> => {
     if (!lectureId) return;
     
-    // Check if task already seeded in state
+    // Check if tasks are already loaded in state
     if (workTasks.some((task) => task.lectureId === lectureId)) {
       return;
     }
@@ -773,45 +643,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Seed default tasks
-      const now = new Date().toISOString();
-      const seeded: WorkTask[] = [
-        ...DEFAULT_BEFORE_TASKS.map((task) => ({
-          id: nanoid(),
-          lectureId,
-          stage: "before" as WorkTaskStage,
-          category: task.category,
-          text: task.text,
-          done: false,
-          createdAt: now,
-          starred: false,
-        })),
-        ...DEFAULT_AFTER_TASKS.map((task) => ({
-          id: nanoid(),
-          lectureId,
-          stage: "after" as WorkTaskStage,
-          category: task.category,
-          text: task.text,
-          done: false,
-          createdAt: now,
-          starred: false,
-        })),
-      ];
-
-      const { error } = await supabase
-        .from("work_tasks")
-        .upsert(seeded, { onConflict: '"lectureId",stage,text', ignoreDuplicates: true });
-      if (error) {
-        initializingRef.current[lectureId] = false;
-        toast.error(`준비사항 초기화 실패: ${error.message}`);
-        throw error;
-      }
-
-      setWorkTasks((prev) => {
-        const existingKeys = new Set(prev.map((task) => `${task.lectureId}|${task.stage}|${task.text}`));
-        const nextSeeded = seeded.filter((task) => !existingKeys.has(`${task.lectureId}|${task.stage}|${task.text}`));
-        return [...prev, ...nextSeeded];
-      });
+      // No existing tasks is a valid empty state; do not create defaults automatically.
     } catch (e) {
       initializingRef.current[lectureId] = false;
       throw e;
