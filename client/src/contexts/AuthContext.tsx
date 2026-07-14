@@ -82,9 +82,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string): Promise<AuthActionResult> => {
     const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
 
-    if (!trimmedEmail || !trimmedPassword) {
+    if (!trimmedEmail || !password) {
       setAuthError(REQUIRED_CREDENTIALS_MESSAGE);
       return { error: REQUIRED_CREDENTIALS_MESSAGE };
     }
@@ -94,13 +93,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: MISSING_SUPABASE_CONFIG_MESSAGE };
     }
 
-    setLoading(true);
     setAuthError(null);
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
-        password: trimmedPassword,
+        password,
       });
 
       if (error) {
@@ -115,8 +113,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const message = "로그인 중 오류가 발생했습니다.";
       setAuthError(message);
       return { error: message };
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -126,7 +122,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: MISSING_SUPABASE_CONFIG_MESSAGE };
     }
 
-    setLoading(true);
     setAuthError(null);
 
     try {
@@ -144,8 +139,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const message = "로그아웃 중 오류가 발생했습니다.";
       setAuthError(message);
       return { error: message };
-    } finally {
-      setLoading(false);
     }
   }, []);
 
