@@ -20,7 +20,7 @@ import { Route, Switch, useLocation, useSearch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { SupabaseProvider } from "./contexts/SupabaseContext";
 
 import BlogPage from "./pages/BlogPage";
@@ -35,6 +35,7 @@ import SetupPage from "./pages/SetupPage";
 import TodoPage from "./pages/TodoPage";
 import LectureManagePage from "./pages/LectureManagePage";
 import InstructorProfilePage from "./pages/InstructorProfilePage";
+import LoginPage from "./pages/LoginPage";
 
 function WorkflowRedirect() {
   const [, navigate] = useLocation();
@@ -88,7 +89,28 @@ function Router() {
   );
 }
 
-function App() {
+function AuthLoadingScreen() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 text-center">
+      <p className="text-sm text-muted-foreground">로그인 상태를 확인하고 있습니다.</p>
+    </main>
+  );
+}
+
+function AuthGate() {
+  const { loading, session } = useAuth();
+
+  if (loading) return <AuthLoadingScreen />;
+  if (!session) return <LoginPage />;
+
+  return (
+    <SupabaseProvider>
+      <AuthenticatedApp />
+    </SupabaseProvider>
+  );
+}
+
+function AuthenticatedApp() {
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     const saved = localStorage.getItem("sidebarOpen");
     return saved !== null ? saved === "true" : true;
@@ -99,46 +121,41 @@ function App() {
   }, [sidebarOpen]);
 
   return (
+    <div className="flex h-screen overflow-hidden bg-background max-w-full overflow-x-hidden">
+      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+
+      <main className="
+        flex-1 min-w-0
+        overflow-y-auto
+        pt-14 pb-16
+        lg:pt-0 lg:pb-0
+        max-w-full overflow-x-hidden relative
+      ">
+        {!sidebarOpen && (
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="hidden lg:flex fixed left-4 top-4 z-40 h-8 w-8 items-center justify-center rounded-lg border border-border bg-card shadow-md hover:bg-muted text-muted-foreground transition-all duration-200"
+            title="메뉴 열기"
+          >
+            <ChevronRight className="h-4.5 w-4.5" />
+          </button>
+        )}
+        <Router />
+      </main>
+    </div>
+  );
+}
+
+function App() {
+  return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
-        <AuthProvider>
-          <SupabaseProvider>
-          <TooltipProvider>
-            <Toaster position="top-right" richColors />
-
-            {/*
-             * 전체 레이아웃
-             * - 데스크탑: flex row (사이드바 + 메인)
-             * - 모바일: flex col (헤더 + 메인 + 하단탭)
-             *   Sidebar 컴포넌트가 모바일 헤더와 하단탭을 모두 렌더링
-             */}
-            <div className="flex h-screen overflow-hidden bg-background max-w-full overflow-x-hidden">
-              {/* 데스크탑 사이드바 + 모바일 헤더/하단탭 */}
-              <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
-
-              {/* 메인 콘텐츠 — 모바일: 상단 헤더(56px) + 하단탭(64px) 제외한 높이 */}
-              <main className="
-                flex-1 min-w-0
-                overflow-y-auto
-                pt-14 pb-16
-                lg:pt-0 lg:pb-0
-                max-w-full overflow-x-hidden relative
-              ">
-                {!sidebarOpen && (
-                  <button
-                    onClick={() => setSidebarOpen(true)}
-                    className="hidden lg:flex fixed left-4 top-4 z-40 h-8 w-8 items-center justify-center rounded-lg border border-border bg-card shadow-md hover:bg-muted text-muted-foreground transition-all duration-200"
-                    title="메뉴 열기"
-                  >
-                    <ChevronRight className="h-4.5 w-4.5" />
-                  </button>
-                )}
-                <Router />
-              </main>
-            </div>
-          </TooltipProvider>
-          </SupabaseProvider>
-        </AuthProvider>
+        <TooltipProvider>
+          <Toaster position="top-right" richColors />
+          <AuthProvider>
+            <AuthGate />
+          </AuthProvider>
+        </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
