@@ -5,6 +5,8 @@ export interface CustomProfileField {
 }
 
 export interface InstructorProfile {
+  id?: string;
+  user_id?: string;
   name: string;
   homeAddress: string;
   phone: string;
