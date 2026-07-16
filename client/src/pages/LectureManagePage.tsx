@@ -255,8 +255,8 @@ export default function LectureManagePage() {
         onClose={() => setSmsOpen(false)}
         lecture={lecture}
         defaultType={smsType}
-        onRecord={(type, recipient, content) => {
-          recordSms(type, recipient, content);
+        onRecord={async (type, recipient, content) => {
+          await recordSms(type, recipient, content);
           toast.success("문자 발송 이력을 기록했습니다.");
         }}
       />
