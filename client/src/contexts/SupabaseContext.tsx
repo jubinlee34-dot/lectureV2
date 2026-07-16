@@ -408,7 +408,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   // Sync SMS added from other pages via custom event
   useEffect(() => {
     const handleSmsAdded = (e: Event) => {
-      const record = (e as CustomEvent).detail as SmsHistory;
+      if (!ownerId) return;
+      const record = (e as CustomEvent<SmsHistory>).detail;
+      if (record.user_id !== ownerId) return;
       setSmsHistory((prev) => {
         if (prev.some((item) => item.id === record.id)) return prev;
         return [record, ...prev];
@@ -416,8 +418,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("supabase-sms-added", handleSmsAdded);
     return () => window.removeEventListener("supabase-sms-added", handleSmsAdded);
-  }, []);
-
+  }, [ownerId]);
   // ==================== LECTURE CRUD ====================
 
   const addLecture = useCallback(async (formData: LectureFormData): Promise<Lecture> => {

@@ -464,8 +464,8 @@ export default function Dashboard() {
           onClose={() => setSmsTarget(null)}
           lecture={smsTarget}
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
-          onRecord={(type, recipient, content) => {
-            recordSmsHistory(smsTarget.id, type, recipient, content);
+          onRecord={async (type, recipient, content) => {
+            await recordSmsHistory(smsTarget.id, type, recipient, content);
             toast.success("문자 발송 이력을 기록했습니다.");
           }}
         />

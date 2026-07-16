@@ -17,7 +17,7 @@ interface SmsModalProps {
   onClose: () => void;
   lecture: Lecture;
   defaultType?: SmsType;
-  onRecord?: (type: SmsType, recipient: string, content: string) => void;
+  onRecord?: (type: SmsType, recipient: string, content: string) => Promise<void> | void;
 }
 
 const smsTypeLabel: Record<SmsType, string> = {
@@ -62,7 +62,7 @@ export function SmsModal({
     }
   }, [open, defaultType, lecture]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!lecture.managerPhone) {
       toast.error("담당자 연락처가 없습니다. 강의 수정에서 연락처를 추가해주세요.");
       return;
@@ -71,7 +71,12 @@ export function SmsModal({
       toast.error("문자 내용을 입력해주세요.");
       return;
     }
-    onRecord?.(selectedType, lecture.managerPhone, content);
+    try {
+      await onRecord?.(selectedType, lecture.managerPhone, content);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "문자 발송 이력 저장에 실패했습니다.");
+      return;
+    }
     window.location.href = `sms:${lecture.managerPhone}?body=${encodeURIComponent(content)}`;
     setSent(true);
     toast.success("문자 앱을 열었습니다. 전송 전 내용을 확인해주세요.");

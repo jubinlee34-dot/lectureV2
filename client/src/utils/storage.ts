@@ -32,12 +32,17 @@ export function saveSmsHistory(history: SmsHistory[]): void {
   localStorage.setItem(SMS_KEY, JSON.stringify(history));
 }
 
-export function recordSmsHistory(
+export async function recordSmsHistory(
   lectureId: string,
   type: SmsType,
   recipient: string,
   content: string
-): SmsHistory {
+): Promise<SmsHistory> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    throw userError ?? new Error("로그인한 사용자만 데이터에 접근할 수 있습니다.");
+  }
+
   const record: SmsHistory = {
     id: nanoid(),
     lectureId,
@@ -45,37 +50,25 @@ export function recordSmsHistory(
     recipient,
     content,
     sentAt: new Date().toISOString(),
+    user_id: userData.user.id,
   };
 
-  try {
-    supabase.auth
-      .getUser()
-      .then(({ data, error }) => {
-        if (error || !data.user) {
-          console.error("Failed to save SMS history to Supabase: 로그인한 사용자만 데이터에 접근할 수 있습니다.", error);
-          return;
-        }
+  const { data, error } = await supabase
+    .from("sms_history")
+    .insert({ ...record, user_id: userData.user.id })
+    .select("*")
+    .single();
 
-        return supabase
-          .from("sms_history")
-          .insert({ ...record, user_id: data.user.id });
-      })
-      .then((result) => {
-        if (result?.error) {
-          console.error("Failed to save SMS history to Supabase:", result.error);
-        }
-      });
-  } catch (error) {
-    console.error("Failed to save SMS history to Supabase:", error);
+  if (error) {
+    throw error;
   }
 
-  // Dispatch event to sync state in SupabaseContext
+  const savedRecord = data as SmsHistory;
   window.dispatchEvent(
     new CustomEvent("supabase-sms-added", {
-      detail: record,
+      detail: savedRecord,
     })
   );
 
-  return record;
+  return savedRecord;
 }
-
