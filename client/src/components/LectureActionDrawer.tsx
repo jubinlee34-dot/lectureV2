@@ -1,4 +1,5 @@
 import { AfterRecordModal } from "@/components/AfterRecordModal";
+import { formatContactLogShortDate, getContactLogPreview, getLectureContactLogs } from "@/components/ContactLogSummary";
 import { ContactLogsPanel, contactLogChannelLabels, contactLogTopicLabels } from "@/components/ContactLogsPanel";
 import { LectureForm } from "@/components/LectureForm";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +55,7 @@ const modeTitle: Record<DrawerMode, string> = {
   detail: "강의 상세",
   edit: "강의 정보 수정",
   tasks: "업무관리",
-  "contact-logs": "사전 소통 기록",
+  "contact-logs": "소통 기록",
   report: "결과보고서",
   blog: "홍보 블로그",
 };
@@ -63,7 +64,7 @@ const modeDescription: Record<DrawerMode, string> = {
   detail: "강의 등록 정보와 후속 기록을 확인합니다.",
   edit: "강의 등록 폼과 같은 구조로 정보를 수정합니다.",
   tasks: "강의 전후 업무를 확인하고 바로 수정합니다.",
-  "contact-logs": "담당자와의 사전 소통 기록을 관리합니다.",
+  "contact-logs": "담당자와의 소통 기록을 관리합니다.",
   report: "강의 기록을 바탕으로 결과보고서 초안을 작성합니다.",
   blog: "홍보 블로그 초안을 작성하고 복사합니다.",
 };
@@ -181,18 +182,11 @@ function DetailPanel({
   onEdit: () => void;
   onContactLogs: () => void;
 }) {
-  const recentLogs = contactLogs
-    .filter((log) => log.lectureId === lecture.id)
-    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-    .slice(0, 3);
+  const recentLogs = getLectureContactLogs(contactLogs, lecture.id).slice(0, 3);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onContactLogs}>
-          <MessageSquare className="mr-1.5 h-4 w-4" />
-          사전 소통 기록
-        </Button>
         <Button type="button" size="sm" onClick={onEdit}>
           <Pencil className="mr-1.5 h-4 w-4" />
           정보 수정
@@ -222,15 +216,21 @@ function DetailPanel({
         </div>
       </div>
 
-      <section className="rounded-lg border border-border bg-card p-3">
+      <section
+        role="button"
+        tabIndex={0}
+        onClick={onContactLogs}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") onContactLogs();
+        }}
+        className="rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-muted/20"
+      >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="text-xs font-semibold text-muted-foreground">최근 사전 소통 기록</h3>
-          <Button type="button" variant="ghost" size="sm" onClick={onContactLogs} className="h-7 px-2 text-xs">
-            전체 보기
-          </Button>
+          <h3 className="text-xs font-semibold text-muted-foreground">최근 소통 기록</h3>
+          <span className="text-xs font-semibold text-primary">전체 보기</span>
         </div>
         {recentLogs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">아직 사전 소통 기록이 없습니다.</p>
+          <p className="text-sm text-muted-foreground">소통 기록이 없습니다.</p>
         ) : (
           <div className="space-y-2">
             {recentLogs.map((log) => (
@@ -239,9 +239,9 @@ function DetailPanel({
                   {log.important && <span className="font-semibold text-amber-600">중요</span>}
                   <span className="font-semibold text-primary">{contactLogChannelLabels[log.channel]}</span>
                   <span className="text-muted-foreground">{contactLogTopicLabels[log.topic]}</span>
-                  <span className="text-muted-foreground">{formatContactLogDate(log.occurredAt)}</span>
+                  <span className="text-muted-foreground">{formatContactLogShortDate(log.occurredAt)}</span>
                 </div>
-                <p className="line-clamp-2 text-sm leading-relaxed text-foreground">{log.title || log.content}</p>
+                <p className="truncate text-sm leading-relaxed text-foreground">{getContactLogPreview(log)}</p>
               </div>
             ))}
           </div>
@@ -249,12 +249,6 @@ function DetailPanel({
       </section>
     </div>
   );
-}
-
-function formatContactLogDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
 function InfoItem({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {

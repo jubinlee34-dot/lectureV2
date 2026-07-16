@@ -876,12 +876,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { error } = await supabase.from("lecture_contact_logs").insert(withOwner(record, currentOwnerId));
     if (error) {
-      toast.error(`사전 소통 기록 저장 실패: ${error.message}`);
+      toast.error(`소통 기록 저장 실패: ${error.message}`);
       throw error;
     }
 
     setContactLogs((prev) => sortContactLogs([record, ...prev]));
-    toast.success("사전 소통 기록이 추가되었습니다.");
+    toast.success("소통 기록이 추가되었습니다.");
     return record;
   }, [ownerId]);
 
@@ -890,24 +890,24 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const updateData = withoutUserId({ ...data, updatedAt: new Date().toISOString() } as Record<string, unknown>);
     const { data: updatedRows, error } = await supabase.from("lecture_contact_logs").update(updateData).eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`사전 소통 기록 수정 실패: ${error.message}`);
+      toast.error(`소통 기록 수정 실패: ${error.message}`);
       throw error;
     }
-    assertAffectedRows(updatedRows, "수정할 수 있는 사전 소통 기록이 없습니다.");
+    assertAffectedRows(updatedRows, "수정할 수 있는 소통 기록이 없습니다.");
     setContactLogs((prev) => sortContactLogs(prev.map((log) => (log.id === id ? { ...log, ...updateData } : log))));
-    toast.success("사전 소통 기록이 수정되었습니다.");
+    toast.success("소통 기록이 수정되었습니다.");
   }, [ownerId]);
 
   const deleteContactLog = useCallback(async (id: string): Promise<void> => {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("lecture_contact_logs").delete().eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`사전 소통 기록 삭제 실패: ${error.message}`);
+      toast.error(`소통 기록 삭제 실패: ${error.message}`);
       throw error;
     }
-    assertAffectedRows(data, "삭제할 수 있는 사전 소통 기록이 없습니다.");
+    assertAffectedRows(data, "삭제할 수 있는 소통 기록이 없습니다.");
     setContactLogs((prev) => prev.filter((log) => log.id !== id));
-    toast.success("사전 소통 기록이 삭제되었습니다.");
+    toast.success("소통 기록이 삭제되었습니다.");
   }, [ownerId]);
   // ==================== PROFILE CRUD ====================
 
