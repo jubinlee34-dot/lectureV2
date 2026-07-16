@@ -5,6 +5,7 @@ import {
   CheckSquare,
   ChevronLeft,
   LayoutDashboard,
+  LogOut,
   MoreHorizontal,
   PenLine,
   Search,
@@ -12,7 +13,9 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { Link, useLocation } from "wouter";
 
 const navItems = [
@@ -39,6 +42,10 @@ export function Sidebar({
 }) {
   const [location] = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signingOutRef = useRef(false);
+  const { user, signOut } = useAuth();
+  const userEmail = user?.email?.trim() || "로그인 사용자";
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/";
@@ -46,6 +53,23 @@ export function Sidebar({
     return location.startsWith(path);
   };
 
+  const handleSignOut = async () => {
+    if (signingOutRef.current) return;
+
+    signingOutRef.current = true;
+    setSigningOut(true);
+    try {
+      const result = await signOut();
+      if (result.error) {
+        toast.error("로그아웃에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+    } catch {
+      toast.error("로그아웃에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      signingOutRef.current = false;
+      setSigningOut(false);
+    }
+  };
   const content = (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-border px-5 py-6">
@@ -98,6 +122,21 @@ export function Sidebar({
           </div>
         ))}
       </nav>
+      <div className="shrink-0 border-t border-border px-3 py-3">
+        <div className="mb-2 min-w-0 px-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">계정</p>
+          <p className="mt-1 truncate text-xs text-foreground" title={userEmail}>{userEmail}</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+        >
+          <LogOut className="h-4 w-4" />
+          {signingOut ? "로그아웃 중" : "로그아웃"}
+        </button>
+      </div>
     </div>
   );
 
