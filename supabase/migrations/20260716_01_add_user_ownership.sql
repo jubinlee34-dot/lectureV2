@@ -35,7 +35,7 @@ BEGIN
 
   SELECT coalesce(array_agg(table_name ORDER BY table_name), ARRAY[]::text[])
   INTO missing_tables
-  FROM unnest(required_tables) AS table_name
+  FROM unnest(required_tables) AS required(table_name)
   WHERE to_regclass(format('public.%I', table_name)) IS NULL;
 
   IF cardinality(missing_tables) > 0 THEN
