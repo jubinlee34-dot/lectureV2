@@ -1,5 +1,9 @@
 BEGIN;
 
+CREATE TEMP TABLE user_ownership_target (
+  user_id uuid PRIMARY KEY
+) ON COMMIT DROP;
+
 DO $$
 DECLARE
   owner_id_text text := 'REPLACE_WITH_EXISTING_AUTH_USER_UUID';
@@ -14,12 +18,12 @@ DECLARE
   ];
   missing_tables text[];
 BEGIN
-  IF owner_id_text = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID' THEN
-    RAISE EXCEPTION
-      'Replace REPLACE_WITH_EXISTING_AUTH_USER_UUID with an existing auth.users id before running this migration.';
-  END IF;
-
-  owner_id := owner_id_text::uuid;
+  BEGIN
+    owner_id := owner_id_text::uuid;
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE EXCEPTION 'Enter an existing Supabase Auth user UUID before running this migration.';
+  END;
 
   IF NOT EXISTS (
     SELECT 1
@@ -37,6 +41,9 @@ BEGIN
   IF cardinality(missing_tables) > 0 THEN
     RAISE EXCEPTION 'Missing required public tables: %', array_to_string(missing_tables, ', ');
   END IF;
+
+  INSERT INTO user_ownership_target (user_id)
+  VALUES (owner_id);
 END $$;
 
 CREATE TEMP TABLE user_ownership_row_counts_before (
@@ -56,6 +63,7 @@ UNION ALL
 SELECT 'lecture_contact_logs', count(*) FROM public.lecture_contact_logs
 UNION ALL
 SELECT 'instructor_profile', count(*) FROM public.instructor_profile;
+
 ALTER TABLE public.lectures
   ADD COLUMN IF NOT EXISTS user_id uuid DEFAULT auth.uid();
 
@@ -74,13 +82,34 @@ ALTER TABLE public.lecture_contact_logs
 ALTER TABLE public.instructor_profile
   ADD COLUMN IF NOT EXISTS user_id uuid DEFAULT auth.uid();
 
+ALTER TABLE public.lectures
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
+
+ALTER TABLE public.todos
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
+
+ALTER TABLE public.work_tasks
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
+
+ALTER TABLE public.sms_history
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
+
+ALTER TABLE public.lecture_contact_logs
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
+
+ALTER TABLE public.instructor_profile
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
 
 DO $$
 DECLARE
-  owner_id uuid := 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid;
+  owner_id uuid;
   target_table text;
   conflicting_count bigint;
 BEGIN
+  SELECT user_id
+  INTO owner_id
+  FROM user_ownership_target;
+
   FOREACH target_table IN ARRAY ARRAY[
     'lectures',
     'todos',
@@ -106,27 +135,27 @@ BEGIN
 END $$;
 
 UPDATE public.lectures
-SET user_id = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid
+SET user_id = (SELECT user_id FROM user_ownership_target)
 WHERE user_id IS NULL;
 
 UPDATE public.todos
-SET user_id = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid
+SET user_id = (SELECT user_id FROM user_ownership_target)
 WHERE user_id IS NULL;
 
 UPDATE public.work_tasks
-SET user_id = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid
+SET user_id = (SELECT user_id FROM user_ownership_target)
 WHERE user_id IS NULL;
 
 UPDATE public.sms_history
-SET user_id = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid
+SET user_id = (SELECT user_id FROM user_ownership_target)
 WHERE user_id IS NULL;
 
 UPDATE public.lecture_contact_logs
-SET user_id = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid
+SET user_id = (SELECT user_id FROM user_ownership_target)
 WHERE user_id IS NULL;
 
 UPDATE public.instructor_profile
-SET user_id = 'REPLACE_WITH_EXISTING_AUTH_USER_UUID'::uuid
+SET user_id = (SELECT user_id FROM user_ownership_target)
 WHERE user_id IS NULL;
 
 DO $$

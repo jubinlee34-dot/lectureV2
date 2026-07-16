@@ -6,12 +6,13 @@
 
 - Do not run the root `migration.sql` or `supabase_schema.sql` against the production database again.
 - Copy the migration SQL into the Supabase SQL Editor before running it.
-- Keep the placeholder unchanged in the committed source file.
-- Replace `REPLACE_WITH_EXISTING_AUTH_USER_UUID` only in the SQL Editor copy that will be run.
+- The migration SQL contains the placeholder exactly once.
+- Replace that one `REPLACE_WITH_EXISTING_AUTH_USER_UUID` placeholder only in the SQL Editor copy that will be run.
 - Do not commit real Auth UUIDs or emails to GitHub.
 - Check the row counts for all target tables before running the migration.
 - After running the migration, copy `20260716_01_verify_user_ownership.sql` into the SQL Editor, replace the same placeholder only in that SQL Editor copy, and review the results.
 - This stage does not change RLS policies to `auth.uid() = user_id`.
+- This repository change does not run the production database migration yet.
 
 ## Target Tables
 
