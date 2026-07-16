@@ -3,6 +3,7 @@ export type WorkflowStage = "before" | "after" | "promoted";
 
 export interface Lecture {
   id: string;
+  user_id?: string;
   organization: string;
   title: string;
   topic: string;
@@ -48,13 +49,14 @@ export interface Lecture {
   travelUpdatedAt?: string | null;
 }
 
-export type LectureFormData = Omit<Lecture, "id" | "createdAt">;
+export type LectureFormData = Omit<Lecture, "id" | "createdAt" | "user_id">;
 export type SortOption = "date-desc" | "date-asc" | "title" | "organization";
 
 export type TodoPriority = "high" | "medium" | "low";
 
 export interface Todo {
   id: string;
+  user_id?: string;
   lectureId?: string;
   text: string;
   done: boolean;
@@ -75,6 +77,7 @@ export type WorkTaskCategory =
 
 export interface WorkTask {
   id: string;
+  user_id?: string;
   lectureId: string;
   stage: WorkTaskStage;
   category: WorkTaskCategory;
@@ -89,6 +92,7 @@ export type SmsType = "reminder" | "confirm" | "thankyou" | "custom";
 
 export interface SmsHistory {
   id: string;
+  user_id?: string;
   lectureId: string;
   type: SmsType;
   recipient: string;
@@ -108,6 +112,7 @@ export type ContactLogTopic =
 
 export interface LectureContactLog {
   id: string;
+  user_id?: string;
   lectureId: string;
   channel: ContactLogChannel;
   topic: ContactLogTopic;

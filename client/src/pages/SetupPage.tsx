@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { supabase, supabaseConfig } from "@/lib/supabase";
 import {
@@ -48,6 +49,7 @@ const VERCEL_NAVER_STEPS = [
 
 export default function SetupPage() {
   const { profile, loading, error } = useSupabase();
+  const { user } = useAuth();
   const [supabaseStatus, setSupabaseStatus] = useState<SetupStatus>("missing");
   const [supabaseMessage, setSupabaseMessage] = useState("확인 중입니다.");
   const [naverStatus, setNaverStatus] = useState<SetupStatus>("missing");
@@ -71,7 +73,7 @@ export default function SetupPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.id]);
 
   const profileStatus = useMemo((): SetupStatus => {
     if (loading) return "missing";
@@ -95,7 +97,14 @@ export default function SetupPage() {
     }
 
     try {
-      const { error: queryError } = await supabase.from("lectures").select("id").limit(1);
+      if (!user?.id) {
+        if (!mounted) return;
+        setSupabaseStatus("error");
+        setSupabaseMessage("로그인한 사용자만 데이터에 접근할 수 있습니다.");
+        return;
+      }
+
+      const { error: queryError } = await supabase.from("lectures").select("id").eq("user_id", user.id).limit(1);
       if (!mounted) return;
       if (queryError) {
         setSupabaseStatus("error");
