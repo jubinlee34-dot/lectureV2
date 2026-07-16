@@ -1,4 +1,5 @@
 import { NaverRouteButton } from "@/components/NaverRouteButton";
+import { LectureContactSummary } from "@/components/ContactLogSummary";
 import { TravelRouteSummary } from "@/components/TravelRouteSummary";
 import { Badge } from "@/components/ui/badge";
 import { useSupabase } from "@/contexts/SupabaseContext";
@@ -48,7 +49,7 @@ export function CalendarQuickCard({
   onDelete,
   onAfterRecord,
 }: CalendarQuickCardProps) {
-  const { profile } = useSupabase();
+  const { profile, contactLogs } = useSupabase();
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getCardAfterRecordLabel(lecture);
@@ -128,6 +129,13 @@ export function CalendarQuickCard({
           )}
         </div>
       )}
+
+      <LectureContactSummary
+        lecture={lecture}
+        contactLogs={contactLogs}
+        onOpen={() => onAction(lecture, "contact-logs")}
+        className="mb-2"
+      />
 
       {(starredBeforeTasks.length > 0 || starredAfterTasks.length > 0) && (
         <div className="mb-2 space-y-1 rounded-md border border-border/50 bg-muted/50 p-2 text-[10px]">

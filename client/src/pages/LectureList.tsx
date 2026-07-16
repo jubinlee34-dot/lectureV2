@@ -1,5 +1,6 @@
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { ImportModal } from "@/components/ImportModal";
+import { LectureContactSummary } from "@/components/ContactLogSummary";
 import { LectureActionDrawer, type LectureActionMode } from "@/components/LectureActionDrawer";
 import { NaverRouteButton } from "@/components/NaverRouteButton";
 import { SmsModal } from "@/components/SmsModal";
@@ -331,7 +332,7 @@ function CompactLectureCard({
   onRollback: (lecture: Lecture) => void;
   onDelete: (id: string) => void;
 }) {
-  const { profile } = useSupabase();
+  const { profile, contactLogs } = useSupabase();
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getAfterRecordLabel(lecture);
   const subtitle = [formatDateDots(lecture.date), lecture.organization || lecture.target].filter(Boolean).join(" / ");
@@ -375,6 +376,13 @@ function CompactLectureCard({
       </div>
 
       <p className="mb-2 truncate text-xs text-muted-foreground">{managerText}</p>
+
+      <LectureContactSummary
+        lecture={lecture}
+        contactLogs={contactLogs}
+        onOpen={() => onAction(lecture, "contact-logs")}
+        className="mb-2"
+      />
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2" onClick={(event) => event.stopPropagation()}>
         {lecture.workflowStage !== "after" && <CompactAction onClick={() => onAction(lecture, "detail")}>상세보기</CompactAction>}

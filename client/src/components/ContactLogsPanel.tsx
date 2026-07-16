@@ -136,7 +136,7 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
   };
 
   const handleDelete = async (log: LectureContactLog) => {
-    const confirmed = window.confirm("이 사전 소통 기록을 삭제할까요?");
+    const confirmed = window.confirm("이 소통 기록을 삭제할까요?");
     if (!confirmed) return;
     await deleteContactLog(log.id);
     if (editingId === log.id) closeForm();
@@ -162,7 +162,7 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
 
         {logs.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
-            <p className="text-sm text-muted-foreground">아직 사전 소통 기록이 없습니다.</p>
+            <p className="text-sm text-muted-foreground">소통 기록이 없습니다.</p>
             <Button type="button" variant="outline" size="sm" onClick={openAddForm} className="mt-3">
               <Plus className="mr-1.5 h-4 w-4" />
               첫 기록 추가
@@ -204,14 +204,14 @@ export function ContactLogsPanel({ lecture, onBack }: ContactLogsPanelProps) {
       {logs.length > 0 && !formOpen && (
         <Button type="button" variant="outline" size="sm" onClick={openAddForm}>
           <Plus className="mr-1.5 h-4 w-4" />
-          사전 소통 기록 추가
+          소통 기록 추가
         </Button>
       )}
 
       {formOpen && (
         <section className="rounded-lg border border-border bg-card p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-foreground">{editingId ? "사전 소통 기록 수정" : "사전 소통 기록 추가"}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{editingId ? "소통 기록 수정" : "소통 기록 추가"}</h3>
             <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
               <X className="mr-1 h-3.5 w-3.5" />
               취소
