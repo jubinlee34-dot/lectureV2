@@ -52,7 +52,7 @@ export default function SearchPage() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={async (type, recipient, content) => {
             await recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("문자 발송 내역을 기록했습니다.");
+            toast.success("문자 작성 이력을 기록했습니다.");
           }}
         />
       )}

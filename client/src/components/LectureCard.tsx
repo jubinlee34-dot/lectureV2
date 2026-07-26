@@ -8,6 +8,7 @@ import type { Lecture } from "@/types/lecture";
 import { hasAfterRecord } from "@/utils/afterRecord";
 import { getPreviousWorkflowStage, statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
 import { formatDateShort, truncate } from "@/utils/format";
+import { buildSmsConversationUrl, buildTelUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import {
   Calendar,
   ClipboardCheck,
@@ -58,17 +59,23 @@ export function LectureCard({
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getCardAfterRecordLabel(lecture);
+  const managerPhone = normalizePhoneNumber(lecture.managerPhone);
 
   const handleSms = () => {
-    if (onSms) {
-      onSms(lecture);
-      return;
-    }
+    if (!managerPhone) return;
+    onSms?.(lecture);
+  };
 
-    const body = encodeURIComponent(
-      `안녕하세요. ${lecture.organization} <${lecture.title}> 강의 관련해 연락드립니다.\n일시: ${formatDateShort(lecture.date)}\n장소: ${lecture.location}`
-    );
-    window.location.href = `sms:${lecture.managerPhone}?body=${body}`;
+  const handleSmsConversation = () => {
+    const smsUrl = buildSmsConversationUrl(managerPhone);
+    if (!smsUrl) return;
+    window.location.href = smsUrl;
+  };
+
+  const handleCall = () => {
+    const telUrl = buildTelUrl(managerPhone);
+    if (!telUrl) return;
+    window.location.href = telUrl;
   };
 
   return (
@@ -219,22 +226,28 @@ export function LectureCard({
               )}
             </>
           )}
-          {lecture.managerPhone && (
+          {managerPhone && (
             <>
               <button
                 onClick={handleSms}
                 className="flex items-center gap-1 rounded-md bg-green-500 px-2 py-1 text-[11px] text-white transition-colors hover:bg-green-600"
               >
                 <MessageCircle className="h-3 w-3" />
-                문자
+                문자 작성
               </button>
-              <a
-                href={`tel:${lecture.managerPhone}`}
+              <button
+                onClick={handleSmsConversation}
+                className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                대화 보기
+              </button>
+              <button
+                onClick={handleCall}
                 className="flex items-center gap-1 rounded-md bg-blue-500 px-2 py-1 text-[11px] text-white transition-colors hover:bg-blue-600"
               >
                 <Phone className="h-3 w-3" />
                 전화
-              </a>
+              </button>
             </>
           )}
           {lecture.managerName && <span className="ml-auto truncate text-[10px] text-muted-foreground">{lecture.managerName}</span>}

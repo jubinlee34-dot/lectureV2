@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/utils/format";
+import { buildSmsComposeUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import { Check, MessageCircle, RefreshCw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -52,40 +53,45 @@ export function SmsModal({
 }: SmsModalProps) {
   const [selectedType, setSelectedType] = useState<SmsType>(defaultType);
   const [content, setContent] = useState("");
-  const [sent, setSent] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const normalizedPhone = normalizePhoneNumber(lecture.managerPhone);
 
   useEffect(() => {
     if (open) {
       setSelectedType(defaultType);
       setContent(generateSmsContent(lecture, defaultType));
-      setSent(false);
+      setOpened(false);
     }
   }, [open, defaultType, lecture]);
 
   const handleSend = async () => {
-    if (!lecture.managerPhone) {
-      toast.error("담당자 연락처가 없습니다. 강의 수정에서 연락처를 추가해주세요.");
+    if (!normalizedPhone) {
+      toast.error("담당자 연락처가 없습니다. 강의 수정에서 연락처를 추가해 주세요.");
       return;
     }
     if (!content.trim()) {
       toast.error("문자 내용을 입력해주세요.");
       return;
     }
+
+    const smsUrl = buildSmsComposeUrl(normalizedPhone, content);
+    if (!smsUrl) return;
+
     try {
-      await onRecord?.(selectedType, lecture.managerPhone, content);
+      await onRecord?.(selectedType, normalizedPhone, content);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "문자 발송 이력 저장에 실패했습니다.");
+      toast.error(error instanceof Error ? error.message : "문자 작성 이력 저장 실패");
       return;
     }
-    window.location.href = `sms:${lecture.managerPhone}?body=${encodeURIComponent(content)}`;
-    setSent(true);
-    toast.success("문자 앱을 열었습니다. 전송 전 내용을 확인해주세요.");
+    window.location.href = smsUrl;
+    setOpened(true);
+    toast.success("문자 앱을 열었습니다. 내용을 확인한 뒤 휴대폰에서 직접 전송하세요.");
   };
 
   const handleTypeChange = (type: SmsType) => {
     setSelectedType(type);
     setContent(generateSmsContent(lecture, type));
-    setSent(false);
+    setOpened(false);
   };
 
   return (
@@ -94,7 +100,7 @@ export function SmsModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <MessageCircle className="h-5 w-5 text-green-600" />
-            담당자 문자 발송
+            담당자 문자 작성
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -103,7 +109,7 @@ export function SmsModal({
               <span className="text-muted-foreground">수신자</span>
               <span className="text-right font-medium text-foreground">
                 {lecture.managerName || "담당자"}{" "}
-                <span className="font-normal text-muted-foreground">{lecture.managerPhone || "연락처 없음"}</span>
+                <span className="font-normal text-muted-foreground">{normalizedPhone || "연락처 없음"}</span>
               </span>
             </div>
           </div>
@@ -147,10 +153,10 @@ export function SmsModal({
             <Button
               onClick={handleSend}
               className="flex-1 bg-green-600 text-white hover:bg-green-700"
-              disabled={!lecture.managerPhone}
+              disabled={!normalizedPhone}
             >
-              {sent ? <Check className="mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
-              문자 보내기
+              {opened ? <Check className="mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
+              문자 앱 열기
             </Button>
           </div>
         </div>
