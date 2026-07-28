@@ -27,6 +27,35 @@ const smsTypeLabel: Record<SmsType, string> = {
   thankyou: "강의 후 감사",
   custom: "직접 작성",
 };
+const smsDraftKeyPrefix = "lectureV2:smsDraft";
+
+function buildSmsDraftKey(lectureId: string, type: SmsType): string {
+  return `${smsDraftKeyPrefix}:${encodeURIComponent(lectureId)}:${type}`;
+}
+
+function readSmsDraft(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSmsDraft(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Draft persistence should never block composing a message.
+  }
+}
+
+function removeSmsDraft(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures so the modal remains usable.
+  }
+}
 
 export function generateSmsContent(lecture: Lecture, type: SmsType): string {
   const name = lecture.managerName || "담당자";
@@ -55,11 +84,15 @@ export function SmsModal({
   const [content, setContent] = useState("");
   const [opened, setOpened] = useState(false);
   const normalizedPhone = normalizePhoneNumber(lecture.managerPhone);
+  const draftKey = buildSmsDraftKey(lecture.id, selectedType);
 
   useEffect(() => {
     if (open) {
+      const initialDraftKey = buildSmsDraftKey(lecture.id, defaultType);
+      const savedDraft = readSmsDraft(initialDraftKey);
+
       setSelectedType(defaultType);
-      setContent(generateSmsContent(lecture, defaultType));
+      setContent(savedDraft ?? generateSmsContent(lecture, defaultType));
       setOpened(false);
     }
   }, [open, defaultType, lecture]);
@@ -88,9 +121,31 @@ export function SmsModal({
     toast.success("문자 앱을 열었습니다. 내용을 확인한 뒤 휴대폰에서 직접 전송하세요.");
   };
 
+  const handleContentChange = (value: string) => {
+    setContent(value);
+    writeSmsDraft(draftKey, value);
+  };
+
+  const handleRegenerate = () => {
+    const nextContent = generateSmsContent(lecture, selectedType);
+    setContent(nextContent);
+    writeSmsDraft(draftKey, nextContent);
+    setOpened(false);
+  };
+
+  const handleResetDraft = () => {
+    const defaultContent = generateSmsContent(lecture, selectedType);
+    removeSmsDraft(draftKey);
+    setContent(defaultContent);
+    setOpened(false);
+  };
+
   const handleTypeChange = (type: SmsType) => {
+    const nextDraftKey = buildSmsDraftKey(lecture.id, type);
+    const savedDraft = readSmsDraft(nextDraftKey);
+
     setSelectedType(type);
-    setContent(generateSmsContent(lecture, type));
+    setContent(savedDraft ?? generateSmsContent(lecture, type));
     setOpened(false);
   };
 
@@ -132,16 +187,23 @@ export function SmsModal({
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-medium text-muted-foreground">문자 내용</p>
               <button
-                onClick={() => setContent(generateSmsContent(lecture, selectedType))}
+                onClick={handleRegenerate}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
               >
                 <RefreshCw className="h-3 w-3" />
                 재생성
               </button>
+              <button
+                type="button"
+                onClick={handleResetDraft}
+                className="text-xs text-muted-foreground hover:text-destructive"
+              >
+                초안 초기화
+              </button>
             </div>
             <Textarea
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => handleContentChange(e.target.value)}
               className="min-h-[180px] resize-none text-sm leading-relaxed"
             />
             <p className="mt-1 text-right text-xs text-muted-foreground">{content.length}자</p>
