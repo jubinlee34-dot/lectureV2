@@ -13,6 +13,7 @@ import type { Lecture } from "@/types/lecture";
 import { hasAfterRecord } from "@/utils/afterRecord";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { getPreviousWorkflowStage, getStatusCounts, statusBadgeClass, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
+import { buildSmsConversationUrl, buildTelUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import { recordSmsHistory } from "@/utils/storage";
 import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } from "lucide-react";
 import type { ReactNode } from "react";
@@ -300,7 +301,7 @@ export default function LectureList() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={async (type, recipient, content) => {
             await recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("문자 발송 이력을 기록했습니다.");
+            toast.success("문자 작성 이력을 기록했습니다.");
           }}
         />
       )}
@@ -335,6 +336,7 @@ function CompactLectureCard({
   const { profile, contactLogs } = useSupabase();
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getAfterRecordLabel(lecture);
+  const managerPhone = normalizePhoneNumber(lecture.managerPhone);
   const subtitle = [formatDateDots(lecture.date), lecture.organization || lecture.target].filter(Boolean).join(" / ");
   const managerText =
     lecture.managerName || lecture.managerPhone
@@ -404,15 +406,28 @@ function CompactLectureCard({
             {previousStage && <CompactAction onClick={() => onRollback(lecture)}>상태 되돌리기</CompactAction>}
           </>
         )}
-        {lecture.managerPhone && (
+        {managerPhone && (
           <>
-            <CompactAction onClick={() => onSms(lecture)} tone="green">문자</CompactAction>
-            <a
-              href={`tel:${lecture.managerPhone}`}
-              className="inline-flex h-7 items-center rounded-md border border-blue-200 px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+            <CompactAction onClick={() => onSms(lecture)} tone="green">문자 작성</CompactAction>
+            <CompactAction
+              onClick={() => {
+                const smsUrl = buildSmsConversationUrl(managerPhone);
+                if (!smsUrl) return;
+                window.location.href = smsUrl;
+              }}
+            >
+              대화 보기
+            </CompactAction>
+            <CompactAction
+              onClick={() => {
+                const telUrl = buildTelUrl(managerPhone);
+                if (!telUrl) return;
+                window.location.href = telUrl;
+              }}
+              tone="blue"
             >
               전화
-            </a>
+            </CompactAction>
           </>
         )}
         <CompactAction onClick={() => onDelete(lecture.id)} tone="red">삭제</CompactAction>
@@ -427,7 +442,7 @@ function CompactAction({
   onClick,
 }: {
   children: ReactNode;
-  tone?: "default" | "amber" | "green" | "red";
+  tone?: "default" | "amber" | "green" | "red" | "blue";
   onClick: () => void;
 }) {
   const toneClass = {
@@ -435,6 +450,7 @@ function CompactAction({
     amber: "border-amber-200 text-amber-700 hover:bg-amber-50",
     green: "border-green-200 text-green-700 hover:bg-green-50",
     red: "border-red-200 text-red-700 hover:bg-red-50",
+    blue: "border-blue-200 text-blue-700 hover:bg-blue-50",
   }[tone];
 
   return (

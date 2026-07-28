@@ -7,6 +7,7 @@ import { useStarredTasks } from "@/hooks/useStarredTasks";
 import type { LectureActionMode } from "@/components/LectureActionDrawer";
 import type { Lecture } from "@/types/lecture";
 import { hasAfterRecord } from "@/utils/afterRecord";
+import { buildSmsConversationUrl, buildTelUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import { formatDate } from "@/utils/format";
 import {
   getPreviousWorkflowStage,
@@ -53,6 +54,7 @@ export function CalendarQuickCard({
   const { starredBeforeTasks, starredAfterTasks } = useStarredTasks(lecture.id);
   const previousStage = getPreviousWorkflowStage(lecture.workflowStage);
   const afterRecordLabel = getCardAfterRecordLabel(lecture);
+  const managerPhone = normalizePhoneNumber(lecture.managerPhone);
   const timeLabel =
     [lecture.startTime, lecture.endTime].filter(Boolean).join(" - ") ||
     lecture.duration;
@@ -67,6 +69,18 @@ export function CalendarQuickCard({
     if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
     onSelect(lecture);
+  };
+
+  const openSmsConversation = () => {
+    const smsUrl = buildSmsConversationUrl(managerPhone);
+    if (!smsUrl) return;
+    window.location.href = smsUrl;
+  };
+
+  const openTel = () => {
+    const telUrl = buildTelUrl(managerPhone);
+    if (!telUrl) return;
+    window.location.href = telUrl;
   };
 
   return (
@@ -236,7 +250,7 @@ export function CalendarQuickCard({
             )}
           </>
         )}
-        {lecture.managerPhone && (
+        {managerPhone && (
           <>
             <button
               onClick={event => {
@@ -246,15 +260,26 @@ export function CalendarQuickCard({
               className="inline-flex h-7 items-center justify-center rounded-md border border-green-200 px-2 text-xs text-green-700 hover:bg-green-50"
             >
               <MessageCircle className="mr-1 h-3.5 w-3.5" />
-              문자
+              문자 작성
             </button>
-            <a
-              href={`tel:${lecture.managerPhone}`}
-              onClick={event => event.stopPropagation()}
+            <button
+              onClick={event => {
+                event.stopPropagation();
+                openSmsConversation();
+              }}
+              className="inline-flex h-7 items-center justify-center rounded-md border border-slate-200 px-2 text-xs text-slate-700 hover:bg-slate-50"
+            >
+              대화 보기
+            </button>
+            <button
+              onClick={event => {
+                event.stopPropagation();
+                openTel();
+              }}
               className="inline-flex h-7 items-center justify-center rounded-md border border-blue-200 px-2 text-xs text-blue-700 hover:bg-blue-50"
             >
               <Phone className="h-3.5 w-3.5" />
-            </a>
+            </button>
           </>
         )}
         {lecture.workflowStage !== "promoted" && (

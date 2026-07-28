@@ -6,6 +6,7 @@ import { useLectures } from "@/hooks/useLectures";
 import { useWorkTasks } from "@/hooks/useWorkTasks";
 import { getAfterRecordButtonLabel } from "@/utils/afterRecord";
 import { statusBadgeClass, statusLabels } from "@/utils/lectureStatus";
+import { buildSmsConversationUrl, buildTelUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import {
   ArrowLeft,
   Check,
@@ -100,6 +101,7 @@ export default function LectureManagePage() {
   }
 
   const afterRecordButtonLabel = getAfterRecordButtonLabel(lecture);
+  const managerPhone = normalizePhoneNumber(lecture.managerPhone);
 
   const handleAddTask = async (stage: WorkTaskStage) => {
     if (!newTaskText.trim()) return;
@@ -112,6 +114,18 @@ export default function LectureManagePage() {
   const handleStageChange = async (stage: WorkflowStage) => {
     await updateLecture(lecture.id, { workflowStage: stage });
     toast.success(`${statusLabels[stage]} 상태로 변경했습니다.`);
+  };
+
+  const openSmsConversation = () => {
+    const smsUrl = buildSmsConversationUrl(managerPhone);
+    if (!smsUrl) return;
+    window.location.href = smsUrl;
+  };
+
+  const openTel = () => {
+    const telUrl = buildTelUrl(managerPhone);
+    if (!telUrl) return;
+    window.location.href = telUrl;
   };
 
   return (
@@ -152,7 +166,7 @@ export default function LectureManagePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {lecture.managerPhone && (
+            {managerPhone && (
               <>
                 <button
                   onClick={() => {
@@ -162,12 +176,18 @@ export default function LectureManagePage() {
                   className="flex items-center gap-1 rounded-lg bg-green-500 px-3 py-1.5 text-xs text-white hover:bg-green-600"
                 >
                   <MessageCircle className="h-3.5 w-3.5" />
-                  문자 보내기
+                  문자 작성
                 </button>
-                <a href={`tel:${lecture.managerPhone}`} className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-1.5 text-xs text-white hover:bg-blue-600">
+                <button
+                  onClick={openSmsConversation}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                >
+                  대화 보기
+                </button>
+                <button onClick={openTel} className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-1.5 text-xs text-white hover:bg-blue-600">
                   <Phone className="h-3.5 w-3.5" />
                   전화
-                </a>
+                </button>
               </>
             )}
             <Button variant="outline" size="sm" onClick={() => setAfterRecordOpen(true)}>
@@ -257,7 +277,7 @@ export default function LectureManagePage() {
         defaultType={smsType}
         onRecord={async (type, recipient, content) => {
           await recordSms(type, recipient, content);
-          toast.success("문자 발송 이력을 기록했습니다.");
+          toast.success("문자 작성 이력을 기록했습니다.");
         }}
       />
       <AfterRecordModal lectureId={lecture.id} open={afterRecordOpen} onOpenChange={setAfterRecordOpen} />

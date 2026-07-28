@@ -7,6 +7,7 @@ import { formatDurationMin } from "@/services/naverRouteService";
 import { recordSmsHistory } from "@/utils/storage";
 import { formatDate, formatKRW } from "@/utils/format";
 import { getStatusCounts, statusLabels } from "@/utils/lectureStatus";
+import { buildSmsConversationUrl, buildTelUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import {
   ArrowRight,
   CalendarDays,
@@ -343,6 +344,7 @@ export default function Dashboard() {
                   const location = lecture.location?.trim();
                   const organization = lecture.organization?.trim();
                   const dateAndOrganization = [formatDate(lecture.date), organization].filter(Boolean).join(" · ");
+                  const managerPhone = normalizePhoneNumber(lecture.managerPhone);
 
                   return (
                     <div key={lecture.id} className="flex min-w-0 gap-3 py-3 first:pt-0 last:pb-0">
@@ -358,17 +360,34 @@ export default function Dashboard() {
                             </div>
                             <p className="mt-0.5 truncate text-xs text-muted-foreground">{dateAndOrganization}</p>
                           </button>
-                          {lecture.managerPhone && (
+                          {managerPhone && (
                             <div className="flex shrink-0 items-center gap-1 sm:justify-end">
                               <button
                                 onClick={() => setSmsTarget(lecture)}
                                 className="inline-flex h-7 items-center gap-1 rounded-md bg-green-500 px-2 text-[11px] text-white hover:bg-green-600 border-none outline-none cursor-pointer"
                               >
-                                <MessageCircle className="h-3 w-3" />문자
+                                <MessageCircle className="h-3 w-3" />문자 작성
                               </button>
-                              <a className="inline-flex h-7 items-center gap-1 rounded-md bg-blue-500 px-2 text-[11px] text-white hover:bg-blue-600" href={`tel:${lecture.managerPhone}`}>
+                              <button
+                                onClick={() => {
+                                  const smsUrl = buildSmsConversationUrl(managerPhone);
+                                  if (!smsUrl) return;
+                                  window.location.href = smsUrl;
+                                }}
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 hover:bg-slate-50"
+                              >
+                                대화 보기
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const telUrl = buildTelUrl(managerPhone);
+                                  if (!telUrl) return;
+                                  window.location.href = telUrl;
+                                }}
+                                className="inline-flex h-7 items-center gap-1 rounded-md bg-blue-500 px-2 text-[11px] text-white hover:bg-blue-600"
+                              >
                                 <Phone className="h-3 w-3" />전화
-                              </a>
+                              </button>
                             </div>
                           )}
                         </div>
@@ -466,7 +485,7 @@ export default function Dashboard() {
           defaultType={smsTarget.workflowStage === "after" ? "thankyou" : "reminder"}
           onRecord={async (type, recipient, content) => {
             await recordSmsHistory(smsTarget.id, type, recipient, content);
-            toast.success("문자 발송 이력을 기록했습니다.");
+            toast.success("문자 작성 이력을 기록했습니다.");
           }}
         />
       )}
