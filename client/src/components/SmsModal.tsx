@@ -39,13 +39,14 @@ const smsTypeLabel: Record<SmsType, string> = {
   thankyou: "강의 후 감사",
   custom: "직접 작성",
 };
-type DraftSaveStatus = "loading" | "saving" | "saved" | "offline" | "failed" | null;
+type DraftSaveStatus = "loading" | "saving" | "saved" | "offline" | "clearOffline" | "failed" | null;
 
 const draftSaveStatusLabel: Record<Exclude<DraftSaveStatus, null>, string> = {
   loading: "초안 불러오는 중...",
   saving: "저장 중...",
   saved: "초안 저장됨",
   offline: "오프라인 초안으로 저장됨",
+  clearOffline: "서버 초기화에 실패해 이 기기에서만 초기화되었습니다.",
   failed: "초안을 저장하지 못했습니다.",
 };
 
@@ -84,7 +85,7 @@ export function SmsModal({
   onRecord,
 }: SmsModalProps) {
   const { user } = useAuth();
-  const { getMessageDraft, upsertMessageDraft, deleteMessageDraft } = useSupabase();
+  const { getMessageDraft, upsertMessageDraft, clearMessageDraft } = useSupabase();
   const [selectedType, setSelectedType] = useState<SmsType>(defaultType);
   const [content, setContent] = useState("");
   const [opened, setOpened] = useState(false);
@@ -180,7 +181,11 @@ export function SmsModal({
           pending.content
         )
       );
-      if (!isValidDraftTimestamp(savedDraft.createdAt) || !isValidDraftTimestamp(savedDraft.updatedAt)) {
+      if (
+        savedDraft.isCleared
+        || !isValidDraftTimestamp(savedDraft.createdAt)
+        || !isValidDraftTimestamp(savedDraft.updatedAt)
+      ) {
         throw new Error("Invalid server draft timestamp");
       }
       const currentLocalDraft = readLocalMessageDraft(pending.scopeKey);
@@ -297,7 +302,11 @@ export function SmsModal({
         );
         if (!isCurrentRequest()) return;
 
-        if (!isValidDraftTimestamp(savedDraft.createdAt) || !isValidDraftTimestamp(savedDraft.updatedAt)) {
+        if (
+          savedDraft.isCleared
+          || !isValidDraftTimestamp(savedDraft.createdAt)
+          || !isValidDraftTimestamp(savedDraft.updatedAt)
+        ) {
           throw new Error("Invalid server draft timestamp");
         }
 
@@ -324,6 +333,23 @@ export function SmsModal({
           && (!isValidDraftTimestamp(serverDraft.createdAt) || !isValidDraftTimestamp(serverDraft.updatedAt))
         ) {
           throw new Error("Invalid server draft timestamp");
+        }
+
+        if (serverDraft?.isCleared) {
+          if (
+            localDraft
+            && Date.parse(localDraft.updatedAt) > Date.parse(serverDraft.updatedAt)
+          ) {
+            setContent(localDraft.content);
+            await syncLocalDraft(localDraft, true);
+          } else {
+            removeLocalMessageDraft(key);
+            removeLocalMessageDraft(legacyKey);
+            latestDraftTimestampRef.current.set(key, serverDraft.updatedAt);
+            setContent(defaultContent);
+            setSaveStatus(null);
+          }
+          return;
         }
 
         if (serverDraft && localDraft) {
@@ -503,14 +529,23 @@ export function SmsModal({
     userEditedRef.current = false;
     if (canUpdateScope(scopeKey, resetGeneration)) setSaveStatus("saving");
 
-    let serverDeleteFailed = false;
+    let serverClearFailed = false;
     try {
-      await trackServerSave(
+      const clearedDraft = await trackServerSave(
         scopeKey,
-        () => deleteMessageDraft(resetLectureId, resetType)
+        () => clearMessageDraft(resetLectureId, resetType)
       );
+      if (
+        !clearedDraft.isCleared
+        || clearedDraft.content !== ""
+        || !isValidDraftTimestamp(clearedDraft.createdAt)
+        || !isValidDraftTimestamp(clearedDraft.updatedAt)
+      ) {
+        throw new Error("Invalid cleared server draft");
+      }
+      latestDraftTimestampRef.current.set(scopeKey, clearedDraft.updatedAt);
     } catch {
-      serverDeleteFailed = true;
+      serverClearFailed = true;
     }
 
     removeLocalMessageDraft(scopeKey);
@@ -525,7 +560,7 @@ export function SmsModal({
     if (mountedRef.current && openRef.current && resetStillCurrent) {
       setContent(resetDefaultContent);
       setOpened(false);
-      setSaveStatus(serverDeleteFailed ? "failed" : null);
+      setSaveStatus(serverClearFailed ? "clearOffline" : null);
     }
     resettingScopesRef.current.delete(scopeKey);
     if (mountedRef.current) setResettingRevision((revision) => revision + 1);

@@ -49,7 +49,7 @@ interface SupabaseContextType {
   // Message Draft Actions
   getMessageDraft: (lectureId: string, messageType: SmsType) => Promise<MessageDraft | null>;
   upsertMessageDraft: (lectureId: string, messageType: SmsType, content: string) => Promise<MessageDraft>;
-  deleteMessageDraft: (lectureId: string, messageType: SmsType) => Promise<void>;
+  clearMessageDraft: (lectureId: string, messageType: SmsType) => Promise<MessageDraft>;
 
   // Contact Log Actions
   addContactLog: (data: Omit<LectureContactLog, "id" | "createdAt" | "updatedAt">) => Promise<LectureContactLog>;
@@ -125,7 +125,7 @@ const LECTURE_DB_COLUMNS = [
 type LectureDbPayload = Partial<Pick<Lecture, (typeof LECTURE_DB_COLUMNS)[number]>>;
 type OwnedPayload<T extends object> = T & { user_id: string };
 
-const MESSAGE_DRAFT_DB_COLUMNS = "id, lecture_id, user_id, message_type, content, created_at, updated_at";
+const MESSAGE_DRAFT_DB_COLUMNS = "id, lecture_id, user_id, message_type, content, is_cleared, created_at, updated_at";
 
 function pickLectureDbPayload(data: Partial<Lecture>): LectureDbPayload {
   return LECTURE_DB_COLUMNS.reduce<LectureDbPayload>((payload, column) => {
@@ -219,6 +219,7 @@ function toMessageDraft(row: unknown): MessageDraft {
     || typeof row.user_id !== "string"
     || !isSmsType(row.message_type)
     || typeof row.content !== "string"
+    || typeof row.is_cleared !== "boolean"
     || typeof row.created_at !== "string"
     || typeof row.updated_at !== "string"
   ) {
@@ -231,6 +232,7 @@ function toMessageDraft(row: unknown): MessageDraft {
     userId: row.user_id,
     messageType: row.message_type,
     content: row.content,
+    isCleared: row.is_cleared,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -919,6 +921,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       user_id: currentOwnerId,
       message_type: messageType,
       content,
+      is_cleared: false,
     };
 
     const { data, error } = await supabase
@@ -939,8 +942,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     );
 
     if (
-      existingDraft
-      && (savedDraft.id !== existingDraft.id || savedDraft.createdAt !== existingDraft.createdAt)
+      savedDraft.isCleared
+      || (existingDraft
+        && (savedDraft.id !== existingDraft.id || savedDraft.createdAt !== existingDraft.createdAt))
     ) {
       throw new Error("문자 초안 저장 결과가 올바르지 않습니다.");
     }
@@ -948,22 +952,49 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     return savedDraft;
   }, [getMessageDraft, ownerId]);
 
-  const deleteMessageDraft = useCallback(async (
+  const clearMessageDraft = useCallback(async (
     lectureId: string,
     messageType: SmsType
-  ): Promise<void> => {
+  ): Promise<MessageDraft> => {
     const currentOwnerId = requireMessageDraftOwnerId(ownerId);
-    const { error } = await supabase
+    const existingDraft = await getMessageDraft(lectureId, messageType);
+    const payload = {
+      id: existingDraft?.id ?? nanoid(),
+      lecture_id: lectureId,
+      user_id: currentOwnerId,
+      message_type: messageType,
+      content: "",
+      is_cleared: true,
+    };
+
+    const { data, error } = await supabase
       .from("message_drafts")
-      .delete()
-      .eq("user_id", currentOwnerId)
-      .eq("lecture_id", lectureId)
-      .eq("message_type", messageType);
+      .upsert(payload, { onConflict: "user_id,lecture_id,message_type" })
+      .select(MESSAGE_DRAFT_DB_COLUMNS)
+      .single();
 
     if (error) {
-      throw new Error("문자 초안을 삭제하지 못했습니다.");
+      throw new Error("문자 초안을 초기화하지 못했습니다.");
     }
-  }, [ownerId]);
+
+    const clearedDraft = ensureMessageDraftScope(
+      toMessageDraft(data),
+      currentOwnerId,
+      lectureId,
+      messageType
+    );
+
+    if (
+      !clearedDraft.isCleared
+      || clearedDraft.content !== ""
+      || (existingDraft
+        && (clearedDraft.id !== existingDraft.id || clearedDraft.createdAt !== existingDraft.createdAt))
+    ) {
+      throw new Error("문자 초안 초기화 결과가 올바르지 않습니다.");
+    }
+
+    return clearedDraft;
+  }, [getMessageDraft, ownerId]);
 
   // ==================== SMS CRUD ====================
 
@@ -1288,7 +1319,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
         getMessageDraft,
         upsertMessageDraft,
-        deleteMessageDraft,
+        clearMessageDraft,
 
         addContactLog,
         updateContactLog,

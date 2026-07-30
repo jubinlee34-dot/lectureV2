@@ -96,6 +96,7 @@ export interface MessageDraft {
   userId: string;
   messageType: SmsType;
   content: string;
+  isCleared: boolean;
   createdAt: string;
   updatedAt: string;
 }
