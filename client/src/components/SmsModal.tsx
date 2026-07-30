@@ -9,9 +9,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/utils/format";
 import { buildSmsComposeUrl, normalizePhoneNumber } from "@/utils/phoneActions";
 import { Check, MessageCircle, RefreshCw, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useAuth } from "../contexts/AuthContext";
+import { useSupabase } from "../contexts/SupabaseContext";
 import type { Lecture, SmsType } from "../types/lecture";
+import {
+  buildLegacyMessageDraftKey,
+  buildUserMessageDraftKey,
+  isValidDraftTimestamp,
+  readLegacyMessageDraft,
+  readLocalMessageDraft,
+  removeLocalMessageDraft,
+  writeLocalMessageDraft,
+  type LocalMessageDraft,
+} from "../utils/messageDrafts";
 
 interface SmsModalProps {
   open: boolean;
@@ -27,34 +39,26 @@ const smsTypeLabel: Record<SmsType, string> = {
   thankyou: "강의 후 감사",
   custom: "직접 작성",
 };
-const smsDraftKeyPrefix = "lectureV2:smsDraft";
+type DraftSaveStatus = "loading" | "saving" | "saved" | "offline" | "clearOffline" | "failed" | null;
 
-function buildSmsDraftKey(lectureId: string, type: SmsType): string {
-  return `${smsDraftKeyPrefix}:${encodeURIComponent(lectureId)}:${type}`;
-}
+const draftSaveStatusLabel: Record<Exclude<DraftSaveStatus, null>, string> = {
+  loading: "초안 불러오는 중...",
+  saving: "저장 중...",
+  saved: "초안 저장됨",
+  offline: "오프라인 초안으로 저장됨",
+  clearOffline: "서버 초기화에 실패해 이 기기에서만 초기화되었습니다.",
+  failed: "초안을 저장하지 못했습니다.",
+};
 
-function readSmsDraft(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeSmsDraft(key: string, value: string) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Draft persistence should never block composing a message.
-  }
-}
-
-function removeSmsDraft(key: string) {
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // Ignore storage failures so the modal remains usable.
-  }
+interface PendingDraftSave {
+  userId: string;
+  lectureId: string;
+  messageType: SmsType;
+  content: string;
+  updatedAt: string;
+  localSaved: boolean;
+  resetGeneration: number;
+  scopeKey: string;
 }
 
 export function generateSmsContent(lecture: Lecture, type: SmsType): string {
@@ -80,22 +84,358 @@ export function SmsModal({
   defaultType = "reminder",
   onRecord,
 }: SmsModalProps) {
+  const { user } = useAuth();
+  const { getMessageDraft, upsertMessageDraft, clearMessageDraft } = useSupabase();
   const [selectedType, setSelectedType] = useState<SmsType>(defaultType);
   const [content, setContent] = useState("");
   const [opened, setOpened] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>(null);
+  const [resettingRevision, setResettingRevision] = useState(0);
+  const debounceTimerRef = useRef<number | null>(null);
+  const pendingSaveRef = useRef<PendingDraftSave | null>(null);
+  const inFlightSavesRef = useRef(new Map<string, Set<Promise<unknown>>>());
+  const saveQueueRef = useRef(new Map<string, Promise<void>>());
+  const latestDraftTimestampRef = useRef(new Map<string, string>());
+  const scopeGenerationRef = useRef(new Map<string, number>());
+  const resettingScopesRef = useRef(new Set<string>());
+  const hydrationSequenceRef = useRef(0);
+  const userEditedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const openRef = useRef(open);
+  openRef.current = open;
+  const userId = user?.id ?? null;
   const normalizedPhone = normalizePhoneNumber(lecture.managerPhone);
-  const draftKey = buildSmsDraftKey(lecture.id, selectedType);
+  const defaultContent = useMemo(
+    () => generateSmsContent(lecture, selectedType),
+    [
+      lecture.date,
+      lecture.duration,
+      lecture.id,
+      lecture.location,
+      lecture.managerName,
+      lecture.organization,
+      lecture.participants,
+      lecture.title,
+      selectedType,
+    ]
+  );
+  const userDraftKey = userId
+    ? buildUserMessageDraftKey(userId, lecture.id, selectedType)
+    : null;
+  const legacyDraftKey = buildLegacyMessageDraftKey(lecture.id, selectedType);
+  const isResetting = useMemo(
+    () => Boolean(userDraftKey && resettingScopesRef.current.has(userDraftKey)),
+    [resettingRevision, userDraftKey]
+  );
+  const activeDraftKeyRef = useRef<string | null>(userDraftKey);
+  activeDraftKeyRef.current = userDraftKey;
+
+  const getScopeGeneration = useCallback((scopeKey: string): number => (
+    scopeGenerationRef.current.get(scopeKey) ?? 0
+  ), []);
+
+  const canUpdateScope = useCallback((scopeKey: string, generation: number): boolean => (
+    mountedRef.current
+    && openRef.current
+    && activeDraftKeyRef.current === scopeKey
+    && getScopeGeneration(scopeKey) === generation
+  ), [getScopeGeneration]);
+
+  const trackServerSave = useCallback(async <T,>(
+    scopeKey: string,
+    operation: () => Promise<T>
+  ): Promise<T> => {
+    const scopeSaves = inFlightSavesRef.current.get(scopeKey) ?? new Set<Promise<unknown>>();
+    const previousSave = saveQueueRef.current.get(scopeKey) ?? Promise.resolve();
+    const queuedOperation = previousSave.catch(() => undefined).then(operation);
+    const queueTail = queuedOperation.then(() => undefined, () => undefined);
+    saveQueueRef.current.set(scopeKey, queueTail);
+    scopeSaves.add(queuedOperation);
+    inFlightSavesRef.current.set(scopeKey, scopeSaves);
+    try {
+      return await queuedOperation;
+    } finally {
+      scopeSaves.delete(queuedOperation);
+      if (scopeSaves.size === 0) inFlightSavesRef.current.delete(scopeKey);
+      if (saveQueueRef.current.get(scopeKey) === queueTail) saveQueueRef.current.delete(scopeKey);
+    }
+  }, []);
+
+  const savePendingDraft = useCallback(async () => {
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+
+    if (
+      !pending
+      || pending.userId !== userId
+      || resettingScopesRef.current.has(pending.scopeKey)
+      || getScopeGeneration(pending.scopeKey) !== pending.resetGeneration
+    ) return;
+
+    try {
+      const savedDraft = await trackServerSave(
+        pending.scopeKey,
+        () => upsertMessageDraft(
+          pending.lectureId,
+          pending.messageType,
+          pending.content
+        )
+      );
+      if (
+        savedDraft.isCleared
+        || !isValidDraftTimestamp(savedDraft.createdAt)
+        || !isValidDraftTimestamp(savedDraft.updatedAt)
+      ) {
+        throw new Error("Invalid server draft timestamp");
+      }
+      const currentLocalDraft = readLocalMessageDraft(pending.scopeKey);
+
+      const isLatestSave = latestDraftTimestampRef.current.get(pending.scopeKey) === pending.updatedAt;
+      const isLatestLocalDraft = currentLocalDraft?.updatedAt === pending.updatedAt;
+      const localTimestampIsCompatible = currentLocalDraft === null || isLatestLocalDraft;
+      if (isLatestLocalDraft) {
+        writeLocalMessageDraft(pending.scopeKey, {
+          content: savedDraft.content,
+          updatedAt: savedDraft.updatedAt,
+        });
+      }
+      if (
+        isLatestSave
+        && localTimestampIsCompatible
+        && canUpdateScope(pending.scopeKey, pending.resetGeneration)
+      ) {
+        setSaveStatus("saved");
+      }
+    } catch {
+      const currentLocalDraft = readLocalMessageDraft(pending.scopeKey);
+      const localTimestampIsCompatible = currentLocalDraft === null
+        || currentLocalDraft.updatedAt === pending.updatedAt;
+      if (
+        latestDraftTimestampRef.current.get(pending.scopeKey) === pending.updatedAt
+        && localTimestampIsCompatible
+        && canUpdateScope(pending.scopeKey, pending.resetGeneration)
+      ) {
+        setSaveStatus(pending.localSaved ? "offline" : "failed");
+      }
+    }
+  }, [canUpdateScope, getScopeGeneration, trackServerSave, upsertMessageDraft, userId]);
+
+  const flushPendingSave = useCallback(async () => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    await savePendingDraft();
+  }, [savePendingDraft]);
+
+  const cancelPendingSave = useCallback(() => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    pendingSaveRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      openRef.current = false;
+      cancelPendingSave();
+    };
+  }, [cancelPendingSave]);
 
   useEffect(() => {
     if (open) {
-      const initialDraftKey = buildSmsDraftKey(lecture.id, defaultType);
-      const savedDraft = readSmsDraft(initialDraftKey);
-
       setSelectedType(defaultType);
-      setContent(savedDraft ?? generateSmsContent(lecture, defaultType));
       setOpened(false);
     }
-  }, [open, defaultType, lecture]);
+  }, [open, defaultType, lecture.id]);
+
+  useEffect(() => {
+    if (!open) {
+      cancelPendingSave();
+      return;
+    }
+
+    if (userDraftKey && resettingScopesRef.current.has(userDraftKey)) {
+      cancelPendingSave();
+      hydrationSequenceRef.current += 1;
+      userEditedRef.current = false;
+      setContent(defaultContent);
+      setSaveStatus("saving");
+      return;
+    }
+
+    cancelPendingSave();
+    const sequence = hydrationSequenceRef.current + 1;
+    hydrationSequenceRef.current = sequence;
+    userEditedRef.current = false;
+
+    setContent(defaultContent);
+    setSaveStatus(userId ? "loading" : null);
+
+    if (!userId || !userDraftKey) return;
+
+    const key = userDraftKey;
+    const generation = getScopeGeneration(key) + 1;
+    scopeGenerationRef.current.set(key, generation);
+    const legacyKey = buildLegacyMessageDraftKey(lecture.id, selectedType);
+    const localDraft = readLocalMessageDraft(key);
+    const legacyContent = localDraft === null ? readLegacyMessageDraft(legacyKey) : null;
+    let cancelled = false;
+
+    const isCurrentRequest = () => (
+      !cancelled
+      && hydrationSequenceRef.current === sequence
+      && !userEditedRef.current
+      && !resettingScopesRef.current.has(key)
+      && canUpdateScope(key, generation)
+    );
+
+    const syncLocalDraft = async (draft: LocalMessageDraft, localSaved: boolean) => {
+      if (isCurrentRequest()) setSaveStatus("saving");
+      try {
+        const savedDraft = await trackServerSave(
+          key,
+          () => upsertMessageDraft(lecture.id, selectedType, draft.content)
+        );
+        if (!isCurrentRequest()) return;
+
+        if (
+          savedDraft.isCleared
+          || !isValidDraftTimestamp(savedDraft.createdAt)
+          || !isValidDraftTimestamp(savedDraft.updatedAt)
+        ) {
+          throw new Error("Invalid server draft timestamp");
+        }
+
+        const currentLocalDraft = readLocalMessageDraft(key);
+        if (currentLocalDraft?.updatedAt === draft.updatedAt) {
+          writeLocalMessageDraft(key, {
+            content: savedDraft.content,
+            updatedAt: savedDraft.updatedAt,
+          });
+        }
+        setSaveStatus("saved");
+      } catch {
+        if (isCurrentRequest()) setSaveStatus(localSaved ? "offline" : "failed");
+      }
+    };
+
+    const hydrate = async () => {
+      try {
+        const serverDraft = await getMessageDraft(lecture.id, selectedType);
+        if (!isCurrentRequest()) return;
+
+        if (
+          serverDraft
+          && (!isValidDraftTimestamp(serverDraft.createdAt) || !isValidDraftTimestamp(serverDraft.updatedAt))
+        ) {
+          throw new Error("Invalid server draft timestamp");
+        }
+
+        if (serverDraft?.isCleared) {
+          if (
+            localDraft
+            && Date.parse(localDraft.updatedAt) > Date.parse(serverDraft.updatedAt)
+          ) {
+            setContent(localDraft.content);
+            await syncLocalDraft(localDraft, true);
+          } else {
+            removeLocalMessageDraft(key);
+            removeLocalMessageDraft(legacyKey);
+            latestDraftTimestampRef.current.set(key, serverDraft.updatedAt);
+            setContent(defaultContent);
+            setSaveStatus(null);
+          }
+          return;
+        }
+
+        if (serverDraft && localDraft) {
+          if (Date.parse(serverDraft.updatedAt) >= Date.parse(localDraft.updatedAt)) {
+            setContent(serverDraft.content);
+            writeLocalMessageDraft(key, {
+              content: serverDraft.content,
+              updatedAt: serverDraft.updatedAt,
+            });
+            setSaveStatus("saved");
+          } else {
+            setContent(localDraft.content);
+            await syncLocalDraft(localDraft, true);
+          }
+          return;
+        }
+
+        if (serverDraft) {
+          setContent(serverDraft.content);
+          const localWriteSucceeded = writeLocalMessageDraft(key, {
+            content: serverDraft.content,
+            updatedAt: serverDraft.updatedAt,
+          });
+          if (legacyContent !== null && localWriteSucceeded) {
+            removeLocalMessageDraft(legacyKey);
+          }
+          setSaveStatus("saved");
+          return;
+        }
+
+        if (localDraft) {
+          setContent(localDraft.content);
+          await syncLocalDraft(localDraft, true);
+          return;
+        }
+
+        if (legacyContent !== null) {
+          const migratedDraft = {
+            content: legacyContent,
+            updatedAt: new Date().toISOString(),
+          };
+          setContent(legacyContent);
+          const localWriteSucceeded = writeLocalMessageDraft(key, migratedDraft);
+          if (localWriteSucceeded) {
+            removeLocalMessageDraft(legacyKey);
+          }
+          await syncLocalDraft(migratedDraft, localWriteSucceeded);
+          return;
+        }
+
+        setSaveStatus(null);
+      } catch {
+        if (!isCurrentRequest()) return;
+
+        if (localDraft) {
+          setContent(localDraft.content);
+          setSaveStatus("offline");
+        } else if (legacyContent !== null) {
+          setContent(legacyContent);
+          setSaveStatus("offline");
+        } else {
+          setSaveStatus(null);
+        }
+      }
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+      cancelPendingSave();
+    };
+  }, [
+    canUpdateScope,
+    cancelPendingSave,
+    defaultContent,
+    getMessageDraft,
+    getScopeGeneration,
+    lecture.id,
+    open,
+    selectedType,
+    trackServerSave,
+    upsertMessageDraft,
+    userDraftKey,
+    userId,
+  ]);
 
   const handleSend = async () => {
     if (!normalizedPhone) {
@@ -122,35 +462,124 @@ export function SmsModal({
   };
 
   const handleContentChange = (value: string) => {
+    if (userDraftKey && resettingScopesRef.current.has(userDraftKey)) return;
+
     setContent(value);
-    writeSmsDraft(draftKey, value);
+    userEditedRef.current = true;
+
+    if (!userId || !userDraftKey) return;
+
+    const updatedAt = new Date().toISOString();
+    latestDraftTimestampRef.current.set(userDraftKey, updatedAt);
+    const localWriteSucceeded = writeLocalMessageDraft(userDraftKey, { content: value, updatedAt });
+    setSaveStatus("saving");
+
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    const resetGeneration = getScopeGeneration(userDraftKey);
+    pendingSaveRef.current = {
+      userId,
+      lectureId: lecture.id,
+      messageType: selectedType,
+      content: value,
+      updatedAt,
+      localSaved: localWriteSucceeded,
+      resetGeneration,
+      scopeKey: userDraftKey,
+    };
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      void savePendingDraft();
+    }, 800);
   };
 
   const handleRegenerate = () => {
+    if (isResetting) return;
     const nextContent = generateSmsContent(lecture, selectedType);
-    setContent(nextContent);
-    writeSmsDraft(draftKey, nextContent);
+    handleContentChange(nextContent);
     setOpened(false);
   };
 
-  const handleResetDraft = () => {
-    const defaultContent = generateSmsContent(lecture, selectedType);
-    removeSmsDraft(draftKey);
-    setContent(defaultContent);
-    setOpened(false);
+  const handleResetDraft = async () => {
+    if (!userId || !userDraftKey) {
+      if (mountedRef.current && openRef.current) {
+        setContent(defaultContent);
+        setOpened(false);
+        setSaveStatus(null);
+      }
+      return;
+    }
+
+    const scopeKey = userDraftKey;
+    if (resettingScopesRef.current.has(scopeKey)) return;
+
+    const resetUserId = userId;
+    const resetLectureId = lecture.id;
+    const resetType = selectedType;
+    const resetLegacyKey = legacyDraftKey;
+    const resetDefaultContent = defaultContent;
+    const resetGeneration = getScopeGeneration(scopeKey) + 1;
+    scopeGenerationRef.current.set(scopeKey, resetGeneration);
+    resettingScopesRef.current.add(scopeKey);
+    if (mountedRef.current) setResettingRevision((revision) => revision + 1);
+    hydrationSequenceRef.current += 1;
+    cancelPendingSave();
+    latestDraftTimestampRef.current.delete(scopeKey);
+    userEditedRef.current = false;
+    if (canUpdateScope(scopeKey, resetGeneration)) setSaveStatus("saving");
+
+    let serverClearFailed = false;
+    try {
+      const clearedDraft = await trackServerSave(
+        scopeKey,
+        () => clearMessageDraft(resetLectureId, resetType)
+      );
+      if (
+        !clearedDraft.isCleared
+        || clearedDraft.content !== ""
+        || !isValidDraftTimestamp(clearedDraft.createdAt)
+        || !isValidDraftTimestamp(clearedDraft.updatedAt)
+      ) {
+        throw new Error("Invalid cleared server draft");
+      }
+      latestDraftTimestampRef.current.set(scopeKey, clearedDraft.updatedAt);
+    } catch {
+      serverClearFailed = true;
+    }
+
+    removeLocalMessageDraft(scopeKey);
+    removeLocalMessageDraft(resetLegacyKey);
+
+    const resetStillCurrent = (
+      resettingScopesRef.current.has(scopeKey)
+      && getScopeGeneration(scopeKey) === resetGeneration
+      && activeDraftKeyRef.current === scopeKey
+      && userId === resetUserId
+    );
+    if (mountedRef.current && openRef.current && resetStillCurrent) {
+      setContent(resetDefaultContent);
+      setOpened(false);
+      setSaveStatus(serverClearFailed ? "clearOffline" : null);
+    }
+    resettingScopesRef.current.delete(scopeKey);
+    if (mountedRef.current) setResettingRevision((revision) => revision + 1);
   };
 
   const handleTypeChange = (type: SmsType) => {
-    const nextDraftKey = buildSmsDraftKey(lecture.id, type);
-    const savedDraft = readSmsDraft(nextDraftKey);
-
+    if (isResetting || (userDraftKey && resettingScopesRef.current.has(userDraftKey))) return;
+    void flushPendingSave();
     setSelectedType(type);
-    setContent(savedDraft ?? generateSmsContent(lecture, type));
     setOpened(false);
   };
 
+  const handleClose = () => {
+    void flushPendingSave();
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
+    <Dialog open={open} onOpenChange={(value) => !value && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
@@ -173,6 +602,7 @@ export function SmsModal({
               <button
                 key={type}
                 onClick={() => handleTypeChange(type)}
+                disabled={isResetting}
                 className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                   selectedType === type
                     ? "border-primary bg-primary/10 text-primary"
@@ -188,6 +618,7 @@ export function SmsModal({
               <p className="text-xs font-medium text-muted-foreground">문자 내용</p>
               <button
                 onClick={handleRegenerate}
+                disabled={isResetting}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
               >
                 <RefreshCw className="h-3 w-3" />
@@ -196,6 +627,7 @@ export function SmsModal({
               <button
                 type="button"
                 onClick={handleResetDraft}
+                disabled={isResetting}
                 className="text-xs text-muted-foreground hover:text-destructive"
               >
                 초안 초기화
@@ -204,12 +636,18 @@ export function SmsModal({
             <Textarea
               value={content}
               onChange={(e) => handleContentChange(e.target.value)}
+              disabled={isResetting}
               className="min-h-[180px] resize-none text-sm leading-relaxed"
             />
+            {saveStatus && (
+              <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+                {draftSaveStatusLabel[saveStatus]}
+              </p>
+            )}
             <p className="mt-1 text-right text-xs text-muted-foreground">{content.length}자</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose} className="flex-1">
+            <Button variant="ghost" onClick={handleClose} className="flex-1">
               닫기
             </Button>
             <Button

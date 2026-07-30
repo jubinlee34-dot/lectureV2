@@ -90,6 +90,17 @@ export interface WorkTask {
 
 export type SmsType = "reminder" | "confirm" | "thankyou" | "custom";
 
+export interface MessageDraft {
+  id: string;
+  lectureId: string;
+  userId: string;
+  messageType: SmsType;
+  content: string;
+  isCleared: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SmsHistory {
   id: string;
   user_id?: string;
