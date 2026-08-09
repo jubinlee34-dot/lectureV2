@@ -119,7 +119,8 @@ BEGIN
     INTO total_policy_count, policy_names
     FROM pg_policies policy_row
     WHERE policy_row.schemaname = 'public'
-      AND policy_row.tablename = target_table;
+      AND policy_row.tablename = target_table
+      AND policy_row.permissive = 'PERMISSIVE';
 
     IF total_policy_count <> 4 THEN
       RAISE EXCEPTION
