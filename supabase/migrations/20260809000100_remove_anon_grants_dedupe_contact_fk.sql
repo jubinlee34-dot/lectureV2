@@ -31,6 +31,275 @@ BEGIN
     RAISE EXCEPTION 'Missing required public tables: %', array_to_string(missing_tables, ', ');
   END IF;
 END $$;
+DO $$
+DECLARE
+  validation_phase constant text := 'Protected-state precondition';
+  required_tables text[] := ARRAY[
+    'lectures',
+    'todos',
+    'work_tasks',
+    'sms_history',
+    'lecture_contact_logs',
+    'instructor_profile'
+  ];
+  required_commands text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
+  owner_expression_uid_left_regex text := '^[[:space:]]*[(]*[[:space:]]*(select[[:space:]]+)?auth[.]uid[(][)]([[:space:]]+as[[:space:]]+uid)?[[:space:]]*[)]*[[:space:]]*=[[:space:]]*user_id[[:space:]]*[)]*[[:space:]]*$';
+  owner_expression_uid_right_regex text := '^[[:space:]]*[(]*[[:space:]]*user_id[[:space:]]*=[[:space:]]*[(]*[[:space:]]*(select[[:space:]]+)?auth[.]uid[(][)]([[:space:]]+as[[:space:]]+uid)?[[:space:]]*[)]*[[:space:]]*$';
+  auth_users_oid oid := to_regclass('auth.users');
+  auth_users_id_attnum smallint;
+  target_table text;
+  target_command text;
+  target_table_oid oid;
+  user_id_attnum smallint;
+  overall_policy_count integer;
+  table_policy_count integer;
+  permissive_policy_count integer;
+  restrictive_policy_count integer;
+  command_policy_count integer;
+  policy_names text[];
+  actual_policy_name name;
+  policy_qual text;
+  policy_with_check text;
+  qual_is_owner_expression boolean;
+  with_check_is_owner_expression boolean;
+  user_fk_count integer;
+  user_fk record;
+BEGIN
+  IF auth_users_oid IS NULL THEN
+    RAISE EXCEPTION '% failed: missing required table auth.users.', validation_phase;
+  END IF;
+
+  SELECT attribute.attnum
+  INTO auth_users_id_attnum
+  FROM pg_attribute attribute
+  WHERE attribute.attrelid = auth_users_oid
+    AND attribute.attname = 'id'
+    AND attribute.attnum > 0
+    AND NOT attribute.attisdropped;
+
+  IF auth_users_id_attnum IS NULL THEN
+    RAISE EXCEPTION '% failed: missing required column auth.users.id.', validation_phase;
+  END IF;
+
+  SELECT count(*)
+  INTO overall_policy_count
+  FROM pg_policies policy_row
+  WHERE policy_row.schemaname = 'public'
+    AND policy_row.tablename = ANY(required_tables);
+
+  IF overall_policy_count <> 24 THEN
+    RAISE EXCEPTION
+      '% failed: expected exactly 24 policies across protected public tables; found %.',
+      validation_phase,
+      overall_policy_count;
+  END IF;
+
+  FOREACH target_table IN ARRAY required_tables LOOP
+    target_table_oid := to_regclass(format('public.%I', target_table));
+
+    IF target_table_oid IS NULL THEN
+      RAISE EXCEPTION '% failed: missing public.%', validation_phase, target_table;
+    END IF;
+
+    FOREACH target_command IN ARRAY required_commands LOOP
+      IF NOT has_table_privilege(
+        'authenticated',
+        target_table_oid,
+        target_command
+      ) THEN
+        RAISE EXCEPTION
+          '% failed: authenticated is missing % on public.%.',
+          validation_phase,
+          target_command,
+          target_table;
+      END IF;
+    END LOOP;
+
+    IF NOT (
+      SELECT relation.relrowsecurity
+      FROM pg_class relation
+      WHERE relation.oid = target_table_oid
+    ) THEN
+      RAISE EXCEPTION '% failed: RLS is disabled on public.%.', validation_phase, target_table;
+    END IF;
+
+    SELECT
+      count(*),
+      count(*) FILTER (WHERE policy_row.permissive = 'PERMISSIVE'),
+      count(*) FILTER (WHERE policy_row.permissive = 'RESTRICTIVE'),
+      coalesce(
+        array_agg(
+          format(
+            '%I [%s, %s, roles=%s]',
+            policy_row.policyname,
+            policy_row.cmd,
+            policy_row.permissive,
+            array_to_string(policy_row.roles, ',')
+          )
+          ORDER BY policy_row.policyname
+        ),
+        ARRAY[]::text[]
+      )
+    INTO
+      table_policy_count,
+      permissive_policy_count,
+      restrictive_policy_count,
+      policy_names
+    FROM pg_policies policy_row
+    WHERE policy_row.schemaname = 'public'
+      AND policy_row.tablename = target_table;
+
+    IF table_policy_count <> 4
+      OR permissive_policy_count <> 4
+      OR restrictive_policy_count <> 0 THEN
+      RAISE EXCEPTION
+        '% failed: public.% must have exactly four permissive policies and no restrictive policies; total=%, permissive=%, restrictive=%, policies=%.',
+        validation_phase,
+        target_table,
+        table_policy_count,
+        permissive_policy_count,
+        restrictive_policy_count,
+        array_to_string(policy_names, '; ');
+    END IF;
+
+    FOREACH target_command IN ARRAY required_commands LOOP
+      SELECT
+        count(*),
+        coalesce(array_agg(policy_row.policyname::text ORDER BY policy_row.policyname), ARRAY[]::text[])
+      INTO command_policy_count, policy_names
+      FROM pg_policies policy_row
+      WHERE policy_row.schemaname = 'public'
+        AND policy_row.tablename = target_table
+        AND policy_row.cmd = target_command
+        AND policy_row.permissive = 'PERMISSIVE'
+        AND policy_row.roles = ARRAY['authenticated']::name[];
+
+      IF command_policy_count <> 1 THEN
+        RAISE EXCEPTION
+          '% failed: expected one permissive authenticated % owner policy on public.%; found %: %.',
+          validation_phase,
+          target_command,
+          target_table,
+          command_policy_count,
+          array_to_string(policy_names, ', ');
+      END IF;
+
+      SELECT
+        policy_row.policyname,
+        policy_row.qual,
+        policy_row.with_check
+      INTO
+        actual_policy_name,
+        policy_qual,
+        policy_with_check
+      FROM pg_policies policy_row
+      WHERE policy_row.schemaname = 'public'
+        AND policy_row.tablename = target_table
+        AND policy_row.cmd = target_command
+        AND policy_row.permissive = 'PERMISSIVE'
+        AND policy_row.roles = ARRAY['authenticated']::name[];
+
+      qual_is_owner_expression := coalesce(
+        policy_qual ~* owner_expression_uid_left_regex
+          OR policy_qual ~* owner_expression_uid_right_regex,
+        false
+      );
+      with_check_is_owner_expression := coalesce(
+        policy_with_check ~* owner_expression_uid_left_regex
+          OR policy_with_check ~* owner_expression_uid_right_regex,
+        false
+      );
+
+      IF target_command IN ('SELECT', 'DELETE') THEN
+        IF NOT qual_is_owner_expression OR policy_with_check IS NOT NULL THEN
+          RAISE EXCEPTION
+            '% failed: invalid % owner policy % on public.%. USING=%, WITH CHECK=%.',
+            validation_phase,
+            target_command,
+            actual_policy_name,
+            target_table,
+            policy_qual,
+            policy_with_check;
+        END IF;
+      ELSIF target_command = 'INSERT' THEN
+        IF policy_qual IS NOT NULL OR NOT with_check_is_owner_expression THEN
+          RAISE EXCEPTION
+            '% failed: invalid INSERT owner policy % on public.%. USING=%, WITH CHECK=%.',
+            validation_phase,
+            actual_policy_name,
+            target_table,
+            policy_qual,
+            policy_with_check;
+        END IF;
+      ELSIF target_command = 'UPDATE' THEN
+        IF NOT qual_is_owner_expression OR NOT with_check_is_owner_expression THEN
+          RAISE EXCEPTION
+            '% failed: invalid UPDATE owner policy % on public.%. USING=%, WITH CHECK=%.',
+            validation_phase,
+            actual_policy_name,
+            target_table,
+            policy_qual,
+            policy_with_check;
+        END IF;
+      END IF;
+    END LOOP;
+
+    SELECT attribute.attnum
+    INTO user_id_attnum
+    FROM pg_attribute attribute
+    WHERE attribute.attrelid = target_table_oid
+      AND attribute.attname = 'user_id'
+      AND attribute.attnum > 0
+      AND NOT attribute.attisdropped;
+
+    IF user_id_attnum IS NULL THEN
+      RAISE EXCEPTION '% failed: missing public.%.user_id.', validation_phase, target_table;
+    END IF;
+
+    SELECT count(*)
+    INTO user_fk_count
+    FROM pg_constraint constraint_row
+    WHERE constraint_row.contype = 'f'
+      AND constraint_row.conrelid = target_table_oid
+      AND constraint_row.confrelid = auth_users_oid
+      AND constraint_row.conkey = ARRAY[user_id_attnum]::smallint[]
+      AND constraint_row.confkey = ARRAY[auth_users_id_attnum]::smallint[];
+
+    IF user_fk_count <> 1 THEN
+      RAISE EXCEPTION
+        '% failed: expected exactly one user_id FK from public.% to auth.users(id); found %.',
+        validation_phase,
+        target_table,
+        user_fk_count;
+    END IF;
+
+    SELECT constraint_row.*
+    INTO user_fk
+    FROM pg_constraint constraint_row
+    WHERE constraint_row.contype = 'f'
+      AND constraint_row.conrelid = target_table_oid
+      AND constraint_row.confrelid = auth_users_oid
+      AND constraint_row.conkey = ARRAY[user_id_attnum]::smallint[]
+      AND constraint_row.confkey = ARRAY[auth_users_id_attnum]::smallint[];
+
+    IF user_fk.confdeltype <> 'a'
+      OR user_fk.confupdtype <> 'a'
+      OR user_fk.confmatchtype <> 's'
+      OR user_fk.condeferrable
+      OR user_fk.condeferred
+      OR user_fk.conparentid <> 0
+      OR NOT user_fk.conislocal
+      OR user_fk.coninhcount <> 0
+      OR NOT user_fk.connoinherit
+      OR NOT user_fk.convalidated THEN
+      RAISE EXCEPTION
+        '% failed: public.%.user_id FK has unexpected semantics or is not validated: %.',
+        validation_phase,
+        target_table,
+        pg_get_constraintdef(user_fk.oid, true);
+    END IF;
+  END LOOP;
+END $$;
 
 DO $$
 DECLARE
@@ -87,8 +356,6 @@ DECLARE
   retained_ppeqop oid[];
   retained_ffeqop oid[];
   retained_noinherit boolean;
-  new_constraint_name text := 'lecture_contact_logs_lecture_id_fkey';
-  name_suffix integer := 1;
   unexpected_constraints text[];
   duplicate_constraint record;
   final_constraint record;
@@ -128,6 +395,15 @@ BEGIN
     AND constraint_row.conkey = ARRAY[lecture_id_attnum]::smallint[]
     AND constraint_row.confkey = ARRAY[lectures_id_attnum]::smallint[];
 
+  IF pair_fk_count = 0 THEN
+    RAISE EXCEPTION
+      'Missing required FK from lecture_contact_logs."lectureId" to lectures.id.';
+  ELSIF pair_fk_count > 2 THEN
+    RAISE EXCEPTION
+      'Expected one or two FKs from lecture_contact_logs."lectureId" to lectures.id; found %.',
+      pair_fk_count;
+  END IF;
+
   IF pair_fk_count > 0 THEN
     SELECT coalesce(
       array_agg(
@@ -152,6 +428,7 @@ BEGIN
         OR constraint_row.conparentid <> 0
         OR NOT constraint_row.conislocal
         OR constraint_row.coninhcount <> 0
+        OR NOT constraint_row.convalidated
       );
 
     IF cardinality(unexpected_constraints) > 0 THEN
@@ -159,31 +436,6 @@ BEGIN
         'Unexpected FK semantics on lecture_contact_logs."lectureId" -> lectures.id: %',
         array_to_string(unexpected_constraints, '; ');
     END IF;
-  ELSE
-    WHILE EXISTS (
-      SELECT 1
-      FROM pg_constraint existing_constraint
-      WHERE existing_constraint.conrelid = contact_logs_oid
-        AND existing_constraint.conname = new_constraint_name
-    ) LOOP
-      new_constraint_name := format(
-        'lecture_contact_logs_lecture_id_cascade_fkey_%s',
-        name_suffix
-      );
-      name_suffix := name_suffix + 1;
-    END LOOP;
-
-    EXECUTE format(
-      'ALTER TABLE public.lecture_contact_logs
-         ADD CONSTRAINT %I
-         FOREIGN KEY ("lectureId")
-         REFERENCES public.lectures(id)
-         MATCH SIMPLE
-         ON UPDATE NO ACTION
-         ON DELETE CASCADE
-         NOT DEFERRABLE',
-      new_constraint_name
-    );
   END IF;
 
   SELECT
@@ -248,6 +500,7 @@ BEGIN
       OR constraint_row.conpfeqop IS DISTINCT FROM retained_pfeqop
       OR constraint_row.conppeqop IS DISTINCT FROM retained_ppeqop
       OR constraint_row.conffeqop IS DISTINCT FROM retained_ffeqop
+      OR constraint_row.convalidated IS DISTINCT FROM retained_constraint_validated
       OR constraint_row.connoinherit IS DISTINCT FROM retained_noinherit
     );
 
@@ -256,6 +509,7 @@ BEGIN
       'Non-duplicate FK semantics found on lecture_contact_logs."lectureId" -> lectures.id: %',
       array_to_string(unexpected_constraints, '; ');
   END IF;
+  IF pair_fk_count = 2 THEN
 
   FOR duplicate_constraint IN
     SELECT constraint_row.conname
@@ -273,13 +527,8 @@ BEGIN
       duplicate_constraint.conname
     );
   END LOOP;
-
-  IF NOT retained_constraint_validated THEN
-    EXECUTE format(
-      'ALTER TABLE public.lecture_contact_logs VALIDATE CONSTRAINT %I',
-      retained_constraint_name
-    );
   END IF;
+
 
   SELECT count(*)
   INTO pair_fk_count
@@ -360,4 +609,273 @@ BEGIN
   END LOOP;
 END $$;
 
+DO $$
+DECLARE
+  validation_phase constant text := 'Protected-state postcondition';
+  required_tables text[] := ARRAY[
+    'lectures',
+    'todos',
+    'work_tasks',
+    'sms_history',
+    'lecture_contact_logs',
+    'instructor_profile'
+  ];
+  required_commands text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
+  owner_expression_uid_left_regex text := '^[[:space:]]*[(]*[[:space:]]*(select[[:space:]]+)?auth[.]uid[(][)]([[:space:]]+as[[:space:]]+uid)?[[:space:]]*[)]*[[:space:]]*=[[:space:]]*user_id[[:space:]]*[)]*[[:space:]]*$';
+  owner_expression_uid_right_regex text := '^[[:space:]]*[(]*[[:space:]]*user_id[[:space:]]*=[[:space:]]*[(]*[[:space:]]*(select[[:space:]]+)?auth[.]uid[(][)]([[:space:]]+as[[:space:]]+uid)?[[:space:]]*[)]*[[:space:]]*$';
+  auth_users_oid oid := to_regclass('auth.users');
+  auth_users_id_attnum smallint;
+  target_table text;
+  target_command text;
+  target_table_oid oid;
+  user_id_attnum smallint;
+  overall_policy_count integer;
+  table_policy_count integer;
+  permissive_policy_count integer;
+  restrictive_policy_count integer;
+  command_policy_count integer;
+  policy_names text[];
+  actual_policy_name name;
+  policy_qual text;
+  policy_with_check text;
+  qual_is_owner_expression boolean;
+  with_check_is_owner_expression boolean;
+  user_fk_count integer;
+  user_fk record;
+BEGIN
+  IF auth_users_oid IS NULL THEN
+    RAISE EXCEPTION '% failed: missing required table auth.users.', validation_phase;
+  END IF;
+
+  SELECT attribute.attnum
+  INTO auth_users_id_attnum
+  FROM pg_attribute attribute
+  WHERE attribute.attrelid = auth_users_oid
+    AND attribute.attname = 'id'
+    AND attribute.attnum > 0
+    AND NOT attribute.attisdropped;
+
+  IF auth_users_id_attnum IS NULL THEN
+    RAISE EXCEPTION '% failed: missing required column auth.users.id.', validation_phase;
+  END IF;
+
+  SELECT count(*)
+  INTO overall_policy_count
+  FROM pg_policies policy_row
+  WHERE policy_row.schemaname = 'public'
+    AND policy_row.tablename = ANY(required_tables);
+
+  IF overall_policy_count <> 24 THEN
+    RAISE EXCEPTION
+      '% failed: expected exactly 24 policies across protected public tables; found %.',
+      validation_phase,
+      overall_policy_count;
+  END IF;
+
+  FOREACH target_table IN ARRAY required_tables LOOP
+    target_table_oid := to_regclass(format('public.%I', target_table));
+
+    IF target_table_oid IS NULL THEN
+      RAISE EXCEPTION '% failed: missing public.%', validation_phase, target_table;
+    END IF;
+
+    FOREACH target_command IN ARRAY required_commands LOOP
+      IF NOT has_table_privilege(
+        'authenticated',
+        target_table_oid,
+        target_command
+      ) THEN
+        RAISE EXCEPTION
+          '% failed: authenticated is missing % on public.%.',
+          validation_phase,
+          target_command,
+          target_table;
+      END IF;
+    END LOOP;
+
+    IF NOT (
+      SELECT relation.relrowsecurity
+      FROM pg_class relation
+      WHERE relation.oid = target_table_oid
+    ) THEN
+      RAISE EXCEPTION '% failed: RLS is disabled on public.%.', validation_phase, target_table;
+    END IF;
+
+    SELECT
+      count(*),
+      count(*) FILTER (WHERE policy_row.permissive = 'PERMISSIVE'),
+      count(*) FILTER (WHERE policy_row.permissive = 'RESTRICTIVE'),
+      coalesce(
+        array_agg(
+          format(
+            '%I [%s, %s, roles=%s]',
+            policy_row.policyname,
+            policy_row.cmd,
+            policy_row.permissive,
+            array_to_string(policy_row.roles, ',')
+          )
+          ORDER BY policy_row.policyname
+        ),
+        ARRAY[]::text[]
+      )
+    INTO
+      table_policy_count,
+      permissive_policy_count,
+      restrictive_policy_count,
+      policy_names
+    FROM pg_policies policy_row
+    WHERE policy_row.schemaname = 'public'
+      AND policy_row.tablename = target_table;
+
+    IF table_policy_count <> 4
+      OR permissive_policy_count <> 4
+      OR restrictive_policy_count <> 0 THEN
+      RAISE EXCEPTION
+        '% failed: public.% must have exactly four permissive policies and no restrictive policies; total=%, permissive=%, restrictive=%, policies=%.',
+        validation_phase,
+        target_table,
+        table_policy_count,
+        permissive_policy_count,
+        restrictive_policy_count,
+        array_to_string(policy_names, '; ');
+    END IF;
+
+    FOREACH target_command IN ARRAY required_commands LOOP
+      SELECT
+        count(*),
+        coalesce(array_agg(policy_row.policyname::text ORDER BY policy_row.policyname), ARRAY[]::text[])
+      INTO command_policy_count, policy_names
+      FROM pg_policies policy_row
+      WHERE policy_row.schemaname = 'public'
+        AND policy_row.tablename = target_table
+        AND policy_row.cmd = target_command
+        AND policy_row.permissive = 'PERMISSIVE'
+        AND policy_row.roles = ARRAY['authenticated']::name[];
+
+      IF command_policy_count <> 1 THEN
+        RAISE EXCEPTION
+          '% failed: expected one permissive authenticated % owner policy on public.%; found %: %.',
+          validation_phase,
+          target_command,
+          target_table,
+          command_policy_count,
+          array_to_string(policy_names, ', ');
+      END IF;
+
+      SELECT
+        policy_row.policyname,
+        policy_row.qual,
+        policy_row.with_check
+      INTO
+        actual_policy_name,
+        policy_qual,
+        policy_with_check
+      FROM pg_policies policy_row
+      WHERE policy_row.schemaname = 'public'
+        AND policy_row.tablename = target_table
+        AND policy_row.cmd = target_command
+        AND policy_row.permissive = 'PERMISSIVE'
+        AND policy_row.roles = ARRAY['authenticated']::name[];
+
+      qual_is_owner_expression := coalesce(
+        policy_qual ~* owner_expression_uid_left_regex
+          OR policy_qual ~* owner_expression_uid_right_regex,
+        false
+      );
+      with_check_is_owner_expression := coalesce(
+        policy_with_check ~* owner_expression_uid_left_regex
+          OR policy_with_check ~* owner_expression_uid_right_regex,
+        false
+      );
+
+      IF target_command IN ('SELECT', 'DELETE') THEN
+        IF NOT qual_is_owner_expression OR policy_with_check IS NOT NULL THEN
+          RAISE EXCEPTION
+            '% failed: invalid % owner policy % on public.%. USING=%, WITH CHECK=%.',
+            validation_phase,
+            target_command,
+            actual_policy_name,
+            target_table,
+            policy_qual,
+            policy_with_check;
+        END IF;
+      ELSIF target_command = 'INSERT' THEN
+        IF policy_qual IS NOT NULL OR NOT with_check_is_owner_expression THEN
+          RAISE EXCEPTION
+            '% failed: invalid INSERT owner policy % on public.%. USING=%, WITH CHECK=%.',
+            validation_phase,
+            actual_policy_name,
+            target_table,
+            policy_qual,
+            policy_with_check;
+        END IF;
+      ELSIF target_command = 'UPDATE' THEN
+        IF NOT qual_is_owner_expression OR NOT with_check_is_owner_expression THEN
+          RAISE EXCEPTION
+            '% failed: invalid UPDATE owner policy % on public.%. USING=%, WITH CHECK=%.',
+            validation_phase,
+            actual_policy_name,
+            target_table,
+            policy_qual,
+            policy_with_check;
+        END IF;
+      END IF;
+    END LOOP;
+
+    SELECT attribute.attnum
+    INTO user_id_attnum
+    FROM pg_attribute attribute
+    WHERE attribute.attrelid = target_table_oid
+      AND attribute.attname = 'user_id'
+      AND attribute.attnum > 0
+      AND NOT attribute.attisdropped;
+
+    IF user_id_attnum IS NULL THEN
+      RAISE EXCEPTION '% failed: missing public.%.user_id.', validation_phase, target_table;
+    END IF;
+
+    SELECT count(*)
+    INTO user_fk_count
+    FROM pg_constraint constraint_row
+    WHERE constraint_row.contype = 'f'
+      AND constraint_row.conrelid = target_table_oid
+      AND constraint_row.confrelid = auth_users_oid
+      AND constraint_row.conkey = ARRAY[user_id_attnum]::smallint[]
+      AND constraint_row.confkey = ARRAY[auth_users_id_attnum]::smallint[];
+
+    IF user_fk_count <> 1 THEN
+      RAISE EXCEPTION
+        '% failed: expected exactly one user_id FK from public.% to auth.users(id); found %.',
+        validation_phase,
+        target_table,
+        user_fk_count;
+    END IF;
+
+    SELECT constraint_row.*
+    INTO user_fk
+    FROM pg_constraint constraint_row
+    WHERE constraint_row.contype = 'f'
+      AND constraint_row.conrelid = target_table_oid
+      AND constraint_row.confrelid = auth_users_oid
+      AND constraint_row.conkey = ARRAY[user_id_attnum]::smallint[]
+      AND constraint_row.confkey = ARRAY[auth_users_id_attnum]::smallint[];
+
+    IF user_fk.confdeltype <> 'a'
+      OR user_fk.confupdtype <> 'a'
+      OR user_fk.confmatchtype <> 's'
+      OR user_fk.condeferrable
+      OR user_fk.condeferred
+      OR user_fk.conparentid <> 0
+      OR NOT user_fk.conislocal
+      OR user_fk.coninhcount <> 0
+      OR NOT user_fk.connoinherit
+      OR NOT user_fk.convalidated THEN
+      RAISE EXCEPTION
+        '% failed: public.%.user_id FK has unexpected semantics or is not validated: %.',
+        validation_phase,
+        target_table,
+        pg_get_constraintdef(user_fk.oid, true);
+    END IF;
+  END LOOP;
+END $$;
 COMMIT;
