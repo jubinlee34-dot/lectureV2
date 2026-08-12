@@ -89,8 +89,10 @@ export function SmsModal({
   const [selectedType, setSelectedType] = useState<SmsType>(defaultType);
   const [content, setContent] = useState("");
   const [opened, setOpened] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>(null);
   const [resettingRevision, setResettingRevision] = useState(0);
+  const sendInFlightRef = useRef(false);
   const debounceTimerRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<PendingDraftSave | null>(null);
   const inFlightSavesRef = useRef(new Map<string, Set<Promise<unknown>>>());
@@ -438,6 +440,8 @@ export function SmsModal({
   ]);
 
   const handleSend = async () => {
+    if (sendInFlightRef.current) return;
+
     if (!normalizedPhone) {
       toast.error("담당자 연락처가 없습니다. 강의 수정에서 연락처를 추가해 주세요.");
       return;
@@ -450,12 +454,20 @@ export function SmsModal({
     const smsUrl = buildSmsComposeUrl(normalizedPhone, content);
     if (!smsUrl) return;
 
+    sendInFlightRef.current = true;
+    setIsSending(true);
+    setOpened(false);
+
     try {
       await onRecord?.(selectedType, normalizedPhone, content);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "문자 작성 이력 저장 실패");
       return;
+    } finally {
+      sendInFlightRef.current = false;
+      if (mountedRef.current) setIsSending(false);
     }
+
     window.location.href = smsUrl;
     setOpened(true);
     toast.success("문자 앱을 열었습니다. 내용을 확인한 뒤 휴대폰에서 직접 전송하세요.");
@@ -574,6 +586,7 @@ export function SmsModal({
   };
 
   const handleClose = () => {
+    if (sendInFlightRef.current) return;
     void flushPendingSave();
     onClose();
   };
@@ -647,13 +660,13 @@ export function SmsModal({
             <p className="mt-1 text-right text-xs text-muted-foreground">{content.length}자</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={handleClose} className="flex-1">
+            <Button variant="ghost" onClick={handleClose} className="flex-1" disabled={isSending}>
               닫기
             </Button>
             <Button
               onClick={handleSend}
               className="flex-1 bg-green-600 text-white hover:bg-green-700"
-              disabled={!normalizedPhone}
+              disabled={!normalizedPhone || isSending}
             >
               {opened ? <Check className="mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
               문자 앱 열기
