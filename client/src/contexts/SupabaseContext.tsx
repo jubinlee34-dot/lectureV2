@@ -724,7 +724,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const updateTodo = useCallback(async (id: string, data: Partial<Todo>): Promise<void> => {
     const currentOwnerId = requireOwnerId(ownerId);
     const updateData = withoutUserId(data as Record<string, unknown>);
-    const { data: updatedRows, error } = await supabase.from("todos").update(updateData).eq("id", id).eq("user_id", currentOwnerId).select("id");
+    const updatePayload = {
+      ...updateData,
+      ...(Object.prototype.hasOwnProperty.call(updateData, "dueDate") ? { dueDate: data.dueDate ?? null } : {}),
+      ...(Object.prototype.hasOwnProperty.call(updateData, "lectureId") ? { lectureId: data.lectureId ?? null } : {}),
+    };
+    const { data: updatedRows, error } = await supabase.from("todos").update(updatePayload).eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
       toast.error(`할 일 수정 실패: ${error.message}`);
       throw error;
