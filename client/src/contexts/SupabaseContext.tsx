@@ -20,6 +20,7 @@ interface SupabaseContextType {
   
   // Lecture Actions
   addLecture: (formData: LectureFormData) => Promise<Lecture>;
+  addRecurringLectures: (items: LectureFormData[]) => Promise<Lecture[]>;
   bulkAddLectures: (items: LectureFormData[], policy: "skip" | "overwrite" | "add") => Promise<number>;
   updateLecture: (id: string, data: Partial<Lecture>) => Promise<void>;
   calculateLectureRoute: (id: string) => Promise<void>;
@@ -484,31 +485,79 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   // ==================== LECTURE CRUD ====================
 
   const addLecture = useCallback(async (formData: LectureFormData): Promise<Lecture> => {
-    const currentOwnerId = requireOwnerId(ownerId);
-    const newLecture: Lecture = {
-      ...formData,
-      workflowStage: "before",
-      id: nanoid(),
-      createdAt: new Date().toISOString(),
-      updatedAt: formData.updatedAt ?? new Date().toISOString(),
-      travelDistanceKm: null,
-      travelDurationMin: null,
-      travelUpdatedAt: null,
-      user_id: currentOwnerId,
-    };
+    let newLecture: Lecture;
 
-    const insertPayload = withOwner(pickLectureDbPayload(newLecture), currentOwnerId);
-    debugLecturePayload("insert", insertPayload);
-    const { error } = await supabase.from("lectures").insert(insertPayload);
-    if (error) {
+    try {
+      const currentOwnerId = requireOwnerId(ownerId);
+      newLecture = {
+        ...formData,
+        workflowStage: "before",
+        id: nanoid(),
+        createdAt: new Date().toISOString(),
+        updatedAt: formData.updatedAt ?? new Date().toISOString(),
+        travelDistanceKm: null,
+        travelDurationMin: null,
+        travelUpdatedAt: null,
+        user_id: currentOwnerId,
+      };
+
+      const insertPayload = withOwner(pickLectureDbPayload(newLecture), currentOwnerId);
+      debugLecturePayload("insert", insertPayload);
+      const { error } = await supabase.from("lectures").insert(insertPayload);
+      if (error) throw error;
+    } catch (error) {
       logSupabaseError("insert lecture failed", error);
       toast.error(`강의 등록 실패: ${formatSupabaseError(error)}`);
       throw error;
     }
 
-    setLectures((prev) => [newLecture, ...prev]);
-    toast.success(`"${newLecture.title}" 일정이 정상적으로 등록되었습니다.`);
+    try {
+      setLectures((prev) => [newLecture, ...prev]);
+      toast.success(`"${newLecture.title}" 일정이 정상적으로 등록되었습니다.`);
+    } catch (error) {
+      console.error("Lecture insert succeeded, but post-commit client processing failed", error);
+    }
     return newLecture;
+  }, [ownerId]);
+
+  const addRecurringLectures = useCallback(async (items: LectureFormData[]): Promise<Lecture[]> => {
+    if (items.length === 0) return [];
+
+    let newLectures: Lecture[];
+
+    try {
+      const currentOwnerId = requireOwnerId(ownerId);
+      newLectures = items.map((item) => ({
+        ...item,
+        workflowStage: "before",
+        id: nanoid(),
+        createdAt: new Date().toISOString(),
+        updatedAt: item.updatedAt ?? new Date().toISOString(),
+        travelDistanceKm: null,
+        travelDurationMin: null,
+        travelUpdatedAt: null,
+        user_id: currentOwnerId,
+      }));
+
+      const insertPayload = newLectures.map((lecture) =>
+        withOwner(pickLectureDbPayload(lecture), currentOwnerId)
+      );
+      debugLecturePayload("insert recurring lectures", insertPayload);
+      const { error } = await supabase.from("lectures").insert(insertPayload);
+      if (error) throw error;
+    } catch (error) {
+      logSupabaseError("insert recurring lectures failed", error);
+      toast.error(`반복 강의 등록 실패: ${formatSupabaseError(error)}`);
+      throw error;
+    }
+
+    try {
+      setLectures((prev) => [...newLectures, ...prev]);
+      toast.success(`${newLectures.length}개의 반복 강의가 정상적으로 등록되었습니다.`);
+    } catch (error) {
+      console.error("Recurring lecture insert succeeded, but post-commit client processing failed", error);
+    }
+    return newLectures;
   }, [ownerId]);
 
   const bulkAddLectures = useCallback(async (items: LectureFormData[], policy: "skip" | "overwrite" | "add"): Promise<number> => {
@@ -576,28 +625,38 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   }, [lectures, ownerId]);
 
   const updateLecture = useCallback(async (id: string, data: Partial<Lecture>): Promise<void> => {
-    const currentOwnerId = requireOwnerId(ownerId);
-    const existing = lectures.find((l) => l.id === id);
-    const locationChanged = data.location !== undefined && data.location !== existing?.location;
+    let finalData: Partial<Lecture>;
 
-    const finalData: Partial<Lecture> = locationChanged
-      ? { ...data, travelDistanceKm: null, travelDurationMin: null, travelUpdatedAt: null }
-      : data;
-    const updatePayload = pickLectureDbPayload(finalData);
-    debugLecturePayload("update", updatePayload);
-    const { data: updatedRows, error } = await supabase
-      .from("lectures")
-      .update(updatePayload)
-      .eq("id", id)
-      .eq("user_id", currentOwnerId)
-      .select("id");
-    if (error) {
+    try {
+      const currentOwnerId = requireOwnerId(ownerId);
+      const existing = lectures.find((l) => l.id === id);
+      const locationChanged = data.location !== undefined && data.location !== existing?.location;
+
+      finalData = locationChanged
+        ? { ...data, travelDistanceKm: null, travelDurationMin: null, travelUpdatedAt: null }
+        : data;
+      const updatePayload = pickLectureDbPayload(finalData);
+      debugLecturePayload("update", updatePayload);
+      const { data: updatedRows, error } = await supabase
+        .from("lectures")
+        .update(updatePayload)
+        .eq("id", id)
+        .eq("user_id", currentOwnerId)
+        .select("id");
+      if (error) throw error;
+
+      assertAffectedRows(updatedRows, "수정할 수 있는 강의가 없습니다.");
+    } catch (error) {
       logSupabaseError("update lecture failed", error);
       toast.error(`강의 수정 실패: ${formatSupabaseError(error)}`);
       throw error;
     }
-    assertAffectedRows(updatedRows, "수정할 수 있는 강의가 없습니다.");
-    setLectures((prev) => prev.map((lecture) => (lecture.id === id ? { ...lecture, ...finalData } : lecture)));
+
+    try {
+      setLectures((prev) => prev.map((lecture) => (lecture.id === id ? { ...lecture, ...finalData } : lecture)));
+    } catch (error) {
+      console.error("Lecture update succeeded, but post-commit client processing failed", error);
+    }
   }, [lectures, ownerId]);
 
   const calculateLectureRoute = useCallback(async (id: string): Promise<void> => {
@@ -1318,6 +1377,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         error,
         
         addLecture,
+        addRecurringLectures,
         bulkAddLectures,
         updateLecture,
         calculateLectureRoute,
