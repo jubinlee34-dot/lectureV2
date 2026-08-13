@@ -34,7 +34,7 @@ interface ImportModalProps {
   open: boolean;
   onClose: () => void;
   /** 가져온 강의를 앱에 추가하는 콜백 */
-  onImport: (lectures: LectureFormData[], policy: DuplicatePolicy) => void;
+  onImport: (lectures: LectureFormData[], policy: DuplicatePolicy) => Promise<void>;
   /** 기존 강의 목록 (중복 감지용) */
   existingLectures: Lecture[];
   defaultType?: ImportType;
@@ -56,7 +56,9 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
   const [policy, setPolicy] = useState<DuplicatePolicy>("skip");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const importInFlightRef = useRef(false);
 
   const reset = () => {
     setStep("select");
@@ -68,8 +70,14 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
   };
 
   const handleClose = () => {
+    if (importInFlightRef.current) return;
     reset();
     onClose();
+  };
+
+  const handleReset = () => {
+    if (importInFlightRef.current) return;
+    reset();
   };
 
   const downloadCsvTemplate = () => {
@@ -139,9 +147,28 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
   };
 
   /** 가져오기 확정 */
-  const handleConfirm = () => {
-    onImport(parsed, policy);
-    setStep("done");
+  const handleConfirm = async () => {
+    if (importInFlightRef.current) return;
+
+    importInFlightRef.current = true;
+    setIsImporting(true);
+    setError("");
+
+    try {
+      await onImport(parsed, policy);
+      setStep("done");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"
+            ? err.message
+            : "강의를 가져오는 중 오류가 발생했습니다.";
+      setError(message);
+    } finally {
+      importInFlightRef.current = false;
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -351,15 +378,22 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
 
             {/* 액션 버튼 */}
             <div className="flex gap-2 pt-1">
-              <Button variant="outline" size="sm" className="flex-1" onClick={reset}>
+              <Button variant="outline" size="sm" className="flex-1" onClick={handleReset} disabled={isImporting}>
                 <X className="h-4 w-4 mr-1" />
                 다시 선택
               </Button>
-              <Button size="sm" className="flex-1" onClick={handleConfirm}>
+              <Button size="sm" className="flex-1" onClick={handleConfirm} disabled={isImporting}>
                 <FileUp className="h-4 w-4 mr-1" />
                 {parsed.length}개 가져오기
               </Button>
             </div>
+
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700">{error}</p>
+              </div>
+            )}
           </div>
         )}
 
