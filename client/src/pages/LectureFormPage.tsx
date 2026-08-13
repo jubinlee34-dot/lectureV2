@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture, LectureFormData } from "@/types/lecture";
 import { ArrowLeft, CalendarDays, Eye, Plus } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation, useParams, useSearch } from "wouter";
 
@@ -12,8 +12,9 @@ export default function LectureFormPage() {
   const params = useParams<{ id?: string }>();
   const search = useSearch();
   const queryDate = new URLSearchParams(search).get("date") || "";
-  const { addLecture, updateLecture, getLectureById } = useLectures();
+  const { addLecture, addRecurringLectures, updateLecture, getLectureById } = useLectures();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [lastCreatedLecture, setLastCreatedLecture] = useState<Lecture | null>(null);
   const [lastCreatedCount, setLastCreatedCount] = useState(0);
   const [formKey, setFormKey] = useState(0);
@@ -24,6 +25,9 @@ export default function LectureFormPage() {
     `/lectures?selectedLectureId=${encodeURIComponent(id)}${action === "edit" ? "&action=edit" : ""}`;
 
   const handleSubmit = async (data: LectureFormData, recurringList?: LectureFormData[]) => {
+    if (submittingRef.current) return;
+
+    submittingRef.current = true;
     setIsSubmitting(true);
     setLastCreatedLecture(null);
     setLastCreatedCount(0);
@@ -36,31 +40,27 @@ export default function LectureFormPage() {
         return;
       }
 
-      let firstCreated: Lecture | null = null;
       const createItems = recurringList && recurringList.length > 0 ? recurringList : [data];
 
-      for (let index = 0; index < createItems.length; index += 1) {
-        const created = await addLecture({
-          ...createItems[index],
-          workflowStage: "before",
-        });
-        if (index === 0) firstCreated = created;
-      }
+      const createdLectures = createItems.length > 1
+        ? await addRecurringLectures(createItems)
+        : [
+            await addLecture({
+              ...createItems[0],
+              workflowStage: "before",
+            }),
+          ];
+      const firstCreated = createdLectures[0] ?? null;
 
       setLastCreatedLecture(firstCreated);
-      setLastCreatedCount(createItems.length);
+      setLastCreatedCount(createdLectures.length);
       if (queryDate) navigate("/lectures/new", { replace: true });
       setFormKey((key) => key + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
-      toast.success(
-        createItems.length > 1
-          ? `${createItems.length}개의 반복 강의가 등록되었습니다.`
-          : "강의가 등록되었습니다."
-      );
     } catch (err) {
       console.error("Failed to submit lecture form", err);
-      toast.error("강의 저장에 실패했습니다.");
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

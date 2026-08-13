@@ -6,6 +6,7 @@ export function useLectures() {
   const {
     lectures,
     addLecture,
+    addRecurringLectures,
     bulkAddLectures,
     updateLecture,
     calculateLectureRoute,
@@ -84,6 +85,7 @@ export function useLectures() {
   return {
     lectures,
     addLecture,
+    addRecurringLectures,
     bulkAddLectures,
     updateLecture,
     calculateLectureRoute,
