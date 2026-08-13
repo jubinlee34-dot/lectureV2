@@ -354,6 +354,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initializingRef = useRef<Record<string, boolean>>({});
+  const lectureDeletionPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
   const { user } = useAuth();
   const ownerId = user?.id ?? null;
 
@@ -631,16 +632,34 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     setLectures((prev) => prev.map((lecture) => (lecture.id === id ? { ...lecture, ...routeData } : lecture)));
   }, [lectures, ownerId, profile]);
 
-  const deleteLecture = useCallback(async (id: string): Promise<void> => {
-    const currentOwnerId = requireOwnerId(ownerId);
-    const { data, error } = await supabase.from("lectures").delete().eq("id", id).eq("user_id", currentOwnerId).select("id");
-    if (error) {
-      toast.error(`강의 삭제 실패: ${error.message}`);
-      throw error;
-    }
-    assertAffectedRows(data, "삭제할 수 있는 강의가 없습니다.");
-    setLectures((prev) => prev.filter((lecture) => lecture.id !== id));
-    toast.success("강의 일정이 성공적으로 삭제되었습니다.");
+  const deleteLecture = useCallback((id: string): Promise<void> => {
+    const existingPromise = lectureDeletionPromisesRef.current.get(id);
+    if (existingPromise) return existingPromise;
+
+    const deletionPromise = (async () => {
+      try {
+        const currentOwnerId = requireOwnerId(ownerId);
+        const { data, error } = await supabase.from("lectures").delete().eq("id", id).eq("user_id", currentOwnerId).select("id");
+        if (error) throw error;
+
+        assertAffectedRows(data, "삭제할 수 있는 강의가 없습니다.");
+        setLectures((prev) => prev.filter((lecture) => lecture.id !== id));
+        setTodos((prev) => prev.filter((todo) => todo.lectureId !== id));
+        setWorkTasks((prev) => prev.filter((task) => task.lectureId !== id));
+        setSmsHistory((prev) => prev.filter((sms) => sms.lectureId !== id));
+        setContactLogs((prev) => prev.filter((log) => log.lectureId !== id));
+        toast.success("강의 일정이 성공적으로 삭제되었습니다.");
+      } catch (error) {
+        logSupabaseError("delete lecture failed", error);
+        toast.error(`강의 삭제 실패: ${formatSupabaseError(error)}`);
+        throw error;
+      }
+    })().finally(() => {
+      lectureDeletionPromisesRef.current.delete(id);
+    });
+
+    lectureDeletionPromisesRef.current.set(id, deletionPromise);
+    return deletionPromise;
   }, [ownerId]);
 
   const bulkDeleteLectures = useCallback(async (ids: string[]): Promise<void> => {
