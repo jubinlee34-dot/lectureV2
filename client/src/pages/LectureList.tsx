@@ -17,7 +17,7 @@ import { buildSmsConversationUrl, buildTelUrl, normalizePhoneNumber } from "@/ut
 import { recordSmsHistory } from "@/utils/storage";
 import { BarChart3, Calendar, Clock, Download, PenLine, Sheet, Upload, Users } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation, useSearch } from "wouter";
 
@@ -50,6 +50,7 @@ export default function LectureList() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [actionLectureId, setActionLectureId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<LectureActionMode | null>(null);
+  const deleteInFlightRef = useRef(false);
   const todayStr = useMemo(() => formatLocalDate(new Date()), []);
   const querySelectedLectureId = useMemo(() => new URLSearchParams(search).get("selectedLectureId"), [search]);
   const queryActionMode = useMemo(() => {
@@ -150,6 +151,25 @@ export default function LectureList() {
   const handleDelete = (id: string) => {
     const lecture = lectures.find((item) => item.id === id);
     if (lecture) setDeleteTarget({ id, title: lecture.title });
+  };
+
+  const handleCloseDelete = () => {
+    if (deleteInFlightRef.current) return;
+    setDeleteTarget(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || deleteInFlightRef.current) return;
+
+    deleteInFlightRef.current = true;
+    try {
+      await deleteLecture(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch {
+      // 삭제 오류는 SupabaseContext에서 표시합니다.
+    } finally {
+      deleteInFlightRef.current = false;
+    }
   };
 
   return (
@@ -283,13 +303,8 @@ export default function LectureList() {
 
       <DeleteConfirmModal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          deleteLecture(deleteTarget.id);
-          setDeleteTarget(null);
-          toast.success("강의를 삭제했습니다.");
-        }}
+        onClose={handleCloseDelete}
+        onConfirm={handleConfirmDelete}
         lectureName={deleteTarget?.title}
       />
 

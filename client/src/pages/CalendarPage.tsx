@@ -189,10 +189,13 @@ export default function CalendarPage() {
     setActionMode(null);
   };
 
-  const handleDeleteLecture = (lectureId: string) => {
-    deleteLecture(lectureId);
-    if (selectedLectureId === lectureId) setSelectedLectureId(null);
-    toast.success("강의 일정을 삭제했습니다.");
+  const handleDeleteLecture = async (lectureId: string) => {
+    try {
+      await deleteLecture(lectureId);
+      if (selectedLectureId === lectureId) setSelectedLectureId(null);
+    } catch {
+      // 삭제 오류는 SupabaseContext에서 표시합니다.
+    }
   };
 
   return (

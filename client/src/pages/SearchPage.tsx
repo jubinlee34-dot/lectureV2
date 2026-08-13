@@ -17,6 +17,14 @@ export default function SearchPage() {
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
   const results = useMemo(() => searchLectures(query), [query, searchLectures]);
 
+  const handleDeleteLecture = async (id: string) => {
+    try {
+      await deleteLecture(id);
+    } catch {
+      // 삭제 오류는 SupabaseContext에서 표시합니다.
+    }
+  };
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
       <h1 className="text-2xl font-bold text-foreground">검색</h1>
@@ -36,7 +44,7 @@ export default function SearchPage() {
               lecture={lecture}
               onClick={(id) => navigate(`/lectures/${id}`)}
               onEdit={(id) => navigate(`/lectures/${id}/edit`)}
-              onDelete={(id) => deleteLecture(id)}
+              onDelete={handleDeleteLecture}
               onManage={(id) => navigate(`/lectures/${id}/manage`)}
               onSms={(lec) => setSmsTarget(lec)}
             />
