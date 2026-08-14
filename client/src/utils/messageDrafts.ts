@@ -1,8 +1,10 @@
-import type { SmsType } from "../types/lecture";
+import type { MessageDraftVersion, SmsType } from "../types/lecture";
 
 export interface LocalMessageDraft {
   content: string;
   updatedAt: string;
+  serverDraftId?: string | null;
+  serverUpdatedAt?: string | null;
 }
 
 const SMS_DRAFT_KEY_PREFIX = "lectureV2:smsDraft";
@@ -48,11 +50,47 @@ export function buildLegacyMessageDraftKey(lectureId: string, type: SmsType): st
 
 function isLocalMessageDraft(value: unknown): value is LocalMessageDraft {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
 
-  return "content" in value
-    && "updatedAt" in value
-    && typeof value.content === "string"
-    && isValidDraftTimestamp(value.updatedAt);
+  if (!(typeof record.content === "string" && isValidDraftTimestamp(record.updatedAt))) {
+    return false;
+  }
+
+  const hasServerDraftId = Object.prototype.hasOwnProperty.call(record, "serverDraftId");
+  const hasServerUpdatedAt = Object.prototype.hasOwnProperty.call(record, "serverUpdatedAt");
+  if (!hasServerDraftId && !hasServerUpdatedAt) return true;
+  if (!hasServerDraftId || !hasServerUpdatedAt) return false;
+
+  if (record.serverDraftId === null || record.serverUpdatedAt === null) {
+    return record.serverDraftId === null && record.serverUpdatedAt === null;
+  }
+
+  return typeof record.serverDraftId === "string"
+    && record.serverDraftId.length > 0
+    && isValidDraftTimestamp(record.serverUpdatedAt);
+}
+
+export function getLocalMessageDraftServerVersion(
+  draft: LocalMessageDraft
+): MessageDraftVersion | null | undefined {
+  if (draft.serverDraftId === undefined || draft.serverUpdatedAt === undefined) {
+    return undefined;
+  }
+  if (draft.serverDraftId === null || draft.serverUpdatedAt === null) {
+    return null;
+  }
+  return { id: draft.serverDraftId, updatedAt: draft.serverUpdatedAt };
+}
+
+export function withMessageDraftServerVersion(
+  draft: Pick<LocalMessageDraft, "content" | "updatedAt">,
+  version: MessageDraftVersion | null
+): LocalMessageDraft {
+  return {
+    ...draft,
+    serverDraftId: version?.id ?? null,
+    serverUpdatedAt: version?.updatedAt ?? null,
+  };
 }
 
 export function readLocalMessageDraft(key: string): LocalMessageDraft | null {

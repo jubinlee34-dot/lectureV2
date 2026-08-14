@@ -101,6 +101,11 @@ export interface MessageDraft {
   updatedAt: string;
 }
 
+export interface MessageDraftVersion {
+  id: string;
+  updatedAt: string;
+}
+
 export interface SmsHistory {
   id: string;
   user_id?: string;
