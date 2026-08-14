@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import { nanoid } from "nanoid";
-import type { Lecture, LectureContactLog, LectureFormData, MessageDraft, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
+import type { Lecture, LectureContactLog, LectureFormData, MessageDraft, MessageDraftVersion, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
 import type { InstructorProfile } from "../types/instructor";
 import { toast } from "sonner";
 import { getRouteInfo } from "../services/naverRouteService";
@@ -49,8 +49,8 @@ interface SupabaseContextType {
 
   // Message Draft Actions
   getMessageDraft: (lectureId: string, messageType: SmsType) => Promise<MessageDraft | null>;
-  upsertMessageDraft: (lectureId: string, messageType: SmsType, content: string) => Promise<MessageDraft>;
-  clearMessageDraft: (lectureId: string, messageType: SmsType) => Promise<MessageDraft>;
+  upsertMessageDraft: (lectureId: string, messageType: SmsType, content: string, expectedVersion: MessageDraftVersion | null) => Promise<MessageDraft>;
+  clearMessageDraft: (lectureId: string, messageType: SmsType, expectedVersion: MessageDraftVersion | null) => Promise<MessageDraft>;
 
   // Contact Log Actions
   addContactLog: (data: Omit<LectureContactLog, "id" | "createdAt" | "updatedAt">) => Promise<LectureContactLog>;
@@ -63,6 +63,13 @@ interface SupabaseContextType {
 }
 
 const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined);
+
+export class MessageDraftConflictError extends Error {
+  constructor() {
+    super("문자 초안이 다른 곳에서 변경되었습니다.");
+    this.name = "MessageDraftConflictError";
+  }
+}
 
 const DEFAULT_PROFILE: InstructorProfile = {
   name: "",
@@ -991,30 +998,55 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     );
   }, [ownerId]);
 
-  const upsertMessageDraft = useCallback(async (
+  const saveMessageDraft = useCallback(async (
     lectureId: string,
     messageType: SmsType,
-    content: string
+    content: string,
+    isCleared: boolean,
+    expectedVersion: MessageDraftVersion | null
   ): Promise<MessageDraft> => {
     const currentOwnerId = requireMessageDraftOwnerId(ownerId);
-    const existingDraft = await getMessageDraft(lectureId, messageType);
-    const payload = {
-      id: existingDraft?.id ?? nanoid(),
-      lecture_id: lectureId,
-      user_id: currentOwnerId,
-      message_type: messageType,
-      content,
-      is_cleared: false,
-    };
+    const errorMessage = isCleared
+      ? "문자 초안을 초기화하지 못했습니다."
+      : "문자 초안을 저장하지 못했습니다.";
+    let data: unknown;
 
-    const { data, error } = await supabase
-      .from("message_drafts")
-      .upsert(payload, { onConflict: "user_id,lecture_id,message_type" })
-      .select(MESSAGE_DRAFT_DB_COLUMNS)
-      .single();
+    if (expectedVersion) {
+      const { data: updatedRows, error } = await supabase
+        .from("message_drafts")
+        .update({ content, is_cleared: isCleared })
+        .eq("user_id", currentOwnerId)
+        .eq("lecture_id", lectureId)
+        .eq("message_type", messageType)
+        .eq("id", expectedVersion.id)
+        .eq("updated_at", expectedVersion.updatedAt)
+        .select(MESSAGE_DRAFT_DB_COLUMNS);
 
-    if (error) {
-      throw new Error("문자 초안을 저장하지 못했습니다.");
+      if (error) throw new Error(errorMessage);
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new MessageDraftConflictError();
+      }
+      if (updatedRows.length !== 1) {
+        throw new Error("문자 초안 저장 결과가 올바르지 않습니다.");
+      }
+      data = updatedRows[0];
+    } else {
+      const { data: insertedRow, error } = await supabase
+        .from("message_drafts")
+        .insert({
+          id: nanoid(),
+          lecture_id: lectureId,
+          user_id: currentOwnerId,
+          message_type: messageType,
+          content,
+          is_cleared: isCleared,
+        })
+        .select(MESSAGE_DRAFT_DB_COLUMNS)
+        .single();
+
+      if (error?.code === "23505") throw new MessageDraftConflictError();
+      if (error) throw new Error(errorMessage);
+      data = insertedRow;
     }
 
     const savedDraft = ensureMessageDraftScope(
@@ -1025,59 +1057,32 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     );
 
     if (
-      savedDraft.isCleared
-      || (existingDraft
-        && (savedDraft.id !== existingDraft.id || savedDraft.createdAt !== existingDraft.createdAt))
+      savedDraft.isCleared !== isCleared
+      || savedDraft.content !== content
+      || (expectedVersion && savedDraft.id !== expectedVersion.id)
     ) {
       throw new Error("문자 초안 저장 결과가 올바르지 않습니다.");
     }
 
     return savedDraft;
-  }, [getMessageDraft, ownerId]);
+  }, [ownerId]);
+
+  const upsertMessageDraft = useCallback(async (
+    lectureId: string,
+    messageType: SmsType,
+    content: string,
+    expectedVersion: MessageDraftVersion | null
+  ): Promise<MessageDraft> => (
+    saveMessageDraft(lectureId, messageType, content, false, expectedVersion)
+  ), [saveMessageDraft]);
 
   const clearMessageDraft = useCallback(async (
     lectureId: string,
-    messageType: SmsType
-  ): Promise<MessageDraft> => {
-    const currentOwnerId = requireMessageDraftOwnerId(ownerId);
-    const existingDraft = await getMessageDraft(lectureId, messageType);
-    const payload = {
-      id: existingDraft?.id ?? nanoid(),
-      lecture_id: lectureId,
-      user_id: currentOwnerId,
-      message_type: messageType,
-      content: "",
-      is_cleared: true,
-    };
-
-    const { data, error } = await supabase
-      .from("message_drafts")
-      .upsert(payload, { onConflict: "user_id,lecture_id,message_type" })
-      .select(MESSAGE_DRAFT_DB_COLUMNS)
-      .single();
-
-    if (error) {
-      throw new Error("문자 초안을 초기화하지 못했습니다.");
-    }
-
-    const clearedDraft = ensureMessageDraftScope(
-      toMessageDraft(data),
-      currentOwnerId,
-      lectureId,
-      messageType
-    );
-
-    if (
-      !clearedDraft.isCleared
-      || clearedDraft.content !== ""
-      || (existingDraft
-        && (clearedDraft.id !== existingDraft.id || clearedDraft.createdAt !== existingDraft.createdAt))
-    ) {
-      throw new Error("문자 초안 초기화 결과가 올바르지 않습니다.");
-    }
-
-    return clearedDraft;
-  }, [getMessageDraft, ownerId]);
+    messageType: SmsType,
+    expectedVersion: MessageDraftVersion | null
+  ): Promise<MessageDraft> => (
+    saveMessageDraft(lectureId, messageType, "", true, expectedVersion)
+  ), [saveMessageDraft]);
 
   // ==================== SMS CRUD ====================
 
