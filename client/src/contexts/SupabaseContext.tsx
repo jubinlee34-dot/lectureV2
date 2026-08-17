@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { formatLocalDate } from "../lib/date";
 import { useAuth } from "./AuthContext";
 import { nanoid } from "nanoid";
 import type { Lecture, LectureContactLog, LectureFormData, MessageDraft, MessageDraftVersion, Todo, TodoPriority, WorkTask, WorkTaskStage, WorkTaskCategory, SmsHistory, SmsType } from "../types/lecture";
@@ -435,7 +436,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         if (profileErr) throw profileErr;
         const loadedProfile: InstructorProfile | null = dbProfile ? (dbProfile as InstructorProfile) : null;
 
-        const todayStr = new Date().toISOString().split("T")[0];
+        const todayStr = formatLocalDate(new Date());
         const toAutoTransition = loadedLectures.filter(
           (lecture) => lecture.date && lecture.date < todayStr && lecture.workflowStage === "before"
         );
