@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useSupabase } from "@/contexts/SupabaseContext";
 import { useLectures } from "@/hooks/useLectures";
 import type { Lecture } from "@/types/lecture";
+import { formatLocalDate } from "@/lib/date";
 import { hasAfterRecord } from "@/utils/afterRecord";
 import { downloadCSV, downloadICS } from "@/utils/exportUtils";
 import { getPreviousWorkflowStage, getStatusCounts, statusBadgeClass, type LectureStatusFilter, statusLabels } from "@/utils/lectureStatus";
@@ -652,13 +653,6 @@ function compareBeforeLectures(a: Lecture, b: Lecture, todayStr: string): number
 
 function isPastBeforeLecture(lecture: Lecture, todayStr: string): boolean {
   return lecture.workflowStage === "before" && Boolean(lecture.date) && lecture.date < todayStr;
-}
-
-function formatLocalDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function formatDateDots(date: string): string {

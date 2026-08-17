@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { SmsModal } from "@/components/SmsModal";
 import { useLectures } from "@/hooks/useLectures";
 import { useTodos } from "@/hooks/useTodos";
+import { formatLocalDate } from "@/lib/date";
 import { formatDurationMin } from "@/services/naverRouteService";
 import { recordSmsHistory } from "@/utils/storage";
 import { formatDate, formatKRW } from "@/utils/format";
@@ -92,10 +93,6 @@ function toLocalDate(dateKey: string) {
   const parts = parseDateParts(dateKey);
   if (!parts) return null;
   return new Date(parts.year, parts.month - 1, parts.day, 12);
-}
-
-function formatLocalDate(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function addDays(dateKey: string, days: number) {
