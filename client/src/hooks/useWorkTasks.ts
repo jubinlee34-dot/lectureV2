@@ -13,7 +13,7 @@ export const DEFAULT_BEFORE_TASKS: Array<{ category: WorkTaskCategory; text: str
   { category: "material", text: "실습 자료와 배포물 준비" },
   { category: "contact", text: "담당자에게 일정 확인 문자 발송" },
   { category: "logistics", text: "강의 장소와 장비 확인" },
-  { category: "logistics", text: "참여 인원และ 준비물 확인" },
+  { category: "logistics", text: "참여 인원 및 준비물 확인" },
 ];
 
 export const DEFAULT_AFTER_TASKS: Array<{ category: WorkTaskCategory; text: string }> = [
