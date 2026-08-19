@@ -32,9 +32,6 @@
 -- Idempotent: REVOKE on a privilege the grantee does not hold is a
 -- no-op in PostgreSQL (no IF EXISTS needed), matching the style of
 -- 20260817000000_baseline_current_state.sql line 415.
---
--- NOT executed as part of this change; requires separate review and a
--- manual `supabase db push` (or equivalent) after approval.
 
 BEGIN;
 
@@ -48,6 +45,33 @@ BEGIN
   ] LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon', target_table);
   END LOOP;
+END $$;
+
+-- Post-verification: fail the migration (and roll back the REVOKEs above,
+-- same transaction) if anon still holds any direct table-level grant on
+-- the 6 target tables. Reads the actual ACL via pg_class.relacl +
+-- aclexplode rather than re-testing the 4 previously-missed privileges,
+-- so it also catches any future/unknown privilege type.
+DO $$
+DECLARE
+  residual_count integer;
+BEGIN
+  SELECT count(*) INTO residual_count
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  CROSS JOIN LATERAL aclexplode(c.relacl) AS acl
+  WHERE n.nspname = 'public'
+    AND c.relname IN (
+      'lectures', 'todos', 'work_tasks', 'sms_history',
+      'lecture_contact_logs', 'instructor_profile'
+    )
+    AND acl.grantee = 'anon'::regrole;
+
+  IF residual_count > 0 THEN
+    RAISE EXCEPTION
+      'Residual anon table-level grants remain on target tables after REVOKE ALL (% grant entries found)',
+      residual_count;
+  END IF;
 END $$;
 
 COMMIT;
