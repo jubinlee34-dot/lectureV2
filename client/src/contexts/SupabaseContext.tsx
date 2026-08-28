@@ -467,8 +467,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setProfile(loadedProfile);
       } catch (err: any) {
         console.error("Supabase 초기 로드 오류:", err);
-        setError(err.message || "데이터베이스 연동 중 알 수 없는 오류가 발생했습니다.");
-        toast.error(`DB 동기화 실패: ${err.message || "네트워크 연결을 확인해주세요."}`);
+        setError("데이터를 불러오지 못했습니다. 다시 시도해주세요.");
+        toast.error("데이터를 불러오지 못했습니다. 다시 시도해주세요.");
       } finally {
         setLoading(false);
       }
@@ -515,7 +515,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
     } catch (error) {
       logSupabaseError("insert lecture failed", error);
-      toast.error(`강의 등록 실패: ${formatSupabaseError(error)}`);
+      toast.error("강의를 등록하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -555,7 +555,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
     } catch (error) {
       logSupabaseError("insert recurring lectures failed", error);
-      toast.error(`반복 강의 등록 실패: ${formatSupabaseError(error)}`);
+      toast.error("반복 강의를 등록하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -606,7 +606,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from("lectures").insert(insertPayload);
       if (error) {
         logSupabaseError("bulk insert lectures failed", error);
-        toast.error(`일괄 등록 실패: ${formatSupabaseError(error)}`);
+        toast.error("강의를 일괄 등록하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
     }
@@ -622,7 +622,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         .select("id");
       if (error) {
         logSupabaseError("bulk update lectures failed", error);
-        toast.error(`일괄 수정 실패: ${formatSupabaseError(error)}`);
+        toast.error("강의를 일괄 수정하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
       assertAffectedRows(data, "수정할 수 있는 강의가 없습니다.");
@@ -656,7 +656,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       assertAffectedRows(updatedRows, "수정할 수 있는 강의가 없습니다.");
     } catch (error) {
       logSupabaseError("update lecture failed", error);
-      toast.error(`강의 수정 실패: ${formatSupabaseError(error)}`);
+      toast.error("강의를 수정하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -692,7 +692,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       .select("id");
     if (error) {
       logSupabaseError("route update lecture failed", error);
-      toast.error(`경로 정보 저장 실패: ${formatSupabaseError(error)}`);
+      toast.error("이동 거리/시간 정보를 저장하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(updatedRows, "경로 정보를 저장할 수 있는 강의가 없습니다.");
@@ -718,7 +718,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         toast.success("강의 일정이 성공적으로 삭제되었습니다.");
       } catch (error) {
         logSupabaseError("delete lecture failed", error);
-        toast.error(`강의 삭제 실패: ${formatSupabaseError(error)}`);
+        toast.error("강의를 삭제하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
     })().finally(() => {
@@ -733,7 +733,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("lectures").delete().in("id", ids).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`일괄 삭제 실패: ${error.message}`);
+      toast.error("선택한 강의를 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     const deletedIds = new Set(assertAffectedRows(data, "삭제할 수 있는 강의가 없습니다."));
@@ -748,7 +748,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const { data: updatedRows, error } = await supabase.from("lectures").update(updatePayload).in("id", ids).eq("user_id", currentOwnerId).select("id");
     if (error) {
       logSupabaseError("bulk update lectures failed", error);
-      toast.error(`일괄 수정 실패: ${formatSupabaseError(error)}`);
+      toast.error("강의를 일괄 수정하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     const updatedIds = new Set(assertAffectedRows(updatedRows, "수정할 수 있는 강의가 없습니다."));
@@ -772,7 +772,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { error } = await supabase.from("todos").insert(withOwner(newTodo, currentOwnerId));
     if (error) {
-      toast.error(`할 일 추가 실패: ${error.message}`);
+      toast.error("할 일을 추가하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -788,7 +788,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { data, error } = await supabase.from("todos").update({ done: nextDone }).eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`상태 변경 실패: ${error.message}`);
+      toast.error("할 일 상태를 변경하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "수정할 수 있는 할 일이 없습니다.");
@@ -799,7 +799,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("todos").delete().eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`할 일 삭제 실패: ${error.message}`);
+      toast.error("할 일을 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "삭제할 수 있는 할 일이 없습니다.");
@@ -817,7 +817,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     };
     const { data: updatedRows, error } = await supabase.from("todos").update(updatePayload).eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`할 일 수정 실패: ${error.message}`);
+      toast.error("할 일을 수정하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(updatedRows, "수정할 수 있는 할 일이 없습니다.");
@@ -828,7 +828,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("todos").delete().in("id", ids).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`선택 삭제 실패: ${error.message}`);
+      toast.error("선택한 할 일을 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     const deletedIds = new Set(assertAffectedRows(data, "삭제할 수 있는 할 일이 없습니다."));
@@ -841,7 +841,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const updateData = withoutUserId(data as Record<string, unknown>);
     const { data: updatedRows, error } = await supabase.from("todos").update(updateData).in("id", ids).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`선택 수정 실패: ${error.message}`);
+      toast.error("선택한 할 일을 수정하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     const updatedIds = new Set(assertAffectedRows(updatedRows, "수정할 수 있는 할 일이 없습니다."));
@@ -906,7 +906,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       .eq("user_id", currentOwnerId)
       .limit(1);
     if (existingError) {
-      toast.error(`준비사항 확인 실패: ${existingError.message}`);
+      toast.error("준비사항 확인에 실패했습니다. 다시 시도해주세요.");
       throw existingError;
     }
 
@@ -918,7 +918,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { error } = await supabase.from("work_tasks").insert(withOwner(newTask, currentOwnerId));
     if (error) {
-      toast.error(`준비사항 등록 실패: ${error.message}`);
+      toast.error("준비사항을 등록하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -935,7 +935,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { data, error } = await supabase.from("work_tasks").update(updateData).eq("id", taskId).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`준비사항 상태 변경 실패: ${error.message}`);
+      toast.error("준비사항 상태를 변경하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "수정할 수 있는 준비사항이 없습니다.");
@@ -946,7 +946,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("work_tasks").delete().eq("id", taskId).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`준비사항 삭제 실패: ${error.message}`);
+      toast.error("준비사항을 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "삭제할 수 있는 준비사항이 없습니다.");
@@ -962,7 +962,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const nextStarred = !target.starred;
     const { data, error } = await supabase.from("work_tasks").update({ starred: nextStarred }).eq("id", taskId).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`중요 상태 변경 실패: ${error.message}`);
+      toast.error("준비사항 중요 표시를 변경하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "수정할 수 있는 준비사항이 없습니다.");
@@ -1102,7 +1102,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { error } = await supabase.from("sms_history").insert(withOwner(record, currentOwnerId));
     if (error) {
-      toast.error(`SMS 발송 이력 저장 실패: ${error.message}`);
+      toast.error("문자 발송 이력을 저장하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -1114,7 +1114,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("sms_history").delete().eq("id", smsId).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`이력 삭제 실패: ${error.message}`);
+      toast.error("문자 발송 이력을 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "삭제할 수 있는 SMS 이력이 없습니다.");
@@ -1145,7 +1145,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { error } = await supabase.from("lecture_contact_logs").insert(withOwner(record, currentOwnerId));
     if (error) {
-      toast.error(`소통 기록 저장 실패: ${error.message}`);
+      toast.error("소통 기록을 저장하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -1159,7 +1159,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const updateData = withoutUserId({ ...data, updatedAt: new Date().toISOString() } as Record<string, unknown>);
     const { data: updatedRows, error } = await supabase.from("lecture_contact_logs").update(updateData).eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`소통 기록 수정 실패: ${error.message}`);
+      toast.error("소통 기록을 수정하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(updatedRows, "수정할 수 있는 소통 기록이 없습니다.");
@@ -1171,7 +1171,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const currentOwnerId = requireOwnerId(ownerId);
     const { data, error } = await supabase.from("lecture_contact_logs").delete().eq("id", id).eq("user_id", currentOwnerId).select("id");
     if (error) {
-      toast.error(`소통 기록 삭제 실패: ${error.message}`);
+      toast.error("소통 기록을 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(data, "삭제할 수 있는 소통 기록이 없습니다.");
@@ -1188,7 +1188,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     const { data: existingRows, error: existingError } = await supabase.from("instructor_profile").select("id").eq("user_id", currentOwnerId).limit(1);
     if (existingError) {
-      toast.error(`프로필 확인 실패: ${existingError.message}`);
+      toast.error("프로필 확인에 실패했습니다. 다시 시도해주세요.");
       throw existingError;
     }
 
@@ -1200,14 +1200,14 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         .eq("user_id", currentOwnerId)
         .select("id");
       if (error) {
-        toast.error(`프로필 저장 실패: ${error.message}`);
+        toast.error("프로필을 저장하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
       assertAffectedRows(updatedRows, "수정할 수 있는 프로필이 없습니다.");
     } else {
       const { error } = await supabase.from("instructor_profile").insert({ id: nanoid(), ...updatedProfile, user_id: currentOwnerId });
       if (error) {
-        toast.error(`프로필 저장 실패: ${error.message}`);
+        toast.error("프로필을 저장하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
     }
@@ -1226,7 +1226,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         .select("id");
       if (staleError) {
         logSupabaseError("route cache stale update failed", staleError);
-        toast.error(`경로 캐시 갱신 상태 변경 실패: ${formatSupabaseError(staleError)}`);
+        toast.error("경로 정보 갱신 상태를 변경하지 못했습니다. 다시 시도해주세요.");
         throw staleError;
       }
       const staleIds = new Set((staleRows ?? []).map((row) => row.id));
@@ -1366,7 +1366,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       toast.dismiss();
       console.error("수동 업로드 오류:", err);
-      toast.error(`로컬 데이터 업로드 실패: ${err.message || "알 수 없는 오류가 발생했습니다."}`);
+      toast.error("로컬 데이터를 업로드하지 못했습니다. 다시 시도해주세요.");
       throw err;
     }
   }, [ownerId, profile]);

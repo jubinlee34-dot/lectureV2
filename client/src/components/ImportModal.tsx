@@ -158,13 +158,7 @@ export function ImportModal({ open, onClose, onImport, existingLectures, default
       await onImport(parsed, policy);
       setStep("done");
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"
-            ? err.message
-            : "강의를 가져오는 중 오류가 발생했습니다.";
-      setError(message);
+      setError("강의를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.");
     } finally {
       importInFlightRef.current = false;
       setIsImporting(false);

@@ -108,7 +108,7 @@ export default function SetupPage() {
       if (!mounted) return;
       if (queryError) {
         setSupabaseStatus("error");
-        setSupabaseMessage(queryError.message);
+        setSupabaseMessage("Supabase 연결을 확인하지 못했습니다. 다시 시도해주세요.");
         return;
       }
       setSupabaseStatus("normal");
@@ -116,7 +116,7 @@ export default function SetupPage() {
     } catch (supabaseError) {
       if (!mounted) return;
       setSupabaseStatus("error");
-      setSupabaseMessage(supabaseError instanceof Error ? supabaseError.message : "Supabase 연결 확인에 실패했습니다.");
+      setSupabaseMessage("Supabase 연결을 확인하지 못했습니다. 다시 시도해주세요.");
     }
   }
 
