@@ -645,7 +645,7 @@ export function SmsModal({
     try {
       await onRecord?.(selectedType, normalizedPhone, content);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "문자 작성 이력 저장 실패");
+      toast.error("문자 작성 이력을 저장하지 못했습니다. 다시 시도해주세요.");
       return;
     } finally {
       sendInFlightRef.current = false;

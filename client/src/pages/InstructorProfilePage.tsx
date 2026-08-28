@@ -36,7 +36,7 @@ export default function InstructorProfilePage() {
       await updateProfile(profile);
       toast.success("프로필을 저장했습니다.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "프로필 저장에 실패했습니다.");
+      toast.error("프로필을 저장하지 못했습니다. 다시 시도해주세요.");
     } finally {
       setIsSaving(false);
     }
