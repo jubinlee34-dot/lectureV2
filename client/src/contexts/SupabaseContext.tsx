@@ -145,16 +145,6 @@ function pickLectureDbPayload(data: Partial<Lecture>): LectureDbPayload {
   }, {});
 }
 
-function formatSupabaseError(error: any): string {
-  const parts = [
-    error?.message,
-    error?.details ? `details: ${error.details}` : "",
-    error?.hint ? `hint: ${error.hint}` : "",
-    error?.code ? `code: ${error.code}` : "",
-  ].filter(Boolean);
-  return parts.join(" | ") || "알 수 없는 Supabase 오류";
-}
-
 function logSupabaseError(context: string, error: any) {
   console.error(`[Supabase] ${context}`, {
     message: error?.message,
@@ -656,7 +646,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       assertAffectedRows(updatedRows, "수정할 수 있는 강의가 없습니다.");
     } catch (error) {
       logSupabaseError("update lecture failed", error);
-      toast.error("강의를 수정하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
 
@@ -692,7 +681,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       .select("id");
     if (error) {
       logSupabaseError("route update lecture failed", error);
-      toast.error("이동 거리/시간 정보를 저장하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     assertAffectedRows(updatedRows, "경로 정보를 저장할 수 있는 강의가 없습니다.");
@@ -1200,14 +1188,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         .eq("user_id", currentOwnerId)
         .select("id");
       if (error) {
-        toast.error("프로필을 저장하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
       assertAffectedRows(updatedRows, "수정할 수 있는 프로필이 없습니다.");
     } else {
       const { error } = await supabase.from("instructor_profile").insert({ id: nanoid(), ...updatedProfile, user_id: currentOwnerId });
       if (error) {
-        toast.error("프로필을 저장하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
     }
