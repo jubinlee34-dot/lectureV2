@@ -357,6 +357,34 @@ export function trashDaysRemaining(deletedAt?: string | null): number {
 }
 
 /**
+ * localStorage keys left over from the pre-Supabase version. They can still
+ * hold lecture records with manager names and phone numbers, message history
+ * and the instructor profile, so once that data is safely in the database the
+ * device copy is redundant and gets cleared.
+ *
+ * Nothing writes these keys any more -- they are read once by
+ * `uploadLocalDataToSupabase` and then removed.
+ */
+const LEGACY_LOCAL_DATA_KEYS = [
+  "lecture-archive-lectures",
+  "lecture-archive-v2-todos",
+  "lecture-archive-worktasks",
+  "lecture-archive-smshistory",
+  "lecture-archive-instructor-profile",
+] as const;
+
+function clearLegacyLocalData(): void {
+  for (const key of LEGACY_LOCAL_DATA_KEYS) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Private mode or a full store: the upload already succeeded, so a
+      // failure to clean up must not surface as an error.
+    }
+  }
+}
+
+/**
  * Deletes lectures whose trash retention has run out.
  *
  * Housekeeping only, so it never rejects: it is awaited alongside the initial
@@ -1461,11 +1489,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     try {
       toast.loading("로컬 데이터를 Supabase로 업로드하는 중...");
 
-      const localLecturesRaw = localStorage.getItem("lecture-archive-lectures");
-      const localTodosRaw = localStorage.getItem("lecture-archive-v2-todos");
-      const localWorkTasksRaw = localStorage.getItem("lecture-archive-worktasks");
-      const localSmsHistoryRaw = localStorage.getItem("lecture-archive-smshistory");
-      const localProfileRaw = localStorage.getItem("lecture-archive-instructor-profile");
+      const [localLecturesRaw, localTodosRaw, localWorkTasksRaw, localSmsHistoryRaw, localProfileRaw] =
+        LEGACY_LOCAL_DATA_KEYS.map((key) => localStorage.getItem(key));
 
       const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw).map(normalizeLecture) : [];
       const localTodos: Todo[] = localTodosRaw ? JSON.parse(localTodosRaw) : [];
@@ -1587,6 +1612,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (dbSms) setSmsHistory((dbSms as SmsHistory[]).filter(isActive));
       if (dbContactLogs) setContactLogs(dbContactLogs.map(normalizeContactLog).filter(isActive));
       if (dbProfile) setProfile(dbProfile as InstructorProfile);
+
+      // 업로드가 끝났으므로 기기에 남은 옛 사본은 더 이상 필요 없다.
+      // 담당자 연락처와 문자 이력이 들어 있으므로 여기서 지운다.
+      clearLegacyLocalData();
 
       toast.dismiss();
       toast.success(`로컬 데이터 업로드 완료! 총 ${uploadCount}개의 데이터와 강사 프로필을 동기화했습니다.`);
