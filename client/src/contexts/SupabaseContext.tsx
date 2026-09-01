@@ -68,7 +68,6 @@ interface SupabaseContextType {
 
   // Profile Actions
   updateProfile: (data: Partial<InstructorProfile>) => Promise<void>;
-  uploadLocalDataToSupabase: () => Promise<void>;
 }
 
 const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined);
@@ -257,17 +256,6 @@ function ensureMessageDraftScope(
   return draft;
 }
 
-async function fetchOwnedIds(table: "lectures" | "todos" | "work_tasks" | "sms_history", ids: string[], ownerId: string): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const { data, error } = await supabase
-    .from(table)
-    .select("id")
-    .in("id", ids)
-    .eq("user_id", ownerId);
-
-  if (error) throw error;
-  return new Set((data ?? []).map((row) => row.id));
-}
 function parseCachedDistance(value?: number | string | null): number | undefined {
   if (typeof value === "number") return value;
   if (!value) return undefined;
@@ -357,6 +345,34 @@ export function trashDaysRemaining(deletedAt?: string | null): number {
 }
 
 /**
+ * localStorage keys left over from the pre-Supabase version. They can still
+ * hold lecture records with manager names and phone numbers, message history
+ * and the instructor profile.
+ *
+ * Nothing reads or writes them any more: the one-off migration that consumed
+ * them was never reachable from the UI and has been removed, so the data on the
+ * device is unusable as well as unwanted. It is cleared on load.
+ */
+const LEGACY_LOCAL_DATA_KEYS = [
+  "lecture-archive-lectures",
+  "lecture-archive-v2-todos",
+  "lecture-archive-worktasks",
+  "lecture-archive-smshistory",
+  "lecture-archive-instructor-profile",
+] as const;
+
+function clearLegacyLocalData(): void {
+  for (const key of LEGACY_LOCAL_DATA_KEYS) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Private mode or a full store: the upload already succeeded, so a
+      // failure to clean up must not surface as an error.
+    }
+  }
+}
+
+/**
  * Deletes lectures whose trash retention has run out.
  *
  * Housekeeping only, so it never rejects: it is awaited alongside the initial
@@ -440,6 +456,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       try {
         setLoading(true);
         setError(null);
+
+        // 이전 버전이 기기에 남긴 사본에는 담당자 연락처와 문자 이력이
+        // 들어 있다. 읽는 코드가 더 이상 없으므로 남겨둘 이유가 없다.
+        clearLegacyLocalData();
 
         // These seven statements do not depend on each other, so they are sent
         // concurrently: the wait collapses from seven round trips to one. State
@@ -1455,148 +1475,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       setLectures((prev) => prev.map((lecture) => staleIds.has(lecture.id) ? { ...lecture, travelUpdatedAt: null } : lecture));
     }
   }, [ownerId, profile]);
-
-  const uploadLocalDataToSupabase = useCallback(async (): Promise<void> => {
-    const currentOwnerId = requireOwnerId(ownerId);
-    try {
-      toast.loading("로컬 데이터를 Supabase로 업로드하는 중...");
-
-      const localLecturesRaw = localStorage.getItem("lecture-archive-lectures");
-      const localTodosRaw = localStorage.getItem("lecture-archive-v2-todos");
-      const localWorkTasksRaw = localStorage.getItem("lecture-archive-worktasks");
-      const localSmsHistoryRaw = localStorage.getItem("lecture-archive-smshistory");
-      const localProfileRaw = localStorage.getItem("lecture-archive-instructor-profile");
-
-      const localLectures: Lecture[] = localLecturesRaw ? JSON.parse(localLecturesRaw).map(normalizeLecture) : [];
-      const localTodos: Todo[] = localTodosRaw ? JSON.parse(localTodosRaw) : [];
-      const localWorkTasks: WorkTask[] = localWorkTasksRaw ? JSON.parse(localWorkTasksRaw) : [];
-      const localSmsHistory: SmsHistory[] = localSmsHistoryRaw ? JSON.parse(localSmsHistoryRaw) : [];
-      const localProfile: InstructorProfile = localProfileRaw ? JSON.parse(localProfileRaw) : DEFAULT_PROFILE;
-
-      let uploadCount = 0;
-
-      if (localLectures.length > 0) {
-        const ownedLectureIds = await fetchOwnedIds("lectures", localLectures.map((lecture) => lecture.id), currentOwnerId);
-        const lectureInserts = localLectures.filter((lecture) => !ownedLectureIds.has(lecture.id));
-        const lectureUpdates = localLectures.filter((lecture) => ownedLectureIds.has(lecture.id));
-
-        if (lectureInserts.length > 0) {
-          const insertPayload = lectureInserts.map((lecture) => withOwner(pickLectureDbPayload(lecture), currentOwnerId));
-          debugLecturePayload("manual local upload insert", insertPayload);
-          const { error } = await supabase.from("lectures").insert(insertPayload);
-          if (error) {
-            logSupabaseError("manual local upload insert lectures failed", error);
-            throw error;
-          }
-        }
-
-        for (const lecture of lectureUpdates) {
-          const updatePayload = pickLectureDbPayload(lecture);
-          const { data, error } = await supabase.from("lectures").update(updatePayload).eq("id", lecture.id).eq("user_id", currentOwnerId).select("id");
-          if (error) {
-            logSupabaseError("manual local upload update lectures failed", error);
-            throw error;
-          }
-          assertAffectedRows(data, "업로드 중 수정할 수 있는 강의가 없습니다.");
-        }
-        uploadCount += localLectures.length;
-      }
-
-      if (localTodos.length > 0) {
-        const ownedTodoIds = await fetchOwnedIds("todos", localTodos.map((todo) => todo.id), currentOwnerId);
-        const todoInserts = localTodos.filter((todo) => !ownedTodoIds.has(todo.id));
-        const todoUpdates = localTodos.filter((todo) => ownedTodoIds.has(todo.id));
-
-        if (todoInserts.length > 0) {
-          const { error } = await supabase.from("todos").insert(todoInserts.map((todo) => withOwner(todo as unknown as Record<string, unknown>, currentOwnerId)));
-          if (error) throw error;
-        }
-
-        for (const todo of todoUpdates) {
-          const { data, error } = await supabase.from("todos").update(withoutUserId(todo as unknown as Record<string, unknown>)).eq("id", todo.id).eq("user_id", currentOwnerId).select("id");
-          if (error) throw error;
-          assertAffectedRows(data, "업로드 중 수정할 수 있는 할 일이 없습니다.");
-        }
-        uploadCount += localTodos.length;
-      }
-
-      if (localWorkTasks.length > 0) {
-        const ownedTaskIds = await fetchOwnedIds("work_tasks", localWorkTasks.map((task) => task.id), currentOwnerId);
-        const taskInserts = localWorkTasks.filter((task) => !ownedTaskIds.has(task.id));
-        const taskUpdates = localWorkTasks.filter((task) => ownedTaskIds.has(task.id));
-
-        if (taskInserts.length > 0) {
-          const { error } = await supabase.from("work_tasks").insert(taskInserts.map((task) => withOwner(task as unknown as Record<string, unknown>, currentOwnerId)));
-          if (error) throw error;
-        }
-
-        for (const task of taskUpdates) {
-          const { data, error } = await supabase.from("work_tasks").update(withoutUserId(task as unknown as Record<string, unknown>)).eq("id", task.id).eq("user_id", currentOwnerId).select("id");
-          if (error) throw error;
-          assertAffectedRows(data, "업로드 중 수정할 수 있는 업무가 없습니다.");
-        }
-        uploadCount += localWorkTasks.length;
-      }
-
-      if (localSmsHistory.length > 0) {
-        const ownedSmsIds = await fetchOwnedIds("sms_history", localSmsHistory.map((sms) => sms.id), currentOwnerId);
-        const smsInserts = localSmsHistory.filter((sms) => !ownedSmsIds.has(sms.id));
-        const smsUpdates = localSmsHistory.filter((sms) => ownedSmsIds.has(sms.id));
-
-        if (smsInserts.length > 0) {
-          const { error } = await supabase.from("sms_history").insert(smsInserts.map((sms) => withOwner(sms as unknown as Record<string, unknown>, currentOwnerId)));
-          if (error) throw error;
-        }
-
-        for (const sms of smsUpdates) {
-          const { data, error } = await supabase.from("sms_history").update(withoutUserId(sms as unknown as Record<string, unknown>)).eq("id", sms.id).eq("user_id", currentOwnerId).select("id");
-          if (error) throw error;
-          assertAffectedRows(data, "업로드 중 수정할 수 있는 SMS 이력이 없습니다.");
-        }
-        uploadCount += localSmsHistory.length;
-      }
-
-      const mergedProfile = withoutUserId({ ...DEFAULT_PROFILE, ...profile, ...localProfile }) as InstructorProfile;
-      const { data: existingProfileRows, error: existingProfileError } = await supabase.from("instructor_profile").select("id").eq("user_id", currentOwnerId).limit(1);
-      if (existingProfileError) throw existingProfileError;
-
-      if (existingProfileRows && existingProfileRows.length > 0) {
-        const { data, error } = await supabase.from("instructor_profile").update(mergedProfile).eq("id", existingProfileRows[0].id).eq("user_id", currentOwnerId).select("id");
-        if (error) throw error;
-        assertAffectedRows(data, "업로드 중 수정할 수 있는 프로필이 없습니다.");
-      } else {
-        const { error } = await supabase.from("instructor_profile").insert({ id: nanoid(), ...mergedProfile, user_id: currentOwnerId });
-        if (error) throw error;
-      }
-
-      const { data: dbLectures } = await supabase.from("lectures").select("*").eq("user_id", currentOwnerId).is("deleted_at", null).order("createdAt", { ascending: false });
-      const { data: dbTodos } = await supabase.from("todos").select("*").eq("user_id", currentOwnerId).order("createdAt", { ascending: false });
-      const { data: dbTasks } = await supabase.from("work_tasks").select("*").eq("user_id", currentOwnerId).order("createdAt", { ascending: true });
-      const { data: dbSms } = await supabase.from("sms_history").select("*").eq("user_id", currentOwnerId).order("sentAt", { ascending: false });
-      const { data: dbContactLogs } = await supabase.from("lecture_contact_logs").select("*").eq("user_id", currentOwnerId).order("occurredAt", { ascending: false });
-      const { data: dbProfile } = await supabase.from("instructor_profile").select("*").eq("user_id", currentOwnerId).maybeSingle();
-
-      // Same option-3 rule as the initial load: hide children whose parent is
-      // in the trash.
-      const reloadedLectures = (dbLectures || []).map(normalizeLecture);
-      const isActive = belongsToActiveLecture(new Set(reloadedLectures.map((lecture) => lecture.id)));
-
-      if (dbLectures) setLectures(reloadedLectures);
-      if (dbTodos) setTodos((dbTodos as Todo[]).filter(isActive));
-      if (dbTasks) setWorkTasks((dbTasks as WorkTask[]).filter(isActive));
-      if (dbSms) setSmsHistory((dbSms as SmsHistory[]).filter(isActive));
-      if (dbContactLogs) setContactLogs(dbContactLogs.map(normalizeContactLog).filter(isActive));
-      if (dbProfile) setProfile(dbProfile as InstructorProfile);
-
-      toast.dismiss();
-      toast.success(`로컬 데이터 업로드 완료! 총 ${uploadCount}개의 데이터와 강사 프로필을 동기화했습니다.`);
-    } catch (err: any) {
-      toast.dismiss();
-      console.error("수동 업로드 오류:", err);
-      toast.error("로컬 데이터를 업로드하지 못했습니다. 다시 시도해주세요.");
-      throw err;
-    }
-  }, [ownerId, profile]);
   return (
     <SupabaseContext.Provider
       value={{
@@ -1649,7 +1527,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         deleteContactLog,
         
         updateProfile,
-        uploadLocalDataToSupabase,
       }}
     >
       {children}
