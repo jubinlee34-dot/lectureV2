@@ -47,9 +47,11 @@ export interface Lecture {
   travelDistanceKm?: number | null;
   travelDurationMin?: number | null;
   travelUpdatedAt?: string | null;
+  /** Soft delete timestamp. null = active, non-null = in trash. */
+  deleted_at?: string | null;
 }
 
-export type LectureFormData = Omit<Lecture, "id" | "createdAt" | "user_id">;
+export type LectureFormData = Omit<Lecture, "id" | "createdAt" | "user_id" | "deleted_at">;
 export type SortOption = "date-desc" | "date-asc" | "title" | "organization";
 
 export type TodoPriority = "high" | "medium" | "low";

@@ -36,6 +36,7 @@ import TodoPage from "./pages/TodoPage";
 import LectureManagePage from "./pages/LectureManagePage";
 import InstructorProfilePage from "./pages/InstructorProfilePage";
 import LoginPage from "./pages/LoginPage";
+import TrashPage from "./pages/TrashPage";
 
 function WorkflowRedirect() {
   const [, navigate] = useLocation();
@@ -82,6 +83,9 @@ function Router() {
 
       {/* 검색 */}
       <Route path="/search" component={SearchPage} />
+
+      {/* 휴지통 */}
+      <Route path="/trash" component={TrashPage} />
 
       {/* 404 */}
       <Route component={NotFound} />
