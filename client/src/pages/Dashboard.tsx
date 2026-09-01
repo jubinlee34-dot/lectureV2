@@ -244,7 +244,7 @@ function getDueBadgeClassName(state: DashboardTodoDueState) {
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
-  const { lectures, upcomingLectures } = useLectures();
+  const { lectures, upcomingLectures, loading } = useLectures();
   const { pendingTodos, toggleTodo } = useTodos();
   const [smsTarget, setSmsTarget] = useState<Lecture | null>(null);
   const [feeOpen, setFeeOpen] = useState(false);
@@ -331,7 +331,9 @@ export default function Dashboard() {
                 캘린더 <ArrowRight className="h-3 w-3" />
               </button>
             </div>
-            {upcomingLectures.length === 0 ? (
+            {loading && upcomingLectures.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">불러오는 중입니다…</div>
+            ) : upcomingLectures.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">예정된 강의가 없습니다.</div>
             ) : (
               <div className="divide-y divide-border">
@@ -429,7 +431,9 @@ export default function Dashboard() {
                 전체 <ArrowRight className="h-3 w-3" />
               </button>
             </div>
-            {pendingTodos.length === 0 ? (
+            {loading && pendingTodos.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">불러오는 중입니다…</div>
+            ) : pendingTodos.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">진행 중인 할 일이 없습니다.</div>
             ) : (
               <div className="space-y-2">

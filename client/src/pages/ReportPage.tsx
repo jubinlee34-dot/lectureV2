@@ -10,7 +10,7 @@ import { useLocation, useParams } from "wouter";
 export default function ReportPage() {
   const [, navigate] = useLocation();
   const { id } = useParams<{ id: string }>();
-  const { getLectureById } = useLectures();
+  const { getLectureById, loading } = useLectures();
   const lecture = getLectureById(id);
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
@@ -34,6 +34,9 @@ export default function ReportPage() {
     navigate("/calendar");
   };
 
+  // 초기 로드 중에는 lectures가 비어 있어 조회가 실패한다.
+  // 아직 모르는 것과 실제로 없는 것을 구분한다.
+  if (loading && !lecture) return <LoadingLecture />;
   if (!lecture) return <Missing onBack={goBack} />;
 
   const copy = async () => {
@@ -75,6 +78,14 @@ function sanitizeReturnTo(value: string | null): string | null {
   if (!value) return null;
   if (!value.startsWith("/") || value.startsWith("//")) return null;
   return value;
+}
+
+function LoadingLecture() {
+  return (
+    <div className="mx-auto max-w-3xl p-6 text-center">
+      <p className="text-muted-foreground">강의를 불러오는 중입니다…</p>
+    </div>
+  );
 }
 
 function Missing({ onBack }: { onBack: () => void }) {

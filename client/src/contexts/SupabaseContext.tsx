@@ -357,6 +357,30 @@ export function trashDaysRemaining(deletedAt?: string | null): number {
 }
 
 /**
+ * Deletes lectures whose trash retention has run out.
+ *
+ * Housekeeping only, so it never rejects: it is awaited alongside the initial
+ * reads, and a rejection there would take the whole load down with it. Failures
+ * come back as a value for the caller to log.
+ */
+async function purgeExpiredTrash(ownerId: string): Promise<{ error: unknown }> {
+  try {
+    // `deleted_at < cutoff` already excludes active rows (NULL comparisons are
+    // never true), but the explicit NOT NULL guard is kept so that this
+    // destructive query can never widen by accident.
+    const { error } = await supabase
+      .from("lectures")
+      .delete()
+      .eq("user_id", ownerId)
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", trashPurgeCutoff());
+    return { error };
+  } catch (error) {
+    return { error };
+  }
+}
+
+/**
  * Children of a soft-deleted lecture stay in the database (option 3), so every
  * load has to hide them by looking at the parent's state. Rows with no parent
  * (a standalone todo) are always kept.
@@ -417,80 +441,72 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         setError(null);
 
-        // Purge lectures whose 30-day trash retention has run out. This is a
-        // best-effort housekeeping step: a failure here must never block the
-        // load, so it is caught and logged rather than thrown.
+        // These seven statements do not depend on each other, so they are sent
+        // concurrently: the wait collapses from seven round trips to one. State
+        // is only committed at the end of this function, so every page that
+        // looks a lecture up by id waits for the slowest of them -- that wait is
+        // what the user actually feels on a slow connection.
         //
-        // `deleted_at < cutoff` already excludes active rows (NULL comparisons
-        // are never true), but the explicit NOT NULL guard is kept so that this
-        // destructive query can never widen by accident.
-        const { error: purgeError } = await supabase
-          .from("lectures")
-          .delete()
-          .eq("user_id", ownerId)
-          .not("deleted_at", "is", null)
-          .lt("deleted_at", trashPurgeCutoff());
-        if (purgeError) {
-          logSupabaseError("purge expired trashed lectures failed", purgeError);
+        // The purge rides along rather than blocking the read: it only removes
+        // rows that `deleted_at IS NULL` already excludes, so it cannot race the
+        // lecture query into showing stale rows, and it never rejects.
+        const [
+          purgeResult,
+          lecturesResult,
+          todosResult,
+          tasksResult,
+          smsResult,
+          contactLogsResult,
+          profileResult,
+        ] = await Promise.all([
+          purgeExpiredTrash(ownerId),
+          supabase
+            .from("lectures")
+            .select("*")
+            .eq("user_id", ownerId)
+            .is("deleted_at", null)
+            .order("createdAt", { ascending: false }),
+          supabase.from("todos").select("*").eq("user_id", ownerId).order("createdAt", { ascending: false }),
+          supabase.from("work_tasks").select("*").eq("user_id", ownerId).order("createdAt", { ascending: true }),
+          supabase.from("sms_history").select("*").eq("user_id", ownerId).order("sentAt", { ascending: false }),
+          supabase
+            .from("lecture_contact_logs")
+            .select("*")
+            .eq("user_id", ownerId)
+            .order("occurredAt", { ascending: false }),
+          supabase.from("instructor_profile").select("*").eq("user_id", ownerId).maybeSingle(),
+        ]);
+
+        // Housekeeping only: a failed purge must never block the load.
+        if (purgeResult.error) {
+          logSupabaseError("purge expired trashed lectures failed", purgeResult.error);
         }
 
-        const { data: dbLectures, error: lecturesError } = await supabase
-          .from("lectures")
-          .select("*")
-          .eq("user_id", ownerId)
-          .is("deleted_at", null)
-          .order("createdAt", { ascending: false });
+        const readError =
+          lecturesResult.error ||
+          todosResult.error ||
+          tasksResult.error ||
+          smsResult.error ||
+          contactLogsResult.error ||
+          profileResult.error;
+        if (readError) throw readError;
 
-        if (lecturesError) throw lecturesError;
-
-        let loadedLectures = (dbLectures || []).map(normalizeLecture);
+        let loadedLectures = (lecturesResult.data || []).map(normalizeLecture);
 
         // Option 3: children of a trashed lecture stay in the database, so they
         // are filtered here by the set of lectures that are still active.
         const activeLectureIds = new Set(loadedLectures.map((lecture) => lecture.id));
         const isActive = belongsToActiveLecture(activeLectureIds);
 
-        const { data: dbTodos, error: todosErr } = await supabase
-          .from("todos")
-          .select("*")
-          .eq("user_id", ownerId)
-          .order("createdAt", { ascending: false });
-        if (todosErr) throw todosErr;
-        const loadedTodos: Todo[] = (dbTodos || []).filter(isActive);
-
-        const { data: dbTasks, error: tasksErr } = await supabase
-          .from("work_tasks")
-          .select("*")
-          .eq("user_id", ownerId)
-          .order("createdAt", { ascending: true });
-        if (tasksErr) throw tasksErr;
-        const loadedWorkTasks: WorkTask[] = (dbTasks || []).filter(isActive);
-
-        const { data: dbSms, error: smsErr } = await supabase
-          .from("sms_history")
-          .select("*")
-          .eq("user_id", ownerId)
-          .order("sentAt", { ascending: false });
-        if (smsErr) throw smsErr;
-        const loadedSmsHistory: SmsHistory[] = (dbSms || []).filter(isActive);
-
-        const { data: dbContactLogs, error: contactLogsErr } = await supabase
-          .from("lecture_contact_logs")
-          .select("*")
-          .eq("user_id", ownerId)
-          .order("occurredAt", { ascending: false });
-        if (contactLogsErr) throw contactLogsErr;
-        const loadedContactLogs: LectureContactLog[] = (dbContactLogs || [])
+        const loadedTodos: Todo[] = (todosResult.data || []).filter(isActive);
+        const loadedWorkTasks: WorkTask[] = (tasksResult.data || []).filter(isActive);
+        const loadedSmsHistory: SmsHistory[] = (smsResult.data || []).filter(isActive);
+        const loadedContactLogs: LectureContactLog[] = (contactLogsResult.data || [])
           .map(normalizeContactLog)
           .filter(isActive);
-
-        const { data: dbProfile, error: profileErr } = await supabase
-          .from("instructor_profile")
-          .select("*")
-          .eq("user_id", ownerId)
-          .maybeSingle();
-        if (profileErr) throw profileErr;
-        const loadedProfile: InstructorProfile | null = dbProfile ? (dbProfile as InstructorProfile) : null;
+        const loadedProfile: InstructorProfile | null = profileResult.data
+          ? (profileResult.data as InstructorProfile)
+          : null;
 
         const todayStr = formatLocalDate(new Date());
         const toAutoTransition = loadedLectures.filter(
