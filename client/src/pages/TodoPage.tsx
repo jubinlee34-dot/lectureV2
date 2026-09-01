@@ -620,7 +620,7 @@ export default function TodoPage() {
       )}
 
       <div className="space-y-2.5">
-        {loading ? (
+        {loading && filteredTodos.length === 0 ? (
           <div className="text-center py-10 border border-dashed border-border rounded-xl bg-card">
             <p className="text-sm text-muted-foreground">할 일을 불러오는 중입니다…</p>
           </div>

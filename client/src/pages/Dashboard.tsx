@@ -331,7 +331,7 @@ export default function Dashboard() {
                 캘린더 <ArrowRight className="h-3 w-3" />
               </button>
             </div>
-            {loading ? (
+            {loading && upcomingLectures.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">불러오는 중입니다…</div>
             ) : upcomingLectures.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">예정된 강의가 없습니다.</div>
@@ -431,7 +431,7 @@ export default function Dashboard() {
                 전체 <ArrowRight className="h-3 w-3" />
               </button>
             </div>
-            {loading ? (
+            {loading && pendingTodos.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">불러오는 중입니다…</div>
             ) : pendingTodos.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">진행 중인 할 일이 없습니다.</div>

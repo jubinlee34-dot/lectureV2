@@ -232,7 +232,7 @@ export default function WorkflowPage() {
         </div>
       )}
 
-      {loading ? (
+      {loading && filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center">
           <p className="text-sm text-muted-foreground">불러오는 중입니다…</p>
         </div>

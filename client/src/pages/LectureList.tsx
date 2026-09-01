@@ -272,7 +272,7 @@ export default function LectureList() {
               <p className="text-xs text-muted-foreground">{getSortDescription(statusFilter)}</p>
             </div>
 
-            {loading ? (
+            {loading && selectedMonthLectures.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-muted/20 py-10 text-center text-sm text-muted-foreground">
                 불러오는 중입니다…
               </div>

@@ -357,6 +357,30 @@ export function trashDaysRemaining(deletedAt?: string | null): number {
 }
 
 /**
+ * Deletes lectures whose trash retention has run out.
+ *
+ * Housekeeping only, so it never rejects: it is awaited alongside the initial
+ * reads, and a rejection there would take the whole load down with it. Failures
+ * come back as a value for the caller to log.
+ */
+async function purgeExpiredTrash(ownerId: string): Promise<{ error: unknown }> {
+  try {
+    // `deleted_at < cutoff` already excludes active rows (NULL comparisons are
+    // never true), but the explicit NOT NULL guard is kept so that this
+    // destructive query can never widen by accident.
+    const { error } = await supabase
+      .from("lectures")
+      .delete()
+      .eq("user_id", ownerId)
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", trashPurgeCutoff());
+    return { error };
+  } catch (error) {
+    return { error };
+  }
+}
+
+/**
  * Children of a soft-deleted lecture stay in the database (option 3), so every
  * load has to hide them by looking at the parent's state. Rows with no parent
  * (a standalone todo) are always kept.
@@ -417,15 +441,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         setError(null);
 
-        // These seven statements do not depend on each other, so they go out in
-        // one round trip instead of seven. The first paint of any page that
-        // looks a lecture up by id waits for this whole block -- state is only
-        // committed at the end -- so the round-trip count is what the user
-        // actually feels on a slow connection.
+        // These seven statements do not depend on each other, so they are sent
+        // concurrently: the wait collapses from seven round trips to one. State
+        // is only committed at the end of this function, so every page that
+        // looks a lecture up by id waits for the slowest of them -- that wait is
+        // what the user actually feels on a slow connection.
         //
-        // The purge rides along here rather than blocking the read: it only
-        // ever removes rows that `deleted_at IS NULL` already excludes, so it
-        // cannot race the lecture query into showing stale rows.
+        // The purge rides along rather than blocking the read: it only removes
+        // rows that `deleted_at IS NULL` already excludes, so it cannot race the
+        // lecture query into showing stale rows, and it never rejects.
         const [
           purgeResult,
           lecturesResult,
@@ -435,15 +459,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           contactLogsResult,
           profileResult,
         ] = await Promise.all([
-          // `deleted_at < cutoff` already excludes active rows (NULL comparisons
-          // are never true), but the explicit NOT NULL guard is kept so that
-          // this destructive query can never widen by accident.
-          supabase
-            .from("lectures")
-            .delete()
-            .eq("user_id", ownerId)
-            .not("deleted_at", "is", null)
-            .lt("deleted_at", trashPurgeCutoff()),
+          purgeExpiredTrash(ownerId),
           supabase
             .from("lectures")
             .select("*")
