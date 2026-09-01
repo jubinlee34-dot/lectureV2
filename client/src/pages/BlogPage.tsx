@@ -10,7 +10,7 @@ import { useLocation, useParams } from "wouter";
 export default function BlogPage() {
   const [, navigate] = useLocation();
   const { id } = useParams<{ id: string }>();
-  const { getLectureById } = useLectures();
+  const { getLectureById, loading } = useLectures();
   const lecture = getLectureById(id);
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
@@ -18,6 +18,16 @@ export default function BlogPage() {
   useEffect(() => {
     if (lecture) setText(generateBlogDraft(lecture));
   }, [lecture]);
+
+  // 초기 로드 중에는 lectures가 비어 있어 조회가 실패한다.
+  // 아직 모르는 것과 실제로 없는 것을 구분한다.
+  if (loading && !lecture) {
+    return (
+      <div className="mx-auto max-w-3xl p-6 text-center">
+        <p className="text-muted-foreground">강의를 불러오는 중입니다…</p>
+      </div>
+    );
+  }
 
   if (!lecture) {
     return (

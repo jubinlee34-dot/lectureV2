@@ -50,6 +50,7 @@ export default function WorkflowPage() {
     deleteLecture,
     bulkDeleteLectures,
     bulkUpdateLectures,
+    loading,
   } = useLectures();
 
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -231,7 +232,11 @@ export default function WorkflowPage() {
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="rounded-xl border border-border bg-card py-16 text-center">
+          <p className="text-sm text-muted-foreground">불러오는 중입니다…</p>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-16 text-center">
           <BookOpen className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">해당 단계의 강의가 없습니다.</p>

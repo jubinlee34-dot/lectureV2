@@ -190,7 +190,7 @@ function LectureSelectOptions({ groups }: { groups: LectureGroup[] }) {
 }
 
 export default function TodoPage() {
-  const { lectures } = useLectures();
+  const { lectures, loading } = useLectures();
   const {
     todos,
     pendingTodos,
@@ -620,7 +620,11 @@ export default function TodoPage() {
       )}
 
       <div className="space-y-2.5">
-        {filteredTodos.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-10 border border-dashed border-border rounded-xl bg-card">
+            <p className="text-sm text-muted-foreground">할 일을 불러오는 중입니다…</p>
+          </div>
+        ) : filteredTodos.length === 0 ? (
           <div className="text-center py-10 border border-dashed border-border rounded-xl bg-card">
             <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
             <p className="text-sm font-medium text-foreground">할 일이 없습니다.</p>

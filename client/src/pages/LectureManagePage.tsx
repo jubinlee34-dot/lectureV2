@@ -48,7 +48,7 @@ type TabType = "before" | "after" | "sms";
 export default function LectureManagePage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { lectures, updateLecture } = useLectures();
+  const { lectures, updateLecture, loading } = useLectures();
   const lecture = lectures.find((item) => item.id === id);
   const {
     beforeTasks,
@@ -88,6 +88,16 @@ export default function LectureManagePage() {
     ],
     [afterTasks, beforeTasks, smsList.length]
   );
+
+  // 초기 로드 중에는 lectures가 비어 있어 조회가 실패한다.
+  // 아직 모르는 것과 실제로 없는 것을 구분한다.
+  if (loading && !lecture) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8 text-center">
+        <p className="text-muted-foreground">강의를 불러오는 중입니다…</p>
+      </div>
+    );
+  }
 
   if (!lecture) {
     return (

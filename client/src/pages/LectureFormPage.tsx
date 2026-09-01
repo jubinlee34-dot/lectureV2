@@ -12,7 +12,7 @@ export default function LectureFormPage() {
   const params = useParams<{ id?: string }>();
   const search = useSearch();
   const queryDate = new URLSearchParams(search).get("date") || "";
-  const { addLecture, addRecurringLectures, updateLecture, getLectureById } = useLectures();
+  const { addLecture, addRecurringLectures, updateLecture, getLectureById, loading } = useLectures();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [lastCreatedLecture, setLastCreatedLecture] = useState<Lecture | null>(null);
@@ -72,6 +72,16 @@ export default function LectureFormPage() {
     setFormKey((key) => key + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // 초기 로드 중에는 lectures가 비어 있어 조회가 실패한다.
+  // 아직 모르는 것과 실제로 없는 것을 구분한다.
+  if (isEdit && loading && !lecture) {
+    return (
+      <div className="mx-auto max-w-2xl p-6 text-center">
+        <p className="text-muted-foreground">강의를 불러오는 중입니다…</p>
+      </div>
+    );
+  }
 
   if (isEdit && !lecture) {
     return (

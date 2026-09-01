@@ -41,7 +41,7 @@ const monthNames = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 export default function LectureList() {
   const [, navigate] = useLocation();
   const search = useSearch();
-  const { lectures, deleteLecture, bulkAddLectures, updateLecture } = useLectures();
+  const { lectures, deleteLecture, bulkAddLectures, updateLecture, loading } = useLectures();
   const currentYear = String(new Date().getFullYear());
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
@@ -231,7 +231,11 @@ export default function LectureList() {
         </section>
       )}
 
-      {lectures.length === 0 ? (
+      {loading && lectures.length === 0 ? (
+        <section className="rounded-xl border border-dashed border-border bg-card px-4 py-14 text-center">
+          <p className="text-sm text-muted-foreground">강의를 불러오는 중입니다…</p>
+        </section>
+      ) : lectures.length === 0 ? (
         <section className="rounded-xl border border-dashed border-border bg-card px-4 py-14 text-center">
           <Calendar className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
           <h2 className="text-base font-semibold text-foreground">등록된 강의가 없습니다.</h2>
@@ -268,7 +272,11 @@ export default function LectureList() {
               <p className="text-xs text-muted-foreground">{getSortDescription(statusFilter)}</p>
             </div>
 
-            {selectedMonthLectures.length === 0 ? (
+            {loading ? (
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 py-10 text-center text-sm text-muted-foreground">
+                불러오는 중입니다…
+              </div>
+            ) : selectedMonthLectures.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-muted/20 py-10 text-center text-sm text-muted-foreground">
                 이 달에는 등록된 강의가 없습니다.
               </div>
