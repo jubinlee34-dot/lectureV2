@@ -29,6 +29,14 @@ interface SupabaseContextType {
   bulkDeleteLectures: (ids: string[]) => Promise<void>;
   bulkUpdateLectures: (ids: string[], data: Partial<Lecture>) => Promise<void>;
 
+  // Trash Actions (soft delete, 30-day retention)
+  deletedLectures: Lecture[];
+  trashLoading: boolean;
+  refreshDeletedLectures: () => Promise<void>;
+  restoreLecture: (id: string) => Promise<void>;
+  permanentlyDeleteLecture: (id: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
+
   // Todo Actions
   addTodo: (data: { text: string; priority: TodoPriority; dueDate?: string; lectureId?: string }) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
@@ -324,7 +332,37 @@ function normalizeLecture(row: any): Lecture {
     travelDistanceKm: parseCachedDistance(row.travelDistanceKm),
     travelDurationMin: parseCachedDuration(row.travelDurationMin),
     travelUpdatedAt: row.travelUpdatedAt,
+    deleted_at: row.deleted_at ?? null,
   };
+}
+
+/**
+ * Days a soft-deleted lecture stays in the trash before it is purged.
+ * Mirrored in the privacy policy's retention wording -- keep the two in sync.
+ */
+export const TRASH_RETENTION_DAYS = 30;
+
+/** ISO timestamp for the purge cutoff: anything deleted before this is expired. */
+function trashPurgeCutoff(): string {
+  return new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** Remaining days before a trashed lecture is purged. 0 means it is due now. */
+export function trashDaysRemaining(deletedAt?: string | null): number {
+  if (!deletedAt) return TRASH_RETENTION_DAYS;
+  const elapsedMs = Date.now() - new Date(deletedAt).getTime();
+  if (Number.isNaN(elapsedMs)) return TRASH_RETENTION_DAYS;
+  const remaining = TRASH_RETENTION_DAYS - Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+  return Math.max(0, remaining);
+}
+
+/**
+ * Children of a soft-deleted lecture stay in the database (option 3), so every
+ * load has to hide them by looking at the parent's state. Rows with no parent
+ * (a standalone todo) are always kept.
+ */
+function belongsToActiveLecture<T extends { lectureId?: string | null }>(activeLectureIds: Set<string>) {
+  return (row: T) => !row.lectureId || activeLectureIds.has(row.lectureId);
 }
 
 function normalizeContactLog(row: any): LectureContactLog {
@@ -352,6 +390,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<InstructorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletedLectures, setDeletedLectures] = useState<Lecture[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
   const initializingRef = useRef<Record<string, boolean>>({});
   const lectureDeletionPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
   const { user } = useAuth();
@@ -367,6 +407,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setSmsHistory([]);
         setContactLogs([]);
         setProfile(null);
+        setDeletedLectures([]);
         setError("로그인한 사용자만 데이터에 접근할 수 있습니다.");
         setLoading(false);
         return;
@@ -376,15 +417,38 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         setError(null);
 
+        // Purge lectures whose 30-day trash retention has run out. This is a
+        // best-effort housekeeping step: a failure here must never block the
+        // load, so it is caught and logged rather than thrown.
+        //
+        // `deleted_at < cutoff` already excludes active rows (NULL comparisons
+        // are never true), but the explicit NOT NULL guard is kept so that this
+        // destructive query can never widen by accident.
+        const { error: purgeError } = await supabase
+          .from("lectures")
+          .delete()
+          .eq("user_id", ownerId)
+          .not("deleted_at", "is", null)
+          .lt("deleted_at", trashPurgeCutoff());
+        if (purgeError) {
+          logSupabaseError("purge expired trashed lectures failed", purgeError);
+        }
+
         const { data: dbLectures, error: lecturesError } = await supabase
           .from("lectures")
           .select("*")
           .eq("user_id", ownerId)
+          .is("deleted_at", null)
           .order("createdAt", { ascending: false });
 
         if (lecturesError) throw lecturesError;
 
         let loadedLectures = (dbLectures || []).map(normalizeLecture);
+
+        // Option 3: children of a trashed lecture stay in the database, so they
+        // are filtered here by the set of lectures that are still active.
+        const activeLectureIds = new Set(loadedLectures.map((lecture) => lecture.id));
+        const isActive = belongsToActiveLecture(activeLectureIds);
 
         const { data: dbTodos, error: todosErr } = await supabase
           .from("todos")
@@ -392,7 +456,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           .eq("user_id", ownerId)
           .order("createdAt", { ascending: false });
         if (todosErr) throw todosErr;
-        const loadedTodos: Todo[] = dbTodos || [];
+        const loadedTodos: Todo[] = (dbTodos || []).filter(isActive);
 
         const { data: dbTasks, error: tasksErr } = await supabase
           .from("work_tasks")
@@ -400,7 +464,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           .eq("user_id", ownerId)
           .order("createdAt", { ascending: true });
         if (tasksErr) throw tasksErr;
-        const loadedWorkTasks: WorkTask[] = dbTasks || [];
+        const loadedWorkTasks: WorkTask[] = (dbTasks || []).filter(isActive);
 
         const { data: dbSms, error: smsErr } = await supabase
           .from("sms_history")
@@ -408,7 +472,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           .eq("user_id", ownerId)
           .order("sentAt", { ascending: false });
         if (smsErr) throw smsErr;
-        const loadedSmsHistory: SmsHistory[] = dbSms || [];
+        const loadedSmsHistory: SmsHistory[] = (dbSms || []).filter(isActive);
 
         const { data: dbContactLogs, error: contactLogsErr } = await supabase
           .from("lecture_contact_logs")
@@ -416,7 +480,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           .eq("user_id", ownerId)
           .order("occurredAt", { ascending: false });
         if (contactLogsErr) throw contactLogsErr;
-        const loadedContactLogs: LectureContactLog[] = (dbContactLogs || []).map(normalizeContactLog);
+        const loadedContactLogs: LectureContactLog[] = (dbContactLogs || [])
+          .map(normalizeContactLog)
+          .filter(isActive);
 
         const { data: dbProfile, error: profileErr } = await supabase
           .from("instructor_profile")
@@ -694,7 +760,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const deletionPromise = (async () => {
       try {
         const currentOwnerId = requireOwnerId(ownerId);
-        const { data, error } = await supabase.from("lectures").delete().eq("id", id).eq("user_id", currentOwnerId).select("id");
+        // Soft delete: the row stays, children keep their CASCADE links, and
+        // the lecture becomes restorable from the trash for 30 days.
+        const { data, error } = await supabase
+          .from("lectures")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("user_id", currentOwnerId)
+          .is("deleted_at", null)
+          .select("id");
         if (error) throw error;
 
         assertAffectedRows(data, "삭제할 수 있는 강의가 없습니다.");
@@ -703,9 +777,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setWorkTasks((prev) => prev.filter((task) => task.lectureId !== id));
         setSmsHistory((prev) => prev.filter((sms) => sms.lectureId !== id));
         setContactLogs((prev) => prev.filter((log) => log.lectureId !== id));
-        toast.success("강의 일정이 성공적으로 삭제되었습니다.");
+        toast.success("강의를 휴지통으로 옮겼습니다.");
       } catch (error) {
-        logSupabaseError("delete lecture failed", error);
+        logSupabaseError("soft delete lecture failed", error);
         toast.error("강의를 삭제하지 못했습니다. 다시 시도해주세요.");
         throw error;
       }
@@ -719,14 +793,160 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   const bulkDeleteLectures = useCallback(async (ids: string[]): Promise<void> => {
     const currentOwnerId = requireOwnerId(ownerId);
-    const { data, error } = await supabase.from("lectures").delete().in("id", ids).eq("user_id", currentOwnerId).select("id");
+    const { data, error } = await supabase
+      .from("lectures")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", ids)
+      .eq("user_id", currentOwnerId)
+      .is("deleted_at", null)
+      .select("id");
     if (error) {
+      logSupabaseError("bulk soft delete lectures failed", error);
       toast.error("선택한 강의를 삭제하지 못했습니다. 다시 시도해주세요.");
       throw error;
     }
     const deletedIds = new Set(assertAffectedRows(data, "삭제할 수 있는 강의가 없습니다."));
     setLectures((prev) => prev.filter((lecture) => !deletedIds.has(lecture.id)));
-    toast.success("선택한 강의 일정이 삭제되었습니다.");
+    setTodos((prev) => prev.filter((todo) => !todo.lectureId || !deletedIds.has(todo.lectureId)));
+    setWorkTasks((prev) => prev.filter((task) => !deletedIds.has(task.lectureId)));
+    setSmsHistory((prev) => prev.filter((sms) => !deletedIds.has(sms.lectureId)));
+    setContactLogs((prev) => prev.filter((log) => !deletedIds.has(log.lectureId)));
+    toast.success("선택한 강의를 휴지통으로 옮겼습니다.");
+  }, [ownerId]);
+
+  const refreshDeletedLectures = useCallback(async (): Promise<void> => {
+    const currentOwnerId = requireOwnerId(ownerId);
+    setTrashLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("lectures")
+        .select("*")
+        .eq("user_id", currentOwnerId)
+        .not("deleted_at", "is", null)
+        .order("deleted_at", { ascending: false });
+      if (error) {
+        logSupabaseError("load trashed lectures failed", error);
+        throw error;
+      }
+      setDeletedLectures((data || []).map(normalizeLecture));
+    } finally {
+      setTrashLoading(false);
+    }
+  }, [ownerId]);
+
+  const restoreLecture = useCallback(async (id: string): Promise<void> => {
+    const currentOwnerId = requireOwnerId(ownerId);
+    const { data, error } = await supabase
+      .from("lectures")
+      .update({ deleted_at: null })
+      .eq("id", id)
+      .eq("user_id", currentOwnerId)
+      .not("deleted_at", "is", null)
+      .select("*");
+    if (error) {
+      logSupabaseError("restore lecture failed", error);
+      toast.error("강의를 복원하지 못했습니다. 다시 시도해주세요.");
+      throw error;
+    }
+    if (!data || data.length === 0) {
+      const message = "복원할 수 있는 강의가 없습니다.";
+      toast.error(message);
+      throw new Error(message);
+    }
+
+    // The children were never deleted, so restoring the parent is enough to
+    // bring them back. Reload them so the active lists pick them up again.
+    const restored = normalizeLecture(data[0]);
+    const [todosResult, tasksResult, smsResult, logsResult] = await Promise.all([
+      supabase.from("todos").select("*").eq("user_id", currentOwnerId).eq("lectureId", id),
+      supabase.from("work_tasks").select("*").eq("user_id", currentOwnerId).eq("lectureId", id),
+      supabase.from("sms_history").select("*").eq("user_id", currentOwnerId).eq("lectureId", id),
+      supabase.from("lecture_contact_logs").select("*").eq("user_id", currentOwnerId).eq("lectureId", id),
+    ]);
+
+    // The lecture itself is back either way; a child reload that fails only
+    // means those rows stay hidden until the next full load, so it is logged
+    // rather than thrown.
+    const childFailure = [todosResult, tasksResult, smsResult, logsResult].find((result) => result.error);
+    if (childFailure?.error) {
+      logSupabaseError("reload children after restore failed", childFailure.error);
+      toast.warning("강의는 복원했지만 일부 연결 데이터를 불러오지 못했습니다. 새로고침해 주세요.");
+    }
+
+    // Keep the newest-first order the active list is loaded with, rather than
+    // pushing the restored lecture to the top regardless of its createdAt.
+    setLectures((prev) =>
+      [restored, ...prev.filter((lecture) => lecture.id !== id)].sort((a, b) =>
+        (b.createdAt ?? "").localeCompare(a.createdAt ?? "")
+      )
+    );
+    setDeletedLectures((prev) => prev.filter((lecture) => lecture.id !== id));
+    if (todosResult.data) {
+      setTodos((prev) => [...prev.filter((todo) => todo.lectureId !== id), ...(todosResult.data as Todo[])]);
+    }
+    if (tasksResult.data) {
+      setWorkTasks((prev) => [...prev.filter((task) => task.lectureId !== id), ...(tasksResult.data as WorkTask[])]);
+    }
+    if (smsResult.data) {
+      setSmsHistory((prev) => [...prev.filter((sms) => sms.lectureId !== id), ...(smsResult.data as SmsHistory[])]);
+    }
+    if (logsResult.data) {
+      setContactLogs((prev) => [
+        ...prev.filter((log) => log.lectureId !== id),
+        ...logsResult.data.map(normalizeContactLog),
+      ]);
+    }
+    if (!childFailure) {
+      toast.success("강의를 복원했습니다.");
+    }
+  }, [ownerId]);
+
+  const permanentlyDeleteLecture = useCallback(async (id: string): Promise<void> => {
+    const currentOwnerId = requireOwnerId(ownerId);
+    // Hard delete. The existing ON DELETE CASCADE foreign keys clear todos,
+    // work_tasks, sms_history, lecture_contact_logs and message_drafts.
+    const { data, error } = await supabase
+      .from("lectures")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", currentOwnerId)
+      .not("deleted_at", "is", null)
+      .select("id");
+    if (error) {
+      logSupabaseError("permanently delete lecture failed", error);
+      toast.error("강의를 완전히 삭제하지 못했습니다. 다시 시도해주세요.");
+      throw error;
+    }
+    if (!data || data.length === 0) {
+      // Already purged elsewhere (another tab, or the 30-day sweep on load).
+      const message = "완전히 삭제할 수 있는 강의가 없습니다.";
+      toast.error(message);
+      setDeletedLectures((prev) => prev.filter((lecture) => lecture.id !== id));
+      throw new Error(message);
+    }
+    setDeletedLectures((prev) => prev.filter((lecture) => lecture.id !== id));
+    toast.success("강의를 완전히 삭제했습니다.");
+  }, [ownerId]);
+
+  const emptyTrash = useCallback(async (): Promise<void> => {
+    const currentOwnerId = requireOwnerId(ownerId);
+    const { data, error } = await supabase
+      .from("lectures")
+      .delete()
+      .eq("user_id", currentOwnerId)
+      .not("deleted_at", "is", null)
+      .select("id");
+    if (error) {
+      logSupabaseError("empty trash failed", error);
+      toast.error("휴지통을 비우지 못했습니다. 다시 시도해주세요.");
+      throw error;
+    }
+    setDeletedLectures([]);
+    if (!data || data.length === 0) {
+      toast.info("휴지통이 이미 비어 있습니다.");
+      return;
+    }
+    toast.success(`휴지통을 비웠습니다. 강의 ${data.length}건을 완전히 삭제했습니다.`);
   }, [ownerId]);
 
   const bulkUpdateLectures = useCallback(async (ids: string[], data: Partial<Lecture>): Promise<void> => {
@@ -1333,18 +1553,23 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
       }
 
-      const { data: dbLectures } = await supabase.from("lectures").select("*").eq("user_id", currentOwnerId).order("createdAt", { ascending: false });
+      const { data: dbLectures } = await supabase.from("lectures").select("*").eq("user_id", currentOwnerId).is("deleted_at", null).order("createdAt", { ascending: false });
       const { data: dbTodos } = await supabase.from("todos").select("*").eq("user_id", currentOwnerId).order("createdAt", { ascending: false });
       const { data: dbTasks } = await supabase.from("work_tasks").select("*").eq("user_id", currentOwnerId).order("createdAt", { ascending: true });
       const { data: dbSms } = await supabase.from("sms_history").select("*").eq("user_id", currentOwnerId).order("sentAt", { ascending: false });
       const { data: dbContactLogs } = await supabase.from("lecture_contact_logs").select("*").eq("user_id", currentOwnerId).order("occurredAt", { ascending: false });
       const { data: dbProfile } = await supabase.from("instructor_profile").select("*").eq("user_id", currentOwnerId).maybeSingle();
 
-      if (dbLectures) setLectures(dbLectures.map(normalizeLecture));
-      if (dbTodos) setTodos(dbTodos);
-      if (dbTasks) setWorkTasks(dbTasks);
-      if (dbSms) setSmsHistory(dbSms);
-      if (dbContactLogs) setContactLogs(dbContactLogs.map(normalizeContactLog));
+      // Same option-3 rule as the initial load: hide children whose parent is
+      // in the trash.
+      const reloadedLectures = (dbLectures || []).map(normalizeLecture);
+      const isActive = belongsToActiveLecture(new Set(reloadedLectures.map((lecture) => lecture.id)));
+
+      if (dbLectures) setLectures(reloadedLectures);
+      if (dbTodos) setTodos((dbTodos as Todo[]).filter(isActive));
+      if (dbTasks) setWorkTasks((dbTasks as WorkTask[]).filter(isActive));
+      if (dbSms) setSmsHistory((dbSms as SmsHistory[]).filter(isActive));
+      if (dbContactLogs) setContactLogs(dbContactLogs.map(normalizeContactLog).filter(isActive));
       if (dbProfile) setProfile(dbProfile as InstructorProfile);
 
       toast.dismiss();
@@ -1375,6 +1600,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         calculateLectureRoute,
         deleteLecture,
         bulkDeleteLectures,
+        deletedLectures,
+        trashLoading,
+        refreshDeletedLectures,
+        restoreLecture,
+        permanentlyDeleteLecture,
+        emptyTrash,
         bulkUpdateLectures,
         
         addTodo,

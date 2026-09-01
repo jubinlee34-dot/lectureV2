@@ -10,6 +10,7 @@ import {
   PenLine,
   Search,
   Settings,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/lectures/new", label: "강의 등록", icon: PenLine, group: "sub" },
   { path: "/search", label: "검색", icon: Search, group: "sub" },
   { path: "/profile", label: "강사 프로필", icon: User, group: "sub" },
+  { path: "/trash", label: "휴지통", icon: Trash2, group: "sub" },
   { path: "/setup", label: "설정 점검", icon: Settings, group: "sub" },
 ];
 

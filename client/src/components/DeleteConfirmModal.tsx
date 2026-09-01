@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { TRASH_RETENTION_DAYS } from "@/contexts/SupabaseContext";
 
 interface DeleteConfirmModalProps {
   /** 모달 열림/닫힘 상태 */
@@ -41,14 +42,15 @@ export function DeleteConfirmModal({
     <AlertDialog open={open} onOpenChange={(v) => !v && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>강의를 삭제하시겠습니까?</AlertDialogTitle>
+          <AlertDialogTitle>강의를 휴지통으로 옮길까요?</AlertDialogTitle>
           <AlertDialogDescription>
             {lectureName && (
               <span className="font-medium text-foreground">
                 &ldquo;{lectureName}&rdquo;
               </span>
             )}{" "}
-            강의를 삭제하면 복구할 수 없습니다. 정말 삭제하시겠습니까?
+            강의와 연결된 할 일·업무·문자·연락 기록이 목록에서 사라집니다. 휴지통에서 {TRASH_RETENTION_DAYS}일 안에 복원할 수 있고, 기간이
+            지나면 자동으로 완전히 삭제됩니다.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
