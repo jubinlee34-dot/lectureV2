@@ -15,6 +15,7 @@ interface AuthContextValue {
   loading: boolean;
   authError: string | null;
   signIn: (email: string, password: string) => Promise<AuthActionResult>;
+  signInWithGoogle: () => Promise<AuthActionResult>;
   signOut: () => Promise<AuthActionResult>;
 }
 
@@ -116,6 +117,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const signInWithGoogle = useCallback(async (): Promise<AuthActionResult> => {
+    if (!supabaseConfig.ready) {
+      setAuthError(MISSING_SUPABASE_CONFIG_MESSAGE);
+      return { error: MISSING_SUPABASE_CONFIG_MESSAGE };
+    }
+
+    setAuthError(null);
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+
+      if (error) {
+        setAuthError(error.message);
+        return { error: error.message };
+      }
+
+      return { error: null };
+    } catch {
+      const message = "Google 로그인 중 오류가 발생했습니다.";
+      setAuthError(message);
+      return { error: message };
+    }
+  }, []);
+
   const signOut = useCallback(async (): Promise<AuthActionResult> => {
     if (!supabaseConfig.ready) {
       setAuthError(MISSING_SUPABASE_CONFIG_MESSAGE);
@@ -149,9 +179,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       authError,
       signIn,
+      signInWithGoogle,
       signOut,
     }),
-    [authError, loading, session, signIn, signOut, user]
+    [authError, loading, session, signIn, signInWithGoogle, signOut, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
