@@ -11,6 +11,31 @@
 
 ---
 
+## lectureV2 작업 스킬
+
+반복 코딩 작업에서는 필요에 따라 아래 스킬을 사용한다.
+
+- `.agents/skills/next-action/SKILL.md`: Notion + GitHub 실제 상태를 근거로 다음 작업 후보 3개 제안
+- `.agents/skills/scope-lock/SKILL.md`: 구현 전 GOAL / SCOPE IN / SCOPE OUT / DONE EVIDENCE 고정
+- `.agents/skills/goal-lock/SKILL.md`: 승인된 목표를 PLAN → DO → VERIFY 순서로 수행하고 검증 없는 완료 보고 방지
+- `.agents/skills/pre-push/SKILL.md`: push 전 민감정보·위험 변경·check/build/diff 검증
+
+스킬은 AGENTS.md의 승인 경계를 대체하지 않는다. 충돌 시 이 문서의 승인 규칙을 우선한다.
+
+### 통합 작업 실행 루프
+
+사용자가 다음 작업 진행을 요청한 경우 기본 흐름은 다음과 같다.
+
+**Notion 확인 → GitHub 기준점 확인 → 조사 → 우선순위 판단 → next-action → 사용자 선택/승인 → scope-lock → goal-lock → 구현 → 검증 → pre-push(필요 시) → 결과 보고 → 요청된 경우 Notion 업데이트**
+
+- `next-action`은 조사 결과와 현재 상태를 바탕으로 최대 3개 후보만 제안하며 자동 구현하지 않는다.
+- 조사 없이 `next-action`만으로 작업을 결정하지 않는다.
+- 간단한 1파일 수정은 `scope-lock`을 축약할 수 있다.
+- push가 예정되지 않은 작업은 `pre-push`를 생략할 수 있다.
+- DB, 인증, 개인정보, 보안, migration이 관련된 경우 조사 단계와 승인 경계를 생략하지 않는다.
+
+---
+
 ## Notion 기반 작업 관리
 
 ### 작업 관리 위치
@@ -252,13 +277,3 @@ Notion 페이지 생성·수정은 사용자가 다음과 같이 요청한 경�
 - 완료 / 진행중 / 보류를 구분한다.
 - 실패한 작업과 미해결 오류를 누락하지 않는다.
 - 기존 기록을 임의로 삭제하거나 덮어쓰지 않는다.
-
----
-
-## 기본 에이전트 실행 루프
-
-사용자가 `노션 작업 리스트 기준으로 다음 작업 진행`이라고 요청하면 기본적으로 다음 순서를 따른다.
-
-**Notion 확인 → GitHub 기준점 확인 → 조사 → 우선순위 판단 → 작업 계획 보고 → 승인된 범위 구현 → 검증 → 결과 보고 → 요청된 경우 Notion 업데이트**
-
-DB, 인증, 개인정보, 보안, migration이 관련된 경우 조사 단계와 승인 경계를 생략하지 않는다.
