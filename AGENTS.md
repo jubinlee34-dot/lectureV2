@@ -11,6 +11,30 @@
 
 ---
 
+## lectureV2 작업 스킬
+
+반복 코딩 작업에서는 필요에 따라 아래 스킬을 사용한다.
+
+- `.agents/skills/next-action/SKILL.md`: Notion + GitHub 실제 상태를 근거로 다음 작업 후보 3개 제안
+- `.agents/skills/scope-lock/SKILL.md`: 구현 전 GOAL / SCOPE IN / SCOPE OUT / DONE EVIDENCE 고정
+- `.agents/skills/goal-lock/SKILL.md`: 승인된 목표를 PLAN → DO → VERIFY 순서로 수행하고 검증 없는 완료 보고 방지
+- `.agents/skills/pre-push/SKILL.md`: push 전 민감정보·위험 변경·check/build/diff 검증
+
+스킬은 AGENTS.md의 승인 경계를 대체하지 않는다. 충돌 시 이 문서의 승인 규칙을 우선한다.
+
+### 기본 스킬 실행 루프
+
+사용자가 다음 작업 진행을 요청한 경우 기본 흐름은 다음과 같다.
+
+**Notion 확인 → GitHub 기준점 확인 → next-action → 사용자 선택/승인 → scope-lock → goal-lock → 구현 → 검증 → pre-push → 결과 보고 → 요청된 경우 Notion 업데이트**
+
+- `next-action`은 제안만 하며 자동 구현하지 않는다.
+- 간단한 1파일 수정은 `scope-lock`을 축약할 수 있다.
+- push가 예정되지 않은 작업은 `pre-push`를 생략할 수 있다.
+- DB, 인증, 개인정보, 보안, migration이 관련된 경우 스킬과 무관하게 조사 단계와 승인 경계를 생략하지 않는다.
+
+---
+
 ## Notion 기반 작업 관리
 
 ### 작업 관리 위치
