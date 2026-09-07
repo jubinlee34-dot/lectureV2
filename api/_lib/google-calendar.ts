@@ -332,7 +332,18 @@ export async function googleCalendarHandler(
   const origin = req.headers.origin;
   if (origin) {
     try {
-      if (new URL(origin).host !== req.headers.host) throw new Error();
+      const originHost = new URL(origin).host;
+      const forwardedHost = req.headers["x-forwarded-host"];
+      const forwardedHosts = (
+        Array.isArray(forwardedHost) ? forwardedHost : [forwardedHost]
+      )
+        .flatMap(value => value?.split(",") ?? [])
+        .map(value => value.trim())
+        .filter(Boolean);
+      const allowedHosts = [req.headers.host, ...forwardedHosts].filter(
+        (value): value is string => Boolean(value)
+      );
+      if (!allowedHosts.includes(originHost)) throw new Error();
     } catch {
       respond(403, { code: "origin", error: "허용되지 않은 요청입니다." });
       return;
