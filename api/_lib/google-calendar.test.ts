@@ -5,6 +5,8 @@ import {
   lectureEvent,
   monthRange,
   overlaps,
+  sameCalendarEvent,
+  type CalendarEvent,
 } from "../../shared/googleCalendar";
 
 const env = {
@@ -27,8 +29,14 @@ const body = {
   lectureId: lecture.id,
   googleAccessToken: "test-token",
 };
+const monthBody = {
+  action: "createMonth",
+  month: "2026-09",
+  googleAccessToken: "test-token",
+};
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
+
 function upstream(
   options: {
     sub?: string;
@@ -38,13 +46,15 @@ function upstream(
     tokenStatus?: number;
     rows?: unknown[];
     existing?: number;
-    items?: unknown[];
+    items?: CalendarEvent[];
     pages?: boolean;
-    secondPageItems?: unknown[];
-    insertStatus?: number;
+    secondPageItems?: CalendarEvent[];
+    insertStatuses?: number[];
   } = {}
 ) {
   const calls: { url: string; init?: RequestInit }[] = [];
+  const inserted = new Map<string, CalendarEvent>();
+  let insertIndex = 0;
   const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
@@ -69,22 +79,32 @@ function upstream(
       );
     if (url.includes("/rest/v1/lectures?"))
       return json(options.rows ?? [lecture]);
-    if (init?.method === "POST") return json({}, options.insertStatus ?? 200);
-    if (/\/events\/[a-f0-9]+\?/.test(url))
+    const eventMatch = url.match(/\/events\/([a-f0-9]+)\?/);
+    if (eventMatch) {
+      if (inserted.has(eventMatch[1])) return json(inserted.get(eventMatch[1]));
       return json({}, options.existing ?? 404);
+    }
+    if (init?.method === "POST") {
+      const status = options.insertStatuses?.[insertIndex++] ?? 200;
+      if (status >= 200 && status < 300) {
+        const event = JSON.parse(String(init.body)) as CalendarEvent;
+        inserted.set(event.id, event);
+      }
+      return json({}, status);
+    }
     if (options.secondPageItems && new URL(url).searchParams.has("pageToken"))
       return json({ items: options.secondPageItems });
     return json({
-      items: options.items ?? [],
+      items: [...(options.items ?? []), ...inserted.values()],
       ...(options.pages || options.secondPageItems
         ? { nextPageToken: "more" }
         : {}),
     });
   };
-  return { fetcher: fetcher as typeof fetch, calls };
+  return { fetcher: fetcher as typeof fetch, calls, inserted };
 }
 
-describe("Calendar 시간 및 최소 필드", () => {
+describe("Calendar 시간 및 중복 비교", () => {
   it("연말 월 경계와 KST를 보존한다", () => {
     expect(monthRange("2026-12")).toEqual({
       timeMin: "2026-12-01T00:00:00+09:00",
@@ -114,28 +134,47 @@ describe("Calendar 시간 및 최소 필드", () => {
     ])
       expect(() => lectureEvent({ ...lecture, ...change })).toThrow();
   });
-  it("종일 겹침과 경계를 구분하고 취소/투명 일정은 제외한다", () => {
+  it("정확한 제목+시작+종료만 중복으로 보고 timezone 표현 차이를 허용한다", () => {
     const event = lectureEvent(lecture);
-    const other = {
-      id: "other",
-      start: { date: lecture.date },
-      end: { date: "2026-09-07" },
-    };
-    expect(overlaps(event, other)).toBe(true);
-    expect(overlaps(event, { ...other, transparency: "transparent" })).toBe(
-      false
-    );
-    expect(overlaps(event, { ...other, status: "cancelled" })).toBe(false);
     expect(
-      overlaps(event, {
-        id: "later",
-        ...lectureEvent({ ...lecture, startTime: "11:00", endTime: "12:00" }),
+      sameCalendarEvent(event, {
+        id: "same",
+        summary: event.summary,
+        start: { dateTime: "2026-09-06T01:00:00Z" },
+        end: { dateTime: "2026-09-06T02:00:00Z" },
+      })
+    ).toBe(true);
+    expect(
+      sameCalendarEvent(event, {
+        id: "different-title",
+        summary: "다른 일정",
+        start: event.start,
+        end: event.end,
+      })
+    ).toBe(false);
+    expect(
+      sameCalendarEvent(event, {
+        id: "cancelled",
+        status: "cancelled",
+        summary: event.summary,
+        start: event.start,
+        end: event.end,
       })
     ).toBe(false);
   });
+  it("overlaps는 다른 용도를 위해 기존 동작을 유지한다", () => {
+    const event = lectureEvent(lecture);
+    expect(
+      overlaps(event, {
+        id: "busy",
+        start: { dateTime: "2026-09-06T10:30:00+09:00" },
+        end: { dateTime: "2026-09-06T11:30:00+09:00" },
+      })
+    ).toBe(true);
+  });
 });
 
-describe("Calendar 서버 경계와 등록", () => {
+describe("Calendar 서버 경계", () => {
   it.each([
     [{ authStatus: 401 }, "session"],
     [{ tokenStatus: 400 }, "reconnect"],
@@ -176,17 +215,11 @@ describe("Calendar 서버 경계와 등록", () => {
     expect(url.searchParams.get("timeMin")).toBe("2026-09-01T00:00:00+09:00");
     expect(url.searchParams.get("fields")).not.toContain("description");
   });
-  it("없는/타인/삭제 강의는 등록하지 않는다", async () => {
-    const mock = upstream({ rows: [] });
-    await expect(
-      calendarAction(body, "Bearer session", env, mock.fetcher)
-    ).rejects.toMatchObject({ code: "lecture" });
-    const url = new URL(mock.calls.at(-1)!.url);
-    expect(url.searchParams.get("user_id")).toBe("eq.owner");
-    expect(url.searchParams.get("deleted_at")).toBe("is.null");
-  });
+});
+
+describe("단건 등록 중복 원칙", () => {
   it.each([200, 410])(
-    "기존 등록/삭제 이력 %i는 재삽입하지 않는다",
+    "기존 deterministic id 상태 %i는 재삽입하지 않는다",
     async existing => {
       const mock = upstream({ existing });
       expect(
@@ -195,62 +228,174 @@ describe("Calendar 서버 경계와 등록", () => {
       expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
     }
   );
-  it("시간 겹침이 있으면 등록하지 않는다", async () => {
-    const mock = upstream({
-      items: [{ id: "busy", ...lectureEvent(lecture) }],
-    });
-    expect(
-      await calendarAction(body, "Bearer session", env, mock.fetcher)
-    ).toMatchObject({ result: "conflict" });
-    expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
-  });
-  it("조회가 불완전하면 등록하지 않는다", async () => {
-    const mock = upstream({ pages: true });
-    await expect(
-      calendarAction(body, "Bearer session", env, mock.fetcher)
-    ).rejects.toMatchObject({ code: "incomplete" });
-    expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
-  });
-  it("두 번째 페이지의 겹침도 등록을 차단한다", async () => {
-    const mock = upstream({
-      secondPageItems: [{ id: "second-page", ...lectureEvent(lecture) }],
-    });
-    expect(
-      await calendarAction(body, "Bearer session", env, mock.fetcher)
-    ).toMatchObject({ result: "conflict" });
-    expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
-  });
-  it.each([
-    [401, "reconnect"],
-    [403, "permission"],
-    [429, "retry"],
-    [500, "retry"],
-  ] as const)(
-    "Google 오류 %i를 안전한 상태로 변환한다",
-    async (existing, code) => {
-      const mock = upstream({ existing });
-      await expect(
-        calendarAction(body, "Bearer session", env, mock.fetcher)
-      ).rejects.toMatchObject({ code });
-    }
-  );
-  it("등록 요청은 개인정보를 최소화하고 재시도 ID를 유지한다", async () => {
-    const mock = upstream();
-    await calendarAction(body, "Bearer session", env, mock.fetcher);
-    await calendarAction(body, "Bearer session", env, mock.fetcher);
-    const inserts = mock.calls
-      .filter(call => call.init?.method === "POST")
-      .map(call => JSON.parse(String(call.init!.body)));
-    expect(inserts[0].id).toMatch(/^[a-f0-9]{64}$/);
-    expect(inserts[0].id).toBe(inserts[1].id);
-    expect(inserts[0].visibility).toBe("private");
-    expect(JSON.stringify(inserts)).not.toContain("private notes");
-    expect(JSON.stringify(inserts)).not.toContain("test-token");
-  });
-  it("동시 삽입 409는 중복 결과로 반환한다", async () => {
-    const mock = upstream({ insertStatus: 409 });
+  it("동일 제목+시작+종료 일정은 중복 제외한다", async () => {
+    const event = lectureEvent(lecture);
+    const mock = upstream({ items: [{ id: "same", ...event }] });
     expect(
       await calendarAction(body, "Bearer session", env, mock.fetcher)
     ).toMatchObject({ result: "duplicate" });
+    expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
+  });
+  it("같은 시간대의 다른 제목 일정은 등록한다", async () => {
+    const event = lectureEvent(lecture);
+    const mock = upstream({
+      items: [{ id: "busy", ...event, summary: "다른 Google 일정" }],
+    });
+    expect(
+      await calendarAction(body, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ result: "created" });
+    expect(mock.calls.filter(call => call.init?.method === "POST")).toHaveLength(1);
+  });
+  it("일부 시간만 겹치는 별도 일정도 등록한다", async () => {
+    const mock = upstream({
+      items: [
+        {
+          id: "partial",
+          summary: "다른 Google 일정",
+          start: { dateTime: "2026-09-06T10:30:00+09:00" },
+          end: { dateTime: "2026-09-06T11:30:00+09:00" },
+        },
+      ],
+    });
+    expect(
+      await calendarAction(body, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ result: "created" });
+  });
+  it("동시 삽입 409는 중복 결과로 반환한다", async () => {
+    const mock = upstream({ insertStatuses: [409] });
+    expect(
+      await calendarAction(body, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ result: "duplicate" });
+  });
+});
+
+describe("월 전체 등록", () => {
+  it("빈 월은 0/0/0으로 반환한다", async () => {
+    const mock = upstream({ rows: [] });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toEqual({
+      createdCount: 0,
+      duplicateCount: 0,
+      failedCount: 0,
+      items: [],
+    });
+  });
+  it("1건을 정상 생성한다", async () => {
+    const mock = upstream();
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 1, duplicateCount: 0, failedCount: 0 });
+  });
+  it("여러 강의를 모두 생성한다", async () => {
+    const mock = upstream({
+      rows: [
+        lecture,
+        { ...lecture, id: "lecture-2", date: "2026-09-07", title: "두번째" },
+        { ...lecture, id: "lecture-3", date: "2026-09-08", title: "세번째" },
+      ],
+    });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 3, duplicateCount: 0, failedCount: 0 });
+  });
+  it("deterministic id가 있으면 중복 제외한다", async () => {
+    const mock = upstream({ existing: 200 });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 0, duplicateCount: 1, failedCount: 0 });
+  });
+  it("동일 제목+시작+종료 Google 일정은 중복 제외한다", async () => {
+    const mock = upstream({
+      items: [{ id: "same", ...lectureEvent(lecture) }],
+    });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 0, duplicateCount: 1, failedCount: 0 });
+  });
+  it("시간만 겹치는 다른 일정은 생성한다", async () => {
+    const mock = upstream({
+      items: [
+        {
+          id: "busy",
+          summary: "다른 일정",
+          start: { dateTime: "2026-09-06T10:15:00+09:00" },
+          end: { dateTime: "2026-09-06T10:45:00+09:00" },
+        },
+      ],
+    });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 1, duplicateCount: 0, failedCount: 0 });
+  });
+  it("잘못된 강의는 실패 집계하고 나머지는 계속 등록한다", async () => {
+    const mock = upstream({
+      rows: [
+        { ...lecture, id: "invalid", startTime: "25:00" },
+        { ...lecture, id: "valid", title: "정상 강의" },
+      ],
+    });
+    const result = await calendarAction(
+      monthBody,
+      "Bearer session",
+      env,
+      mock.fetcher
+    );
+    expect(result).toMatchObject({
+      createdCount: 1,
+      duplicateCount: 0,
+      failedCount: 1,
+    });
+    expect(mock.inserted.size).toBe(1);
+  });
+  it("일부 Google 등록 실패에도 성공 항목을 되돌리지 않고 계속 처리한다", async () => {
+    const mock = upstream({
+      rows: [
+        { ...lecture, id: "one", title: "하나" },
+        { ...lecture, id: "two", title: "둘", date: "2026-09-07" },
+        { ...lecture, id: "three", title: "셋", date: "2026-09-08" },
+      ],
+      insertStatuses: [200, 500, 200],
+    });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 2, duplicateCount: 0, failedCount: 1 });
+    expect(mock.inserted.size).toBe(2);
+  });
+  it("같은 batch 안의 동일 일정 두 개는 하나만 생성한다", async () => {
+    const mock = upstream({
+      rows: [lecture, { ...lecture, id: "lecture-copy" }],
+    });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 1, duplicateCount: 1, failedCount: 0 });
+    expect(mock.inserted.size).toBe(1);
+  });
+  it("동일 월 재실행은 신규 중복을 만들지 않는다", async () => {
+    const mock = upstream();
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 1, duplicateCount: 0 });
+    expect(
+      await calendarAction(monthBody, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ createdCount: 0, duplicateCount: 1 });
+    expect(mock.inserted.size).toBe(1);
+  });
+  it.each([
+    ["2026-08", "gte.2026-08-01", "lt.2026-09-01"],
+    ["2026-10", "gte.2026-10-01", "lt.2026-11-01"],
+  ])("이동한 월 %s의 강의 범위만 서버에서 조회한다", async (month, gte, lt) => {
+    const mock = upstream({ rows: [] });
+    await calendarAction(
+      { ...monthBody, month },
+      "Bearer session",
+      env,
+      mock.fetcher
+    );
+    const lectureCall = mock.calls.find(call => call.url.includes("/rest/v1/lectures?"));
+    const url = new URL(lectureCall!.url);
+    expect(url.searchParams.getAll("date")).toEqual([gte, lt]);
+    expect(url.searchParams.get("user_id")).toBe("eq.owner");
+    expect(url.searchParams.get("deleted_at")).toBe("is.null");
   });
 });
