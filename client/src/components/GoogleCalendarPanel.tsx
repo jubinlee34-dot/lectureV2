@@ -2,12 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import type { Lecture } from "@/types/lecture";
-import {
-  CALENDAR_SCOPE,
-  lectureEvent,
-  overlaps,
-  type CalendarEvent,
-} from "@shared/googleCalendar";
+import { CALENDAR_SCOPE, type CalendarEvent } from "@shared/googleCalendar";
 
 interface TokenResponse {
   access_token?: string;
@@ -56,7 +51,6 @@ export function GoogleCalendarPanel({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loadedMonth, setLoadedMonth] = useState("");
   const [message, setMessage] = useState("");
-  const [selected, setSelected] = useState("");
   const [reload, setReload] = useState(0);
   const token = useRef<{ value: string; expiresAt: number } | null>(null);
   const epoch = useRef(0);
@@ -73,17 +67,6 @@ export function GoogleCalendarPanel({
   const monthLectures = lectures
     .filter(lecture => lecture.date.startsWith(month))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const lecture = monthLectures.find(item => item.id === selected);
-  let preview: ReturnType<typeof lectureEvent> | undefined;
-  let invalid = "";
-  if (lecture) {
-    try {
-      preview = lectureEvent(lecture);
-    } catch (error) {
-      invalid = (error as Error).message;
-    }
-  }
-  const conflict = preview && events.some(event => overlaps(preview!, event));
 
   function clearConnection(text = "") {
     epoch.current++;
@@ -178,7 +161,6 @@ export function GoogleCalendarPanel({
   }
 
   useEffect(() => {
-    setSelected("");
     setEvents([]);
     setLoadedMonth("");
     if (!connected) return;
@@ -253,25 +235,24 @@ export function GoogleCalendarPanel({
     }
   }
 
-  async function register() {
-    if (!lecture || busy || !preview || conflict || loadedMonth !== month)
-      return;
+  async function registerMonth() {
+    if (busy || !monthLectures.length) return;
     setBusy(true);
     setMessage("");
     const requestEpoch = ++epoch.current;
     const abort = new AbortController();
     controller.current = abort;
     try {
-      const result = await api(
-        "create",
-        { lectureId: lecture.id },
-        abort.signal
-      );
+      const result = await api("createMonth", { month }, abort.signal);
       if (mounted.current && requestEpoch === epoch.current) {
-        setMessage(result.message);
+        setMessage(
+          `등록 ${result.createdCount}건 / 중복 제외 ${result.duplicateCount}건 / 실패 ${result.failedCount}건`
+        );
         const data = await api("list", { month }, abort.signal);
-        if (mounted.current && requestEpoch === epoch.current)
+        if (mounted.current && requestEpoch === epoch.current) {
           setEvents(data.events);
+          setLoadedMonth(month);
+        }
       }
     } catch (error) {
       if (
@@ -374,87 +355,66 @@ export function GoogleCalendarPanel({
         </p>
       )}
       {connected && (
-        <>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">
-                이 달 Google 일정{" "}
-                {loadedMonth === month ? `(${events.length})` : ""}
-              </h3>
-              {busy && (
-                <p className="text-sm" role="status">
-                  확인 중…
-                </p>
-              )}
-              {!busy && loadedMonth === month && !events.length && (
-                <p className="text-sm text-muted-foreground">
-                  이 달에 등록된 일정이 없습니다.
-                </p>
-              )}
-              <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
-                {events.map(event => (
-                  <li key={event.id} className="rounded border p-2">
-                    <span className="text-muted-foreground">
-                      {displayTime(event)}
-                    </span>
-                    <br />
-                    {event.summary || "제목 없는 일정"}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">
+              이 달 Google 일정{" "}
+              {loadedMonth === month ? `(${events.length})` : ""}
+            </h3>
+            {busy && (
+              <p className="text-sm" role="status">
+                확인 중…
+              </p>
+            )}
+            {!busy && loadedMonth === month && !events.length && (
+              <p className="text-sm text-muted-foreground">
+                이 달에 등록된 일정이 없습니다.
+              </p>
+            )}
+            <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+              {events.map(event => (
+                <li key={event.id} className="rounded border p-2">
+                  <span className="text-muted-foreground">
+                    {displayTime(event)}
+                  </span>
+                  <br />
+                  {event.summary || "제목 없는 일정"}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">
+              이 달 lectureV2 강의 ({monthLectures.length})
+            </h3>
+            {!monthLectures.length ? (
+              <p className="text-sm text-muted-foreground">
+                이 달에 등록할 강의가 없습니다.
+              </p>
+            ) : (
+              <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+                {monthLectures.map(lecture => (
+                  <li key={lecture.id}>
+                    {lecture.date} · {lecture.title}
                   </li>
                 ))}
               </ul>
-            </div>
-            <div>
-              <label
-                htmlFor="google-calendar-lecture"
-                className="mb-2 block text-sm font-semibold"
-              >
-                이 달 강의 등록
-              </label>
-              <select
-                id="google-calendar-lecture"
-                className="w-full rounded-md border bg-background p-2 text-sm"
-                value={selected}
-                disabled={busy || loadedMonth !== month}
-                onChange={event => setSelected(event.target.value)}
-              >
-                <option value="">등록할 강의 선택</option>
-                {monthLectures.map(item => (
-                  <option key={item.id} value={item.id}>
-                    {item.date} · {item.title}
-                  </option>
-                ))}
-              </select>
-              {preview && (
-                <p className="mt-2 text-sm">
-                  {preview.summary}
-                  <br />
-                  {lecture!.date} {preview.start.dateTime.slice(11, 16)}–
-                  {preview.end.dateTime.slice(11, 16)} (한국 시간)
-                </p>
-              )}
-              {invalid && <p className="mt-2 text-sm">{invalid}</p>}
-              {conflict && (
-                <p className="mt-2 text-sm">
-                  겹치는 Google 일정이 있어 등록할 수 없습니다. 이미 등록한
-                  강의인지 확인하세요.
-                </p>
-              )}
-              <p className="my-2 text-xs text-muted-foreground">
-                제목·기관·시간만 전송합니다. 비공개·알림 없음으로 등록하며,
-                앱에서 변경하거나 삭제해도 Google 일정은 유지됩니다.
-              </p>
-              <Button
-                size="sm"
-                disabled={
-                  busy || !preview || !!conflict || loadedMonth !== month
-                }
-                onClick={register}
-              >
-                중복 확인 후 등록
-              </Button>
-            </div>
+            )}
+            <p className="my-2 text-xs text-muted-foreground">
+              이 달 강의를 한 번에 처리합니다. 같은 강의 또는 제목·시작·종료
+              시간이 모두 같은 Google 일정은 중복 제외하고, 시간만 겹치는 다른
+              일정은 등록합니다. 제목·기관·시간만 전송하며 비공개·알림 없음으로
+              등록합니다.
+            </p>
+            <Button
+              size="sm"
+              disabled={busy || !monthLectures.length}
+              onClick={registerMonth}
+            >
+              {busy ? "처리 중…" : "이 달 강의 전체 등록"}
+            </Button>
           </div>
-        </>
+        </div>
       )}
     </section>
   );

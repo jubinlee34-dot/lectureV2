@@ -4,7 +4,7 @@ import {
   CALENDAR_SCOPE,
   lectureEvent,
   monthRange,
-  overlaps,
+  sameCalendarEvent,
   type CalendarEvent,
   type CalendarLecture,
 } from "../../shared/googleCalendar.js";
@@ -20,10 +20,19 @@ class CalendarError extends Error {
   }
 }
 type Fetcher = typeof fetch;
+type RegistrationItem = {
+  lectureId: string;
+  result: "created" | "duplicate" | "failed";
+  message: string;
+};
 const fields = "id,summary,status,transparency,start,end";
 const fail = (status: number, code: string, message: string): never => {
   throw new CalendarError(status, code, message);
 };
+const eventId = (base: string, userId: string, lectureId: string) =>
+  createHash("sha256")
+    .update(JSON.stringify(["lectureV2-calendar-v1", base, userId, lectureId]))
+    .digest("hex");
 
 export async function calendarAction(
   body: Record<string, unknown>,
@@ -132,6 +141,95 @@ export async function calendarAction(
       "일정이 너무 많아 전체 조회를 마치지 못했습니다. 등록하지 않았습니다."
     );
   };
+  const fetchLectures = async (query: URLSearchParams) => {
+    const lectureResponse = await request(`${base}/rest/v1/lectures?${query}`, {
+      headers: authHeaders,
+    });
+    if (!lectureResponse.ok)
+      fail(502, "lecture", "강의 정보를 확인하지 못했습니다.");
+    return (await lectureResponse.json()) as CalendarLecture[];
+  };
+  const registerLecture = async (
+    row: CalendarLecture,
+    knownEvents: CalendarEvent[],
+    partialFailure: boolean
+  ): Promise<RegistrationItem> => {
+    let event;
+    try {
+      event = lectureEvent(row);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "강의 시간을 확인하세요.";
+      if (!partialFailure) fail(400, "input", message);
+      return { lectureId: row.id, result: "failed", message };
+    }
+    const id = eventId(base!, user.id, row.id);
+    try {
+      const existing = await google(`/${id}?fields=${encodeURIComponent(fields)}`);
+      if (existing.ok || existing.status === 410)
+        return {
+          lectureId: row.id,
+          result: "duplicate",
+          message: "이미 등록된 강의입니다. Google에서 확인하세요.",
+        };
+      if (existing.status !== 404)
+        return {
+          lectureId: row.id,
+          result: "failed",
+          message: "기존 등록 여부를 확인하지 못했습니다.",
+        };
+      if (knownEvents.some(other => sameCalendarEvent(event, other)))
+        return {
+          lectureId: row.id,
+          result: "duplicate",
+          message: "동일한 제목과 시간이 있는 일정은 중복 제외했습니다.",
+        };
+      const inserted = await google("?sendUpdates=none", {
+        method: "POST",
+        body: JSON.stringify({
+          ...event,
+          id,
+          visibility: "private",
+          reminders: { useDefault: false },
+          extendedProperties: { private: { lectureV2Key: id } },
+        }),
+      });
+      if (inserted.status === 409)
+        return {
+          lectureId: row.id,
+          result: "duplicate",
+          message: "이미 등록된 강의입니다. 다시 조회해 확인하세요.",
+        };
+      if (!inserted.ok)
+        return {
+          lectureId: row.id,
+          result: "failed",
+          message: "등록 결과를 확인하지 못했습니다.",
+        };
+      knownEvents.push({ id, ...event });
+      return {
+        lectureId: row.id,
+        result: "created",
+        message: "Google 주 캘린더에 등록했습니다.",
+      };
+    } catch (error) {
+      if (
+        !partialFailure ||
+        (error instanceof CalendarError &&
+          ["session", "reconnect", "account", "permission"].includes(error.code))
+      )
+        throw error;
+      return {
+        lectureId: row.id,
+        result: "failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Google Calendar 등록에 실패했습니다.",
+      };
+    }
+  };
+
   if (body.action === "list") {
     let range;
     try {
@@ -141,6 +239,47 @@ export async function calendarAction(
     }
     return { events: await list(range) };
   }
+
+  if (body.action === "createMonth") {
+    let range;
+    let month;
+    try {
+      month = String(body.month);
+      range = monthRange(month);
+    } catch {
+      return fail(400, "input", "등록할 월을 확인하세요.");
+    }
+    const nextDate = range.timeMax.slice(0, 10);
+    const query = new URLSearchParams({
+      select: "id,title,organization,date,duration,startTime,endTime",
+      user_id: `eq.${user.id}`,
+      deleted_at: "is.null",
+      date: `gte.${month}-01`,
+      order: "date.asc,startTime.asc",
+    });
+    query.append("date", `lt.${nextDate}`);
+    const rows = await fetchLectures(query);
+    if (rows.length > 1000)
+      fail(422, "input", "한 달 강의가 너무 많아 일괄 등록할 수 없습니다.");
+    if (!rows.length)
+      return {
+        createdCount: 0,
+        duplicateCount: 0,
+        failedCount: 0,
+        items: [] as RegistrationItem[],
+      };
+    const knownEvents = await list(range);
+    const items: RegistrationItem[] = [];
+    for (const row of rows)
+      items.push(await registerLecture(row, knownEvents, true));
+    return {
+      createdCount: items.filter(item => item.result === "created").length,
+      duplicateCount: items.filter(item => item.result === "duplicate").length,
+      failedCount: items.filter(item => item.result === "failed").length,
+      items,
+    };
+  }
+
   if (
     body.action !== "create" ||
     typeof body.lectureId !== "string" ||
@@ -153,17 +292,12 @@ export async function calendarAction(
     user_id: `eq.${user.id}`,
     deleted_at: "is.null",
   });
-  const lectureResponse = await request(`${base}/rest/v1/lectures?${query}`, {
-    headers: authHeaders,
-  });
-  if (!lectureResponse.ok)
-    fail(502, "lecture", "강의 정보를 확인하지 못했습니다.");
-  const rows = await lectureResponse.json();
+  const rows = await fetchLectures(query);
   if (rows.length !== 1)
     fail(404, "lecture", "등록 가능한 강의를 찾을 수 없습니다.");
   let event;
   try {
-    event = lectureEvent(rows[0] as CalendarLecture);
+    event = lectureEvent(rows[0]);
   } catch (error) {
     return fail(
       400,
@@ -171,57 +305,12 @@ export async function calendarAction(
       error instanceof Error ? error.message : "강의 시간을 확인하세요."
     );
   }
-  const id = createHash("sha256")
-    .update(
-      JSON.stringify(["lectureV2-calendar-v1", base, user.id, rows[0].id])
-    )
-    .digest("hex");
-  const existing = await google(`/${id}?fields=${encodeURIComponent(fields)}`);
-  if (existing.ok)
-    return {
-      result: "duplicate",
-      message: "이미 등록된 강의입니다. Google에서 확인하세요.",
-    };
-  if (existing.status === 410)
-    return {
-      result: "duplicate",
-      message:
-        "Google에서 삭제된 등록 이력이 있습니다. Google Calendar에서 확인하세요.",
-    };
-  if (existing.status !== 404)
-    fail(502, "upstream", "기존 등록 여부를 확인하지 못했습니다.");
-  // Check the actual interval, independent of the month currently displayed in the browser.
-  const events = await list({
+  const knownEvents = await list({
     timeMin: event.start.dateTime,
     timeMax: event.end.dateTime,
   });
-  if (events.some(other => overlaps(event, other)))
-    return {
-      result: "conflict",
-      message: "같은 시간에 기존 Google 일정이 있어 등록하지 않았습니다.",
-    };
-  const inserted = await google("?sendUpdates=none", {
-    method: "POST",
-    body: JSON.stringify({
-      ...event,
-      id,
-      visibility: "private",
-      reminders: { useDefault: false },
-      extendedProperties: { private: { lectureV2Key: id } },
-    }),
-  });
-  if (inserted.status === 409)
-    return {
-      result: "duplicate",
-      message: "이미 등록된 강의입니다. 다시 조회해 확인하세요.",
-    };
-  if (!inserted.ok)
-    fail(
-      502,
-      "upstream",
-      "등록 결과를 확인하지 못했습니다. 다시 조회한 뒤 재시도하세요."
-    );
-  return { result: "created", message: "Google 주 캘린더에 등록했습니다." };
+  const result = await registerLecture(rows[0], knownEvents, false);
+  return { result: result.result, message: result.message };
 }
 
 export async function googleCalendarHandler(

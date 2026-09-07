@@ -67,16 +67,26 @@ window.fetch = async (input, init) => {
             : [],
       })
     );
-  const result = inserted ? "duplicate" : "created";
-  inserted = true;
+  if (request.action === "createMonth") {
+    const duplicate = inserted;
+    inserted = true;
+    return new Response(
+      JSON.stringify({
+        createdCount: duplicate ? 0 : 1,
+        duplicateCount: duplicate ? 1 : 0,
+        failedCount: 0,
+        items: [
+          {
+            lectureId: lecture.id,
+            result: duplicate ? "duplicate" : "created",
+          },
+        ],
+      })
+    );
+  }
   return new Response(
-    JSON.stringify({
-      result,
-      message:
-        result === "created"
-          ? "Google 주 캘린더에 등록했습니다."
-          : "이미 등록된 강의입니다.",
-    })
+    JSON.stringify({ code: "input", error: "지원하지 않는 테스트 요청입니다." }),
+    { status: 400 }
   );
 };
 function Fixture() {
