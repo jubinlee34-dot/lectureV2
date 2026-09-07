@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import { googleCalendarHandler } from "../api/_lib/google-calendar.js";
 
 interface Coords {
   x: string;
@@ -183,6 +184,7 @@ async function searchKakaoPlaces(query: string, apiKey: string) {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  app.all("/api/google-calendar", (req, res) => { void googleCalendarHandler(req, res); });
 
   app.get("/api/naver-directions", async (req, res) => {
     try {

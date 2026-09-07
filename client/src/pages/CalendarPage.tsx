@@ -1,4 +1,5 @@
 import { CalendarGrid } from "@/components/CalendarGrid";
+import { GoogleCalendarPanel } from "@/components/GoogleCalendarPanel";
 import { CalendarQuickCard } from "@/components/CalendarQuickCard";
 import { ImportModal } from "@/components/ImportModal";
 import {
@@ -288,6 +289,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      <GoogleCalendarPanel month={`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`} lectures={lectures} onMoveMonth={moveMonth} />
       <div className="flex flex-col gap-4 md:h-[calc(100dvh-11rem)] md:min-h-0">
         <div className="grid min-h-0 grid-cols-1 gap-4 md:h-[clamp(320px,46dvh,430px)] md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-stretch">
           <section className="min-h-0 min-w-0 md:h-full md:[&>section]:h-full">

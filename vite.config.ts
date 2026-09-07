@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
+import { googleCalendarHandler } from "./api/_lib/google-calendar";
 
 interface Coords {
   x: string;
@@ -271,7 +272,12 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, rootDir, "");
 
   return {
-    plugins: [react(), tailwindcss(), vitePluginNaverDirectionsProxy(env), vitePluginKakaoPlacesProxy(env)],
+    plugins: [react(), tailwindcss(), vitePluginNaverDirectionsProxy(env), vitePluginKakaoPlacesProxy(env), {
+      name: "google-calendar-api",
+      configureServer(server) {
+        server.middlewares.use("/api/google-calendar", (req, res) => { void googleCalendarHandler(req, res, env); });
+      },
+    }],
     resolve: {
       alias: {
         "@": path.resolve(rootDir, "client", "src"),
