@@ -172,6 +172,23 @@ describe("Calendar 시간 및 중복 비교", () => {
       })
     ).toBe(true);
   });
+  it("overlaps는 경계와 취소/투명 일정을 기존 방식으로 구분한다", () => {
+    const event = lectureEvent(lecture);
+    const allDay = {
+      id: "all-day",
+      start: { date: lecture.date },
+      end: { date: "2026-09-07" },
+    };
+    expect(overlaps(event, allDay)).toBe(true);
+    expect(overlaps(event, { ...allDay, status: "cancelled" })).toBe(false);
+    expect(overlaps(event, { ...allDay, transparency: "transparent" })).toBe(false);
+    expect(
+      overlaps(event, {
+        id: "later",
+        ...lectureEvent({ ...lecture, startTime: "11:00", endTime: "12:00" }),
+      })
+    ).toBe(false);
+  });
 });
 
 describe("Calendar 서버 경계", () => {
@@ -266,6 +283,62 @@ describe("단건 등록 중복 원칙", () => {
     expect(
       await calendarAction(body, "Bearer session", env, mock.fetcher)
     ).toMatchObject({ result: "duplicate" });
+  });
+  it("없는/타인/삭제 강의는 서버 소유권 필터에서 등록하지 않는다", async () => {
+    const mock = upstream({ rows: [] });
+    await expect(
+      calendarAction(body, "Bearer session", env, mock.fetcher)
+    ).rejects.toMatchObject({ code: "lecture" });
+    const lectureCall = mock.calls.find(call => call.url.includes("/rest/v1/lectures?"));
+    const url = new URL(lectureCall!.url);
+    expect(url.searchParams.get("id")).toBe("eq.lecture-1");
+    expect(url.searchParams.get("user_id")).toBe("eq.owner");
+    expect(url.searchParams.get("deleted_at")).toBe("is.null");
+  });
+  it("Google 일정 조회가 페이지 제한으로 불완전하면 등록하지 않는다", async () => {
+    const mock = upstream({ pages: true });
+    await expect(
+      calendarAction(body, "Bearer session", env, mock.fetcher)
+    ).rejects.toMatchObject({ code: "incomplete" });
+    expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
+  });
+  it("두 번째 Google 페이지의 exact duplicate도 중복 제외한다", async () => {
+    const mock = upstream({
+      secondPageItems: [{ id: "second-page", ...lectureEvent(lecture) }],
+    });
+    expect(
+      await calendarAction(body, "Bearer session", env, mock.fetcher)
+    ).toMatchObject({ result: "duplicate" });
+    expect(mock.calls.some(call => call.init?.method === "POST")).toBe(false);
+  });
+  it.each([
+    [401, "reconnect"],
+    [403, "permission"],
+    [429, "retry"],
+    [500, "retry"],
+  ] as const)(
+    "Google 오류 %i를 안전한 상태로 변환한다",
+    async (existing, code) => {
+      const mock = upstream({ existing });
+      await expect(
+        calendarAction(body, "Bearer session", env, mock.fetcher)
+      ).rejects.toMatchObject({ code });
+    }
+  );
+  it("등록 요청은 개인정보를 최소화하고 deterministic id를 유지한다", async () => {
+    const first = upstream();
+    const second = upstream();
+    await calendarAction(body, "Bearer session", env, first.fetcher);
+    await calendarAction(body, "Bearer session", env, second.fetcher);
+    const firstInsert = first.calls.find(call => call.init?.method === "POST")!;
+    const secondInsert = second.calls.find(call => call.init?.method === "POST")!;
+    const firstBody = JSON.parse(String(firstInsert.init!.body));
+    const secondBody = JSON.parse(String(secondInsert.init!.body));
+    expect(firstBody.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(firstBody.id).toBe(secondBody.id);
+    expect(firstBody.visibility).toBe("private");
+    expect(JSON.stringify(firstBody)).not.toContain("private notes");
+    expect(JSON.stringify(firstBody)).not.toContain("test-token");
   });
 });
 
