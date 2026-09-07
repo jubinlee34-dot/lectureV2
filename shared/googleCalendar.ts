@@ -70,16 +70,46 @@ export function lectureEvent(lecture: CalendarLecture) {
   };
 }
 
+const eventTimestamp = (value: CalendarEvent["start"]) => {
+  const source = value.dateTime || (value.date ? `${value.date}T00:00:00+09:00` : "");
+  const timestamp = Date.parse(source);
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+};
+
+export function sameCalendarEvent(
+  expected: Pick<CalendarEvent, "summary" | "start" | "end">,
+  actual: CalendarEvent
+) {
+  if (actual.status === "cancelled") return false;
+  const expectedStart = eventTimestamp(expected.start);
+  const expectedEnd = eventTimestamp(expected.end);
+  const actualStart = eventTimestamp(actual.start);
+  const actualEnd = eventTimestamp(actual.end);
+  return (
+    expected.summary === actual.summary &&
+    expectedStart !== undefined &&
+    expectedEnd !== undefined &&
+    expectedStart === actualStart &&
+    expectedEnd === actualEnd
+  );
+}
+
 export function overlaps(
   a: Pick<CalendarEvent, "start" | "end">,
   b: CalendarEvent
 ) {
   if (b.status === "cancelled" || b.transparency === "transparent")
     return false;
-  const timestamp = (value: CalendarEvent["start"]) =>
-    Date.parse(value.dateTime || `${value.date}T00:00:00+09:00`);
-  return (
-    timestamp(a.start) < timestamp(b.end) &&
-    timestamp(a.end) > timestamp(b.start)
-  );
+  const startA = eventTimestamp(a.start);
+  const endA = eventTimestamp(a.end);
+  const startB = eventTimestamp(b.start);
+  const endB = eventTimestamp(b.end);
+  if (
+    startA === undefined ||
+    endA === undefined ||
+    startB === undefined ||
+    endB === undefined
+  )
+    return false;
+  return startA < endB && endA > startB;
 }
