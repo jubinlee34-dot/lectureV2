@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { calendarAction } from "./google-calendar";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { calendarAction, googleCalendarHandler } from "./google-calendar";
 import {
   CALENDAR_SCOPE,
   lectureEvent,
@@ -36,6 +37,11 @@ const monthBody = {
 };
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function upstream(
   options: {
@@ -232,6 +238,142 @@ describe("Calendar 서버 경계", () => {
     expect(url.searchParams.get("timeMin")).toBe("2026-09-01T00:00:00+09:00");
     expect(url.searchParams.get("fields")).not.toContain("description");
   });
+});
+
+describe("Google 403 안전한 진단 응답", () => {
+  const secret =
+    "private-token private-sub private@example.test upstream-message";
+  it.each([
+    ["accessNotConfigured", "PERMISSION_DENIED"],
+    ["userRateLimitExceeded", "RESOURCE_EXHAUSTED"],
+    ["rateLimitExceeded", "unknown"],
+    ["quotaExceeded", "unknown"],
+    ["domainPolicy", "PERMISSION_DENIED"],
+    ["insufficientPermissions", "PERMISSION_DENIED"],
+  ])(
+    "허용된 reason/status만 HTTP 응답에 노출한다: %s",
+    async (reason, status) => {
+      await verifyResponse(
+        {
+          error: {
+            errors: [{ reason, message: secret, location: secret }],
+            status,
+            message: secret,
+            token: secret,
+            sub: secret,
+            email: secret,
+            details: [{ metadata: { secret } }],
+          },
+        },
+        reason,
+        status
+      );
+    }
+  );
+
+  it("현대 ErrorInfo의 고정 reason을 읽고 metadata를 버린다", async () => {
+    await verifyResponse(
+      {
+        error: {
+          status: "PERMISSION_DENIED",
+          message: secret,
+          errors: [{ reason: secret }],
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+              reason: "SERVICE_DISABLED",
+              metadata: { consumer: secret },
+            },
+          ],
+        },
+      },
+      "SERVICE_DISABLED",
+      "PERMISSION_DENIED"
+    );
+  });
+
+  it.each([
+    null,
+    [],
+    {},
+    { error: null },
+    { error: [] },
+    { error: { errors: secret, details: secret, status: secret } },
+    { error: { errors: [null, [], { reason: secret }], status: secret } },
+    {
+      error: {
+        errors: [{ reason: "accessNotConfigured " + secret }],
+        status: "PERMISSION_DENIED " + secret,
+      },
+    },
+    {
+      error: {
+        errors: [{ reason: { toString: "accessNotConfigured" } }],
+        status: ["PERMISSION_DENIED"],
+      },
+    },
+    { error: { details: [{ "@type": "other", reason: "SERVICE_DISABLED" }] } },
+  ])(
+    "알 수 없는 값과 비정상 구조는 unknown으로 제한한다: %#",
+    async payload => {
+      await verifyResponse(payload, "unknown", "unknown");
+    }
+  );
+
+  it("비 JSON 응답에서도 403 permission을 유지한다", async () => {
+    await verifyResponse(
+      new Response(secret, { status: 403 }),
+      "unknown",
+      "unknown"
+    );
+  });
+
+  async function verifyResponse(
+    payload: unknown,
+    reason: string,
+    status: string
+  ) {
+    const mock = upstream();
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) =>
+        String(input).includes("/calendar/v3/")
+          ? payload instanceof Response
+            ? payload
+            : json(payload, 403)
+          : mock.fetcher(input, init)
+    );
+    const logs = ["log", "warn", "error", "info", "debug"] as const;
+    const spies = logs.map(level =>
+      vi.spyOn(console, level).mockImplementation(() => {})
+    );
+    const req = {
+      method: "POST",
+      headers: {
+        host: "preview.test",
+        origin: "https://preview.test",
+        "content-type": "application/json",
+        authorization: "Bearer session",
+      },
+      body: { ...body, action: "list", month: "2026-09" },
+    } as unknown as IncomingMessage;
+    let output = "";
+    const res = {
+      statusCode: 0,
+      setHeader: vi.fn(),
+      end: (value: string) => {
+        output = value;
+      },
+    };
+    await googleCalendarHandler(req, res as unknown as ServerResponse, env);
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(output)).toEqual({
+      code: "permission",
+      error: `Google 권한 또는 조직 정책·사용 한도를 확인한 뒤 다시 시도하세요. (reason=${reason}; status=${status})`,
+    });
+    expect(output).not.toContain(secret);
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  }
 });
 
 describe("단건 등록 중복 원칙", () => {

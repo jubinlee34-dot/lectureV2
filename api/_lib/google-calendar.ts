@@ -34,6 +34,54 @@ const eventId = (base: string, userId: string, lectureId: string) =>
     .update(JSON.stringify(["lectureV2-calendar-v1", base, userId, lectureId]))
     .digest("hex");
 
+// Only exact, fixed diagnostic codes may cross the upstream trust boundary.
+// Never return/log Google's message, metadata, identifiers, or request URL.
+async function googleForbiddenDiagnostic(response: Response) {
+  const reasons = [
+    "accessNotConfigured",
+    "forbidden",
+    "forbiddenForNonOrganizer",
+    "insufficientPermissions",
+    "domainPolicy",
+    "dailyLimitExceeded",
+    "userRateLimitExceeded",
+    "rateLimitExceeded",
+    "quotaExceeded",
+    "SERVICE_DISABLED",
+    "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+    "RATE_LIMIT_EXCEEDED",
+    "QUOTA_EXCEEDED",
+  ];
+  const statuses = ["PERMISSION_DENIED", "RESOURCE_EXHAUSTED"];
+  const record = (value: unknown): Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    // Non-JSON and unreadable bodies must preserve the original 403 category.
+  }
+  const error = record(record(payload).error);
+  const legacy = Array.isArray(error.errors) ? error.errors : [];
+  const details = Array.isArray(error.details) ? error.details : [];
+  const candidates = [
+    ...legacy.map(item => record(item).reason),
+    ...details
+      .filter(
+        item =>
+          record(item)["@type"] === "type.googleapis.com/google.rpc.ErrorInfo"
+      )
+      .map(item => record(item).reason),
+  ];
+  const reason =
+    reasons.find(allowed => candidates.includes(allowed)) ?? "unknown";
+  const status =
+    statuses.find(allowed => error.status === allowed) ?? "unknown";
+  return `reason=${reason}; status=${status}`;
+}
+
 export async function calendarAction(
   body: Record<string, unknown>,
   bearer: string,
@@ -104,7 +152,7 @@ export async function calendarAction(
       fail(
         403,
         "permission",
-        "Google 권한 또는 조직 정책·사용 한도를 확인한 뒤 다시 시도하세요."
+        `Google 권한 또는 조직 정책·사용 한도를 확인한 뒤 다시 시도하세요. (${await googleForbiddenDiagnostic(response)})`
       );
     if (response.status === 429 || response.status >= 500)
       fail(
