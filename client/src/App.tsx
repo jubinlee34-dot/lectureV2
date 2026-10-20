@@ -108,7 +108,7 @@ function AuthGate() {
   if (!session) return <LoginPage />;
 
   return (
-    <SupabaseProvider>
+    <SupabaseProvider key={session.user.id}>
       <AuthenticatedApp />
     </SupabaseProvider>
   );
