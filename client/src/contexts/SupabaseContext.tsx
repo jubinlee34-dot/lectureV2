@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { formatLocalDate } from "../lib/date";
 import { useAuth } from "./AuthContext";
@@ -437,8 +437,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const ownerId = user?.id ?? null;
 
-  // Initialize and sync existing Supabase data only.
-  useEffect(() => {
+  // AuthGate keys this provider by user ID, resetting all state before rendering
+  // another account. Layout cleanup invalidates requests during the unmount
+  // commit, before a settled promise can publish data or start a follow-up write.
+  useLayoutEffect(() => {
+    let active = true;
     async function initDb() {
       if (!ownerId) {
         setLectures([]);
@@ -497,6 +500,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           supabase.from("instructor_profile").select("*").eq("user_id", ownerId).maybeSingle(),
         ]);
 
+        if (!active) return;
+
         // Housekeeping only: a failed purge must never block the load.
         if (purgeResult.error) {
           logSupabaseError("purge expired trashed lectures failed", purgeResult.error);
@@ -543,6 +548,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
             .eq("user_id", ownerId)
             .select("id");
 
+          if (!active) return;
+
           if (!updateErr) {
             const transitionedIds = new Set((transitionedRows ?? []).map((row) => row.id));
             loadedLectures = loadedLectures.map((lecture) =>
@@ -558,15 +565,17 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setContactLogs(loadedContactLogs);
         setProfile(loadedProfile);
       } catch (err: any) {
+        if (!active) return;
         console.error("Supabase 초기 로드 오류:", err);
         setError("데이터를 불러오지 못했습니다. 다시 시도해주세요.");
         toast.error("데이터를 불러오지 못했습니다. 다시 시도해주세요.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     void initDb();
+    return () => { active = false; };
   }, [ownerId]);
   // Sync SMS added from other pages via custom event
   useEffect(() => {
